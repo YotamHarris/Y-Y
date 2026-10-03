@@ -1,0 +1,9 @@
+{
+  "tapdemo": {
+    "target":"TapDemo",
+    "directory":"games/tapdemo",
+    "bundleId":"com.yyengine.tapdemo",
+    "version":"0.1.0",
+    "internalGroup":"YY Internal"
+  }
+}

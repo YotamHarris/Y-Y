@@ -1,0 +1,59 @@
+require_relative 'lib/distribution'
+default_platform(:ios)
+
+def game
+  config = JSON.parse(File.read(File.expand_path('../config/games.json', __dir__))).fetch(ENV.fetch('YY_GAME', 'tapdemo'))
+  config['bundleId'] = ENV['YY_BUNDLE_ID_OVERRIDE'] unless ENV['YY_BUNDLE_ID_OVERRIDE'].to_s.empty?
+  config
+end
+def connect
+  YY::Connect.new(key_id: ENV.fetch('ASC_KEY_ID'), issuer_id: ENV.fetch('ASC_ISSUER_ID'), key_content: ENV.fetch('ASC_KEY_CONTENT'))
+end
+def distribution
+  client = connect
+  YY::Distribution.new(client: client, app_id: client.app(game.fetch('bundleId')), build_number: ENV.fetch('YY_BUILD_NUMBER'),
+                       group_name: game.fetch('internalGroup'), output: File.expand_path('../build/distribution', __dir__))
+end
+def api_key
+  app_store_connect_api_key(key_id: ENV.fetch('ASC_KEY_ID'), issuer_id: ENV.fetch('ASC_ISSUER_ID'), key_content: ENV.fetch('ASC_KEY_CONTENT'))
+end
+
+platform :ios do
+  lane :archive do
+    config = game
+    output = File.expand_path('../build/distribution', __dir__)
+    FileUtils.mkdir_p(output)
+    distribution.state('building', commit: ENV.fetch('YY_SHA'))
+    args = ['cmake', '--preset', 'ios-device', "-DYY_BUNDLE_ID=#{config.fetch('bundleId')}",
+            "-DYY_GAME=#{ENV.fetch('YY_GAME')}",
+            "-DYY_APP_VERSION=#{config.fetch('version')}", "-DYY_BUILD_NUMBER=#{ENV.fetch('YY_BUILD_NUMBER')}",
+            "-DYY_APPLE_TEAM_ID=#{ENV.fetch('YY_APPLE_TEAM_ID')}", "-DYY_PROFILE_NAME=#{ENV.fetch('YY_PROFILE_NAME')}"]
+    require 'shellwords'
+    Dir.chdir(File.expand_path('..', __dir__)) { sh(args.shelljoin) }
+    build_app(project: File.expand_path('../build/ios-device/YYEngine.xcodeproj', __dir__), scheme: config.fetch('target'),
+              configuration: 'Release', clean: true, export_method: 'app-store',
+              archive_path: File.join(output, "#{config.fetch('target')}.xcarchive"),
+              output_directory: output, output_name: "#{config.fetch('target')}.ipa",
+              export_options: {method: 'app-store-connect', signingStyle: 'manual', teamID: ENV.fetch('YY_APPLE_TEAM_ID'),
+                               provisioningProfiles: {config.fetch('bundleId') => ENV.fetch('YY_PROFILE_NAME')}},
+              include_symbols: true)
+    ipa = File.join(output, "#{config.fetch('target')}.ipa")
+    File.write(File.join(output, 'size.json'), {ipa_bytes: File.size(ipa)}.to_json)
+  end
+  lane :upload do
+    dist = distribution
+    # A GitHub rerun keeps run_number, so reconcile that exact build before uploading again.
+    unless dist.existing
+      upload_to_testflight(api_key: api_key, app_identifier: game.fetch('bundleId'),
+                          ipa: File.expand_path("../build/distribution/#{game.fetch('target')}.ipa", __dir__),
+                          skip_submission: true, skip_waiting_for_build_processing: true)
+    end
+    dist.state('uploaded', commit: ENV.fetch('YY_SHA'))
+  end
+  lane :distribute do
+    distribution.distribute("#{ENV.fetch('YY_GAME')}: #{ENV.fetch('YY_SHA')}\nBuilt by YYEngine Discord pipeline.")
+  end
+  lane :verify do
+    distribution.verify
+  end
+end

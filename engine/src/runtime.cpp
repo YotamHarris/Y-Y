@@ -1,0 +1,190 @@
+#include <yy/runtime.hpp>
+#include <SDL3/SDL.h>
+#include <array>
+#include <cstdlib>
+#include <fstream>
+#include <unordered_map>
+#include <vector>
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#include <psapi.h>
+#elif defined(__APPLE__)
+#include <mach/mach.h>
+#endif
+
+namespace yy {
+namespace {
+std::uint64_t memoryBytes() {
+#ifdef _WIN32
+  PROCESS_MEMORY_COUNTERS info{};
+  if(GetProcessMemoryInfo(GetCurrentProcess(),&info,sizeof(info))) return info.WorkingSetSize;
+#elif defined(__APPLE__)
+  mach_task_basic_info_data_t info{}; mach_msg_type_number_t count=MACH_TASK_BASIC_INFO_COUNT;
+  if(task_info(mach_task_self(),MACH_TASK_BASIC_INFO,reinterpret_cast<task_info_t>(&info),&count)==KERN_SUCCESS) return info.resident_size;
+#endif
+  return 0;
+}
+class SDLRenderer final: public Renderer {
+public:
+  SDL_Renderer* handle{};
+  Viewport viewport;
+  float pixelScale{1};
+  std::unordered_map<std::string,SDL_Texture*> textures;
+  std::string assetDirectory;
+  ~SDLRenderer() override { for(auto& [_,t]:textures) SDL_DestroyTexture(t); if(handle) SDL_DestroyRenderer(handle); }
+  Vec2 screen(Vec2 p) const { const auto r=viewport.content(); return {(r.x+p.x*viewport.scale())*pixelScale,(r.y+p.y*viewport.scale())*pixelScale}; }
+  void color(Color c) { SDL_SetRenderDrawColor(handle,c.r,c.g,c.b,c.a); }
+  void rectangle(Rect r,Color c) override {
+    const auto p=screen({r.x,r.y}); const float s=viewport.scale()*pixelScale;
+    SDL_FRect rect{p.x,p.y,r.w*s,r.h*s}; color(c); SDL_RenderFillRect(handle,&rect);
+  }
+  void circle(Vec2 center,float radius,Color c) override {
+    constexpr int segments=40; std::array<SDL_Vertex,segments*3> vertices{};
+    const auto p=screen(center); const float rad=radius*viewport.scale()*pixelScale;
+    const SDL_FColor fc{c.r/255.0f,c.g/255.0f,c.b/255.0f,c.a/255.0f};
+    for(int i=0;i<segments;++i) {
+      const float a=static_cast<float>(i)*6.2831853f/segments,b=static_cast<float>(i+1)*6.2831853f/segments;
+      vertices[i*3]={{p.x,p.y},fc,{}};
+      vertices[i*3+1]={{p.x+std::cos(a)*rad,p.y+std::sin(a)*rad},fc,{}};
+      vertices[i*3+2]={{p.x+std::cos(b)*rad,p.y+std::sin(b)*rad},fc,{}};
+    }
+    SDL_RenderGeometry(handle,nullptr,vertices.data(),static_cast<int>(vertices.size()),nullptr,0);
+  }
+  void text(Vec2 p,std::string_view value,Color c,float fontScale) override {
+    const auto point=screen(p); const float s=viewport.scale()*pixelScale*fontScale;
+    if(s<=0) return;
+    SDL_SetRenderScale(handle,s,s); color(c);
+    SDL_RenderDebugText(handle,point.x/s,point.y/s,std::string(value).c_str());
+    SDL_SetRenderScale(handle,1,1);
+  }
+  bool sprite(std::string_view asset,Rect dst) override {
+    const std::string key(asset);
+    auto it=textures.find(key);
+    if(it==textures.end()) {
+      // Asset names are relative to the bundled assets directory.
+      if(key.empty() || key.find("..")!=std::string::npos || key.find(':')!=std::string::npos || key.front()=='/' || key.front()=='\\') return false;
+      SDL_Surface* surface=SDL_LoadBMP((std::string(SDL_GetBasePath())+assetDirectory+key).c_str());
+      if(!surface) { textures.emplace(key,nullptr); return false; }
+      SDL_Texture* texture=SDL_CreateTextureFromSurface(handle,surface); SDL_DestroySurface(surface);
+      if(!texture) return false;
+      it=textures.emplace(key,texture).first;
+    }
+    if(!it->second) return false;
+    const auto p=screen({dst.x,dst.y}); const float s=viewport.scale()*pixelScale;
+    SDL_FRect rect{p.x,p.y,dst.w*s,dst.h*s}; return SDL_RenderTexture(handle,it->second,nullptr,&rect);
+  }
+};
+class SDLAudio final: public Audio {
+public:
+  SDL_AudioStream* stream{};
+  ~SDLAudio() override { if(stream) SDL_DestroyAudioStream(stream); }
+  void initialize() {
+    const SDL_AudioSpec spec{SDL_AUDIO_F32,1,48000};
+    stream=SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,&spec,nullptr,nullptr);
+    if(stream) SDL_ResumeAudioStreamDevice(stream);
+  }
+  void tone(float hz,float seconds) override {
+    if(!stream || hz<=0 || seconds<=0) return;
+    const int count=static_cast<int>(48000*std::min(seconds,1.0f)); std::vector<float> samples(count);
+    for(int i=0;i<count;++i) samples[i]=0.15f*std::sin(6.2831853f*hz*i/48000)*(1-static_cast<float>(i)/count);
+    SDL_PutAudioStreamData(stream,samples.data(),count*sizeof(float));
+  }
+};
+}
+struct Runtime::Impl {
+  std::unique_ptr<Game> game;
+  SDL_Window* window{};
+  SDLRenderer renderer;
+  SDLAudio audio;
+  FixedClock clock;
+  std::uint64_t previous{}, frames{};
+  double totalMs{}, worstMs{};
+  int smokeFrames{};
+  bool paused{}, initialized{};
+  Impl(std::unique_ptr<Game> g,int smoke,std::string assets):game(std::move(g)),smokeFrames(smoke) {renderer.assetDirectory=std::move(assets);}
+  void viewport() {
+    int w=0,h=0,pw=0,ph=0; SDL_GetWindowSize(window,&w,&h); SDL_GetWindowSizeInPixels(window,&pw,&ph);
+    SDL_Rect safe{0,0,w,h}; SDL_GetWindowSafeArea(window,&safe);
+    renderer.viewport.safe={static_cast<float>(safe.x),static_cast<float>(safe.y),static_cast<float>(safe.w),static_cast<float>(safe.h)};
+    renderer.pixelScale=w>0 ? static_cast<float>(pw)/w : 1;
+  }
+  void metrics() {
+    if(!frames) return;
+    const char* configured=std::getenv("YY_METRICS_PATH");
+    const char* appName=SDL_GetAppMetadataProperty(SDL_PROP_APP_METADATA_NAME_STRING);
+    char* preference=SDL_GetPrefPath("YYEngine",appName ? appName : "Game");
+    const std::string path=configured ? configured : std::string(preference ? preference : "")+"metrics.json";
+    SDL_free(preference);
+    std::ofstream out(path);
+    out<<"{\"frames\":"<<frames<<",\"mean_frame_ms\":"<<totalMs/frames<<",\"worst_frame_ms\":"<<worstMs
+       <<",\"resident_memory_bytes\":"<<memoryBytes()<<",\"renderer\":\""<<SDL_GetRendererName(renderer.handle)<<"\"}\n";
+    SDL_Log("frames=%llu mean=%.2fms worst=%.2fms memory=%llu bytes",static_cast<unsigned long long>(frames),totalMs/frames,worstMs,static_cast<unsigned long long>(memoryBytes()));
+  }
+};
+Runtime::Runtime(std::unique_ptr<Game> game,int smoke,std::string assets):impl(std::make_unique<Impl>(std::move(game),smoke,std::move(assets))) {}
+Runtime::~Runtime() {
+  if(impl->initialized) { impl->metrics(); impl->game->shutdown(); }
+  SDL_Window* window=impl->window;
+  impl.reset(); // renderer and audio before their window and SDL
+  if(window) SDL_DestroyWindow(window);
+  SDL_Quit();
+}
+bool Runtime::initialize() {
+  SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS,"0"); SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS,"0");
+  if(!SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO)) { SDL_Log("SDL_Init: %s",SDL_GetError()); return false; }
+  impl->window=SDL_CreateWindow(SDL_GetAppMetadataProperty(SDL_PROP_APP_METADATA_NAME_STRING),390,844,SDL_WINDOW_RESIZABLE|SDL_WINDOW_HIGH_PIXEL_DENSITY);
+  if(!impl->window) return false;
+#ifdef _WIN32
+  const char* driver="direct3d11";
+#elif defined(__APPLE__)
+  const char* driver="metal";
+#else
+  const char* driver=nullptr;
+#endif
+  impl->renderer.handle=SDL_CreateRenderer(impl->window,driver);
+  if(!impl->renderer.handle) { SDL_Log("Renderer: %s",SDL_GetError()); return false; }
+  SDL_SetRenderVSync(impl->renderer.handle,1);
+  impl->audio.initialize(); impl->viewport();
+  Services services{impl->renderer,impl->audio}; impl->game->initialize(services);
+  impl->previous=SDL_GetTicksNS(); impl->initialized=true; return true;
+}
+bool Runtime::event(const void* raw) {
+  const auto& event=*static_cast<const SDL_Event*>(raw);
+  if(event.type==SDL_EVENT_QUIT) return false;
+  if(event.type==SDL_EVENT_WILL_ENTER_BACKGROUND || event.type==SDL_EVENT_WINDOW_MINIMIZED) {
+    impl->paused=true; impl->clock.reset(); impl->game->pause(true);
+    if(impl->audio.stream) SDL_PauseAudioStreamDevice(impl->audio.stream);
+  }
+  if(event.type==SDL_EVENT_DID_ENTER_FOREGROUND || event.type==SDL_EVENT_WINDOW_RESTORED) {
+    impl->paused=false; impl->clock.reset(); impl->previous=SDL_GetTicksNS(); impl->game->pause(false);
+    if(impl->audio.stream) SDL_ResumeAudioStreamDevice(impl->audio.stream);
+  }
+  if(!impl->paused && (event.type==SDL_EVENT_MOUSE_BUTTON_DOWN || event.type==SDL_EVENT_FINGER_DOWN)) {
+    impl->viewport(); Vec2 p;
+    if(event.type==SDL_EVENT_FINGER_DOWN) {
+      int w=0,h=0; SDL_GetWindowSize(impl->window,&w,&h); p={event.tfinger.x*w,event.tfinger.y*h};
+    } else {
+      if(event.button.button!=SDL_BUTTON_LEFT || event.button.which==SDL_TOUCH_MOUSEID) return true;
+      p={event.button.x,event.button.y};
+    }
+    if(auto logical=impl->renderer.viewport.map(p)) impl->game->tap(*logical);
+  }
+  return true;
+}
+bool Runtime::iterate() {
+  const auto now=SDL_GetTicksNS(); const double elapsed=static_cast<double>(now-impl->previous)/1e9; impl->previous=now;
+  if(impl->paused) { SDL_Delay(20); return true; }
+  impl->clock.advance(elapsed,[&](float step){ impl->game->update(step); }); impl->viewport();
+  impl->renderer.color({9,20,33}); SDL_RenderClear(impl->renderer.handle); impl->game->render(impl->renderer);
+  ++impl->frames; const double ms=elapsed*1000; impl->totalMs+=ms; impl->worstMs=std::max(impl->worstMs,ms);
+  const bool done=impl->smokeFrames>0 && impl->frames>=static_cast<std::uint64_t>(impl->smokeFrames);
+  if(done) {
+    if(const char* path=std::getenv("YY_SCREENSHOT_PATH")) {
+      SDL_Surface* surface=SDL_RenderReadPixels(impl->renderer.handle,nullptr);
+      if(surface) { SDL_SaveBMP(surface,path); SDL_DestroySurface(surface); }
+    }
+  }
+  SDL_RenderPresent(impl->renderer.handle); return !done;
+}
+}

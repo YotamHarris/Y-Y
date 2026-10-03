@@ -1,0 +1,60 @@
+name: Checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  automation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.13.1'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: python3 -m unittest discover -s tests -p '*_test.py'
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+      - run: ruby tests/distribution_test.rb
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.13.1'
+          cache: npm
+      - run: ./scripts/build.ps1 -Smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-smoke
+          path: |
+            build/windows/metrics.json
+            build/windows/smoke.bmp
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select stable Xcode
+        run: python3 scripts/ios-xcode.py
+      - run: cmake --preset ios-simulator
+      - run: cmake --build build/ios-simulator --config Release --parallel 3 -- CODE_SIGNING_ALLOWED=NO
+      - run: python3 scripts/ios-simulator-smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-simulator-metrics
+          path: build/ios-simulator/metrics.json

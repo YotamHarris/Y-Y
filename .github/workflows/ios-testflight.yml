@@ -1,0 +1,108 @@
+name: iOS TestFlight
+run-name: iOS [${{ inputs.game || 'all' }}] ${{ inputs.task_id || github.sha }}
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Merged main commit to build
+        required: true
+      game:
+        description: Game ID from config/games.json
+        required: true
+        default: tapdemo
+      task_id:
+        description: Coordinator task ID
+        required: true
+permissions:
+  contents: read
+  checks: read
+concurrency:
+  group: testflight-${{ inputs.sha || github.sha }}-${{ inputs.game || 'all' }}
+  cancel-in-progress: false
+jobs:
+  select:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    outputs:
+      matrix: ${{ steps.games.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+          fetch-depth: 0
+      - name: Validate commit
+        env:
+          YY_SHA: ${{ inputs.sha || github.sha }}
+        run: |
+          [[ "$YY_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          git fetch origin main
+          git merge-base --is-ancestor "$YY_SHA" origin/main
+      - name: Wait for required checks
+        env:
+          YY_SHA: ${{ inputs.sha || github.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/wait-checks.py
+      - id: games
+        env:
+          YY_GAME: ${{ inputs.game }}
+          YY_BEFORE: ${{ github.event.before }}
+        run: echo "matrix=$(python3 scripts/affected-games.py)" >> "$GITHUB_OUTPUT"
+  distribute:
+    name: TestFlight (${{ matrix.game }})
+    needs: select
+    if: ${{ fromJSON(needs.select.outputs.matrix).game[0] != null }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.select.outputs.matrix) }}
+    runs-on: macos-15
+    timeout-minutes: 90
+    environment: testflight-${{ matrix.game }}
+    env:
+      YY_GAME: ${{ matrix.game }}
+      YY_SHA: ${{ inputs.sha || github.sha }}
+      YY_BUILD_NUMBER: ${{ github.run_number }}
+      YY_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+      YY_BUNDLE_ID_OVERRIDE: ${{ vars.BUNDLE_ID }}
+      YY_PROFILE_NAME: ${{ vars.PROFILE_NAME }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+      P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+      BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+      FASTLANE_SKIP_UPDATE_CHECK: '1'
+      FASTLANE_HIDE_CHANGELOG: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.sha || github.sha }}
+      - name: Select stable Xcode
+        run: python3 scripts/ios-xcode.py
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Configure signing
+        run: python3 scripts/ios-signing.py
+      - name: Archive game
+        run: bundle exec fastlane ios archive
+      - name: Upload build
+        run: bundle exec fastlane ios upload
+      - name: Distribute to internal testers
+        run: bundle exec fastlane ios distribute
+      - name: Verify TestFlight readiness
+        run: bundle exec fastlane ios verify
+      - name: Save diagnostics and symbols
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-${{ matrix.game }}-${{ github.run_number }}
+          retention-days: 30
+          path: |
+            build/distribution/**
+            ~/Library/Logs/gym/**
+      - name: Remove signing material
+        if: always()
+        run: python3 scripts/ios-signing.py --clean
