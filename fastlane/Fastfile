@@ -30,13 +30,17 @@ platform :ios do
             "-DYY_APPLE_TEAM_ID=#{ENV.fetch('YY_APPLE_TEAM_ID')}", "-DYY_PROFILE_NAME=#{ENV.fetch('YY_PROFILE_NAME')}"]
     require 'shellwords'
     Dir.chdir(File.expand_path('..', __dir__)) { sh(args.shelljoin) }
-    build_app(project: File.expand_path('../build/ios-device/YYEngine.xcodeproj', __dir__), scheme: config.fetch('target'),
-              configuration: 'Release', clean: true, export_method: 'app-store',
+    options = {project: File.expand_path('../build/ios-device/YYEngine.xcodeproj', __dir__), scheme: config.fetch('target'),
+              configuration: 'Release', export_method: 'app-store',
               archive_path: File.join(output, "#{config.fetch('target')}.xcarchive"),
               output_directory: output, output_name: "#{config.fetch('target')}.ipa",
               export_options: {method: 'app-store-connect', signingStyle: 'manual', teamID: ENV.fetch('YY_APPLE_TEAM_ID'),
                                provisioningProfiles: {config.fetch('bundleId') => ENV.fetch('YY_PROFILE_NAME')}},
-              include_symbols: true)
+              include_symbols: true}
+    build_app(**options, clean: true, skip_package_ipa: true)
+    sh(['python3', File.expand_path('../scripts/verify-ios-archive.py', __dir__),
+        options.fetch(:archive_path), config.fetch('bundleId')].shelljoin)
+    build_app(**options, skip_build_archive: true)
     ipa = File.join(output, "#{config.fetch('target')}.ipa")
     File.write(File.join(output, 'size.json'), {ipa_bytes: File.size(ipa)}.to_json)
   end
