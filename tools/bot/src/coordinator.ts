@@ -117,13 +117,7 @@ export class Coordinator {
         this.store.update(task.id,{status:'queued',attempt:task.attempt+1,headSha:undefined});return;
       }
       await this.git.assertClean(task,signal);
-      // Refresh immediately before the SHA-guarded merge. Server branch protection also checks the base.
-      let protectedMain=false;
-      try {protectedMain=await this.github.protectedMain();} catch(err) {
-        if(/403|404/.test(String(err))) throw new AgentPaused('Cannot read main protection. Configure strict branch protection and grant the coordinator token Administration read permission.');
-        throw err;
-      }
-      if(!protectedMain) throw new AgentPaused('Configure main branch protection: require automation, windows, ios, and an up-to-date branch. The merge needs this server-side race guard.');
+      // Refresh the base immediately before merging the validated head SHA.
       if(await this.github.main()!==task.baseSha) {this.store.update(task.id,{status:'queued'});return;}
       this.stage(task.id,'merging');
       task=this.store.update(task.id,{mergeSha:await this.github.merge(task.pr,task.headSha)});

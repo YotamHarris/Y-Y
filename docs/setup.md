@@ -1,5 +1,13 @@
 # Account and machine setup
 
+Double-click **Configure.cmd** in the repository folder, or run `./scripts/configure.ps1` from PowerShell, for guided, one-at-a-time entry of Discord tokens/IDs, the GitHub token, and provider settings. The launcher uses the repository directory and keeps its window open when the script finishes. Secret prompts are hidden. It updates the ignored `.env`, retains saved values when you press Enter, and preserves unrelated settings. Subscription mode uses native CLI logins; API mode prompts for the provider key explicitly.
+
+The optional Apple section accepts paths to your `.p12`, `.mobileprovision`, and `.p8` files, plus their password/IDs and app settings. It uploads variables and encrypted secrets directly to the game's GitHub environment using GitHub CLI, without saving extra copies locally. Install the CLI if needed with `winget install --id GitHub.cli --exact --source winget` and rerun Configure.cmd. The script also checks standard installation directories, so a fresh terminal is not needed after a standard install. [GitHub secret CLI](https://cli.github.com/manual/gh_secret_set)
+
+Use a setup token restricted to this repository with **Actions read** and **Environments read/write**, or temporarily add Environments read/write to the bot token (which already has Actions access). If the environment does not exist, create `testflight-tapdemo` under repository **Settings → Environments → New environment** first. Automatic environment creation instead needs **Administration read/write** on the setup token. The script preserves existing environment rules and reports the failing step/HTTP status without printing secret values. After fixing permissions you can retry within the same wizard, keeping entered Apple settings in memory. The setup token is not saved; normal bot operation does not need these extra permissions. [GitHub environment creation permissions](https://docs.github.com/en/rest/deployments/environments#create-or-update-an-environment)
+
+Create the accounts, Discord bot invitation/intents, Apple app/profile, and internal tester group using the steps below. The script collects credentials for those existing accounts; it does not enroll accounts or start a build.
+
 ## 1. Publish the baseline
 
 The supplied repo started with no commits. Review the files, set your Git identity, and publish the baseline before running agent tasks:
@@ -12,15 +20,11 @@ git push -u origin main
 
 Git ignores `.env`, `.yy`, `.tools`, signing materials, and build outputs. No credentials belong in a commit. The unsigned checks can run immediately. The signing workflow initially fails with a named missing setting until Apple configuration is complete.
 
-In GitHub Settings → Actions, enable Actions and allow pull requests to be created by automation as needed. Configure `main` branch protection:
+In GitHub Settings → Actions, enable Actions if disabled. Allow squash merging in the repository's general settings. Branch protection is optional: the bot waits for its checks and review before merging without requiring protection settings or Administration permission.
 
-- Require a pull request and the checks **automation**, **windows**, and **ios**.
-- Require branches to be up to date before merging. Allow squash merging.
-- Do not grant the automation identity bypass privileges. The service queries the protection settings and will pause if the strict checks are absent.
+Open the repository's **Actions → Checks** workflow. The names **automation**, **windows**, and **ios** are its three jobs, defined in [checks.yml](../.github/workflows/checks.yml). They run service tests on Linux, compile and smoke-test the game on Windows, and compile and launch an unsigned iOS simulator app on a hosted Mac. No Apple signing credentials are needed for these checks. The separate **iOS TestFlight** workflow in [ios-testflight.yml](../.github/workflows/ios-testflight.yml) needs the Apple settings below.
 
-Run the initial checks once so their names appear in the protection selector. Your GitHub repository/account plan must support protected branches for this repository; this is required to prevent merging a candidate against an unvalidated, concurrently changed base.
-
-Create a fine-grained GitHub token for this repository with Contents read/write, Pull requests read/write, Actions read/write, Checks read, and Administration read (for the protection query). Set `GITHUB_TOKEN` in your local `.env`. The token is used by the coordinator only and is excluded from provider subprocess environments. Token permissions/branch rules may additionally require repository-owner configuration.
+Create a fine-grained GitHub token for this repository with Contents read/write, Pull requests read/write, and Actions read/write. Metadata read is included automatically. The bot reads CI results through the Actions API; no Checks token permission is needed. Set `GITHUB_TOKEN` in your local `.env`. The token is used by the coordinator only and is excluded from provider subprocess environments. Existing repository rules still apply if you choose to configure them later.
 
 ## 2. Create the Discord bot
 

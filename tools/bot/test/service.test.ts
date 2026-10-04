@@ -21,7 +21,7 @@ function fixture(options:{agent?:()=>Promise<any>;checks?:'pending'|'passed'|'fa
   const calls:{merge:number;dispatch:number;validate:number;review:number;cancel:number;rerun:number}={merge:0,dispatch:0,validate:0,review:0,cancel:0,rerun:0};
   const git={prepare:async()=>({worktree:'isolated',branch:'codex/task',baseSha:'base'}),commit:async()=> 'head',diff:async()=> 'diff',push:async()=>{},assertClean:async()=>{},validate:async()=>{calls.validate++;}} as unknown as Git;
   const github={main:async()=>options.main || 'base',pull:async()=>({number:1,html_url:'pr'}),pullState:async()=>({merged:options.merged || false,state:'open',head:{sha:'head'},merge_commit_sha:'merge'}),
-    checks:async()=> options.checks || 'passed',protectedMain:async()=>true,merge:async()=>{calls.merge++;return 'merge';},runs:async()=>[],dispatch:async()=>{calls.dispatch++;},
+    checks:async()=> options.checks || 'passed',merge:async()=>{calls.merge++;return 'merge';},runs:async()=>[],dispatch:async()=>{calls.dispatch++;},
     buildState:async()=>({status:'processing',url:'run'}),cancelRun:async()=>{calls.cancel++;},rerun:async()=>{calls.rerun++;}} as unknown as GitHub;
   const providers={execute:options.agent || (async(_p:unknown,o:any)=>{if(o.readonly) calls.review++;return {outcome:'completed',summary:'Done',question:'',review:o.readonly ? 'approve' : 'none'};})} as unknown as Providers;
   return {store,task,calls,git,github,coordinator:new Coordinator(config,store,git,github,providers)};
@@ -88,8 +88,37 @@ test('build resume reruns the same workflow rather than allocating a new upload'
 test('delayed TestFlight processing is not reported ready',async()=>{
   const f=fixture();(f.github as any).runs=async()=>[{id:7,display_title:`iOS [tapdemo] ${f.task.id}`,html_url:'run'}];f.store.update(f.task.id,{status:'building',mergeSha:'merge'});await f.coordinator.tick();assert.equal(f.store.get(f.task.id)?.status,'processing');f.store.close();
 });
-test('GitHub checks require all three named successes',async()=>{
-  const request=(async()=>new Response(JSON.stringify({check_runs:[{name:'automation',status:'completed',conclusion:'success'},{name:'windows',status:'completed',conclusion:'success'}]}),{status:200})) as typeof fetch;
+test('Actions API requires all three named jobs on the requested commit',async()=>{
+  const passed=['automation','windows','ios'].map(name=>({name,status:'completed',conclusion:'success'}));
+  for(const scenario of [
+    {head:'sha',jobs:passed,expected:'passed'},
+    {head:'sha',jobs:passed.slice(0,2),expected:'pending'},
+    {head:'sha',jobs:[...passed.slice(0,2),{name:'ios',status:'in_progress',conclusion:null}],expected:'pending'},
+    {head:'different-sha',jobs:passed,expected:'pending'}
+  ]) {
+    const request=(async(input:URL|string|Request)=>{
+      const url=String(input);assert(!url.includes('/check-runs'));
+      if(url.includes('/jobs?')) {assert.match(url,/filter=latest/);return new Response(JSON.stringify({jobs:scenario.jobs}));}
+      assert.match(url,/\/actions\/workflows\/checks.yml\/runs\?head_sha=sha/);
+      return new Response(JSON.stringify({workflow_runs:[{id:7,head_sha:scenario.head,status:'completed',conclusion:'success'}]}));
+    }) as typeof fetch;
+    const github=new GitHub({repository:'owner/repo',githubToken:'token'},request);assert.equal(await github.checks('sha'),scenario.expected);
+  }
+});
+test('Actions API rejects a failed job and a cancelled workflow',async()=>{
+  for(const status of ['in_progress','completed']) {
+    const request=(async(input:URL|string|Request)=>new Response(JSON.stringify(String(input).includes('/jobs?')
+      ? {jobs:[{name:'windows',status:'completed',conclusion:'failure'}]}
+      : {workflow_runs:[{id:7,head_sha:'sha',status,conclusion:status==='completed' ? 'cancelled' : null}]}))) as typeof fetch;
+    const github=new GitHub({repository:'owner/repo',githubToken:'token'},request);assert.equal(await github.checks('sha'),'failed');
+  }
+});
+test('newer Actions run supersedes an older success for the same commit',async()=>{
+  const request=(async(input:URL|string|Request)=>{
+    const url=String(input);
+    if(url.includes('/jobs?')) {assert.match(url,/\/runs\/8\/jobs/);return new Response(JSON.stringify({jobs:[]}));}
+    return new Response(JSON.stringify({workflow_runs:[{id:7,head_sha:'sha',status:'completed',conclusion:'success'},{id:8,head_sha:'sha',status:'queued',conclusion:null}]}));
+  }) as typeof fetch;
   const github=new GitHub({repository:'owner/repo',githubToken:'token'},request);assert.equal(await github.checks('sha'),'pending');
 });
 test('process execution preserves arguments containing shell metacharacters and redacts errors',async()=>{
@@ -127,11 +156,15 @@ test('cancellation racing an in-flight merge records the completed merge and def
   await f.coordinator.cancel(f.task.id);resolveMerge('already-merged');await operation;
   assert.equal(f.store.get(f.task.id)?.status,'cancelled');assert.equal(f.store.get(f.task.id)?.mergeSha,'already-merged');assert.equal(f.store.get(f.task.id)?.cancelPending,true);assert.equal(f.calls.dispatch,0);f.store.close();
 });
-test('unprotected main pauses before merge and resumes remote checks',async()=>{
-  const f=fixture();(f.github as any).protectedMain=async()=>false;
+test('validated candidate merges without requiring branch protection',async()=>{
+  const f=fixture();
   f.store.update(f.task.id,{status:'awaiting_checks',pr:1,headSha:'head',baseSha:'base'});await f.coordinator.tick();
-  assert.equal(f.store.get(f.task.id)?.status,'waiting_input');assert.equal(f.calls.merge,0);await f.coordinator.resume(f.task.id);
-  assert.equal(f.store.get(f.task.id)?.status,'awaiting_checks');f.store.close();
+  assert.equal(f.calls.merge,1);assert.equal(f.store.get(f.task.id)?.mergeSha,'merge');f.store.close();
+});
+test('main advancing after checks is refreshed before merge',async()=>{
+  const f=fixture();let reads=0;(f.github as any).main=async()=>++reads===1 ? 'base' : 'new-base';
+  f.store.update(f.task.id,{status:'awaiting_checks',pr:1,headSha:'head',baseSha:'base'});await f.coordinator.tick();
+  assert.equal(f.calls.merge,0);assert.equal(f.store.get(f.task.id)?.status,'queued');f.store.close();
 });
 test('failed signing never reports uploaded or ready',async()=>{
   const request=(async(input:URL|string|Request)=>{

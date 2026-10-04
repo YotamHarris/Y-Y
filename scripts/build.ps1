@@ -7,8 +7,7 @@ if (-not (Test-Path -LiteralPath $cmakePath)) { $cmakePath = 'cmake' }
 if ($LASTEXITCODE -ne 0) { throw 'CMake configure failed' }
 & $cmakePath --build --preset windows --parallel 4
 if ($LASTEXITCODE -ne 0) { throw 'C++ build failed' }
-$ctestPath = Join-Path (Split-Path $cmakePath -Parent) 'ctest.exe'
-if ($cmakePath -eq 'cmake') { $ctestPath = 'ctest' }
+$ctestPath = if ($cmakePath -eq 'cmake') { 'ctest' } else { Join-Path (Split-Path $cmakePath -Parent) 'ctest.exe' }
 & $ctestPath --preset windows
 if ($LASTEXITCODE -ne 0) { throw 'Engine/game tests failed' }
 if ($Smoke) {

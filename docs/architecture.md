@@ -8,7 +8,7 @@ flowchart LR
   W --> A[Selected Codex or Claude CLI]
   W --> C[C++ checks and independent agent review]
   C --> P[GitHub PR and required CI checks]
-  P --> M[Protected main merge]
+  P --> M[Automatic main merge]
   M --> I[Hosted Mac archive and signing]
   I --> T[App Store Connect processing and tester assignment]
   T --> B
@@ -25,7 +25,7 @@ Only one task executes at once. Remote reconciliation takes precedence over new 
 
 The provider contract returns structured `outcome`, `summary`, `question`, and `review`. Invalid/missing review approval cannot pass a candidate. Each review is a fresh read-only invocation. Provider subprocesses receive a restricted environment that excludes Discord, GitHub, and Apple secrets. Prompts enter through stdin; shell interpolation is not used. Codex applies its workspace/read-only sandbox; Claude uses its tool permission rules with unattended prompts denied.
 
-Game tasks are limited to the engine, selected game, and tests, including changes already committed by the provider. The coordinator runs trusted validation scripts, commits the candidate, pushes with a lease, creates/reuses the PR, and merges only the validated head SHA. If main changes, it rebases and repeats checks/review. Strict GitHub branch protection supplies the final server-side race guard.
+Game tasks are limited to the engine, selected game, and tests, including changes already committed by the provider. The coordinator runs trusted validation scripts, commits the candidate, pushes with a lease, creates/reuses the PR, and merges only the validated head SHA after all three CI checks succeed. If main changes, it rebases and repeats checks/review. Branch protection is optional. The coordinator refreshes main immediately before merging; without an up-to-date branch rule, a separate push during the merge API request can still change the base after that refresh.
 
 ## States and recovery
 

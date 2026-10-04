@@ -2,7 +2,7 @@
 
 A small C++20/SDL3 game engine and a Windows-hosted Discord development bot. You and a friend can discuss game ideas, choose Codex or Claude, and explicitly request changes that are checked, reviewed, merged, built on a hosted Mac, and distributed through TestFlight.
 
-**Implemented locally:** TapDemo, engine/game tests, a runnable Discord service, persistent coordination, provider adapters, PR/merge integration, and iOS CI/signing/distribution scripts. **Requires account setup:** live Discord/GitHub operations, the first hosted iOS build, and real iPhone/TestFlight acceptance. Those external paths have not been verified against your accounts.
+**Implemented locally:** TapDemo, engine/game tests, a runnable Discord service, persistent coordination, provider adapters, PR/merge integration, and iOS CI/signing/distribution scripts. The initial hosted unsigned iOS simulator build and launch passed. **Remaining acceptance:** a live Discord change/merge, the first signed TestFlight build, and installation on an iPhone. See [validation evidence](docs/validation.md).
 
 ## Try the game on Windows
 
@@ -20,9 +20,12 @@ The smoke run exits after 120 frames and writes `build/windows/metrics.json` and
 
 ## Connect Discord and enable iOS builds
 
-Follow [the setup guide](docs/setup.md) for Discord permissions, GitHub branch protection, local CLI authentication, Windows signing-certificate generation, and TestFlight configuration. Then:
+Follow [the setup guide](docs/setup.md) for Discord permissions, GitHub automation credentials, local CLI authentication, Windows signing-certificate generation, and TestFlight configuration. Branch protection is optional. Then:
+
+Double-click **Configure.cmd** in the repository folder to enter credentials in a dedicated PowerShell window. You can also run the script directly:
 
 ```powershell
+./scripts/configure.ps1         # Prompt for credentials; optionally upload Apple secrets
 npm run check
 npm run doctor
 npm run register

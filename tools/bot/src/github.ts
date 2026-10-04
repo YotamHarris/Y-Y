@@ -11,11 +11,6 @@ export class GitHub {
     return response.json() as Promise<T>;
   }
   async main():Promise<string> { const branch=await this.api<{commit:{sha:string}}>('/branches/main'); return branch.commit.sha; }
-  async protectedMain():Promise<boolean> {
-    const rules=await this.api<{strict:boolean;contexts:string[];checks?:{context:string}[]}>('/branches/main/protection/required_status_checks');
-    const contexts=new Set([...rules.contexts,...(rules.checks || []).map(c=>c.context)]);
-    return rules.strict && ['automation','windows','ios'].every(name=>contexts.has(name));
-  }
   async pull(branch:string,title:string,body:string) {
     const owner=this.config.repository.split('/')[0];
     const existing=await this.api<any[]>(`/pulls?state=all&head=${encodeURIComponent(`${owner}:${branch}`)}`);
@@ -24,13 +19,18 @@ export class GitHub {
   }
   pullState(number:number) { return this.api<{merged:boolean;merge_commit_sha:string|null;state:string;head:{sha:string}}>(`/pulls/${number}`); }
   async checks(sha:string):Promise<'pending'|'passed'|'failed'> {
-    const result=await this.api<{check_runs:{name:string;status:string;conclusion:string|null}[]}>(`/commits/${sha}/check-runs?per_page=100&filter=latest`);
+    // Fine-grained PATs expose Actions permissions; read our workflow jobs through that API.
+    const result=await this.api<{workflow_runs:{id:number;head_sha:string;status:string;conclusion:string|null}[]}>(`/actions/workflows/checks.yml/runs?head_sha=${encodeURIComponent(sha)}&per_page=100`);
+    const run=result.workflow_runs.filter(r=>r.head_sha===sha).sort((a,b)=>b.id-a.id)[0];
+    if(!run) return 'pending';
+    if(run.status==='completed' && run.conclusion!=='success') return 'failed';
+    const {jobs}=await this.api<{jobs:{name:string;status:string;conclusion:string|null}[]}>(`/actions/runs/${run.id}/jobs?per_page=100&filter=latest`);
     const required=['automation','windows','ios'];
     for(const name of required) {
-      const checks=result.check_runs.filter(c=>c.name===name);
+      const checks=jobs.filter(c=>c.name===name);
       if(checks.some(c=>c.status==='completed' && c.conclusion!=='success')) return 'failed';
     }
-    return required.every(name=>result.check_runs.some(c=>c.name===name && c.status==='completed' && c.conclusion==='success')) ? 'passed' : 'pending';
+    return run.status==='completed' && required.every(name=>jobs.some(c=>c.name===name && c.status==='completed' && c.conclusion==='success')) ? 'passed' : 'pending';
   }
   async merge(number:number,sha:string) {
     const result=await this.api<{merged:boolean;sha:string;message:string}>(`/pulls/${number}/merge`,'PUT',{sha,merge_method:'squash'});
