@@ -75,3 +75,12 @@ npm run register
 The script clones TapDemo as a starting project and adds it to the game registry. Replace its model and game behavior. CMake discovers registered projects at configure time, giving each its own app, assets namespace, and iOS bundle ID. Create a matching `testflight-puzzle` GitHub environment and Apple app/profile. Shared engine changes build all registered games; game-only changes distribute only that game. Initial unsigned iOS smoke testing exercises TapDemo; new games need equivalent gameplay/simulator tests before relying on their automated delivery.
 
 See [architecture and recovery](docs/architecture.md) and [acceptance evidence](docs/validation.md). Android, 3D, scripting, a visual editor, and App Store production submission are deferred.
+
+## Multica task board
+
+See [Multica setup and sharing](docs/multica.md) for the local self-hosted task board,
+TapDemo project, shared Discord/board coordinator, and temporary public HTTPS link.
+Double-click **TapDemoBoard.cmd** or the **TapDemo board** desktop shortcut to start
+and open it. Owner comments `/yy plan`, `/yy approve`, `/yy change`, `/yy ask`,
+`/yy build`, `/yy resume` and `/yy cancel` use the same persistent bot queue.
+Use `./scripts/multica.ps1 -Action Stop` to close public access.

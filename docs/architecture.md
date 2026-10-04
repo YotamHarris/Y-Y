@@ -3,6 +3,7 @@
 ```mermaid
 flowchart LR
   D[Discord commands and threads] --> B[Windows TypeScript coordinator]
+  Board[Multica TapDemo project and owner commands] --> B
   B --> Q[(SQLite tasks, transcripts, outbox)]
   B --> W[One isolated Git worktree]
   W --> A[Selected Codex or Claude CLI]
@@ -13,6 +14,7 @@ flowchart LR
   I --> T[App Store Connect processing and tester assignment]
   T --> B
   B --> D
+  B --> Board
 ```
 
 ## Boundaries
@@ -22,6 +24,20 @@ Games implement `yy::Game` and receive renderer/audio services. A fixed 60 Hz si
 The service stores request identity, task status, worktree/branch/base/head/merge SHAs, PR/workflow references, provider session IDs, and transcripts. A unique Discord event ID suppresses duplicate task/message processing. SQLite uses WAL. Outbox notifications survive restarts; delivery is at least once, so a crash immediately after sending may produce a repeated status message. The service lock rejects a second coordinator process.
 
 Only one task executes at once. Remote reconciliation takes precedence over new implementation jobs. This keeps merges and builds serial for the first two-person version. A separate timer sends notifications while a long provider run is active. Both authorized users can continue, resume, or cancel tasks.
+
+The optional Multica bridge uses the authenticated CLI profile, with service secrets
+excluded from its subprocess environment. A local mapping restricts board command
+authors to the existing Discord allowlist. Cards and status changes alone do not
+enqueue work. Task markers recover ambiguous issue creation; per-notification
+receipts recover ambiguous comment delivery. Separate Discord/board delivery flags
+prevent one surface from consuming the other's notifications. A deleted card is
+not recreated. Board outage does not stop the coordinator's existing work.
+
+Read-only plan requests return structured proposed tasks. Owner approval creates
+all implementation tasks and their earlier-task dependencies in one transaction;
+the same proposal cannot create a second set. Waiting for a dependency/worker/CI
+is distinct from waiting for owner input. This adopts BodySimulation manager
+behavior while retaining YYEngine's single coordinator and independent review.
 
 The provider contract returns structured `outcome`, `summary`, `question`, and `review`. Invalid/missing review approval cannot pass a candidate. Each review is a fresh read-only invocation. Provider subprocesses receive a restricted environment that excludes Discord, GitHub, and Apple secrets. Prompts enter through stdin; shell interpolation is not used. Codex applies its workspace/read-only sandbox; Claude uses its tool permission rules with unattended prompts denied.
 

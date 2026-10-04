@@ -67,6 +67,23 @@ test('simultaneous ticks run a single implementation',async()=>{
   // Complete implementation; resolve independent review separately.
   resolveAgent({outcome:'completed',summary:'ok',question:'',review:'none'});await new Promise(r=>setImmediate(r));resolveAgent({outcome:'completed',summary:'ok',question:'',review:'approve'});await first;f.store.close();
 });
+test('board plans are read-only and dependencies wait for approved successful work',async()=>{
+  const f=fixture();f.store.update(f.task.id,{kind:'plan',source:'multica',threadId:undefined});
+  let plans=0,changes=0;
+  const providers={execute:async(_provider:unknown,options:any)=>{
+    if(options.planning) {assert.equal(options.readonly,true);plans++;return {outcome:'completed',summary:'Proposed',question:'',review:'none',tasks:[
+      {title:'Model',prompt:'Change scoring and model tests',depends:[]},{title:'Display',prompt:'Update the game display',depends:[0]}]};}
+    if(!options.readonly) changes++;
+    return {outcome:'completed',summary:'Done',question:'',review:options.readonly ? 'approve' : 'none'};
+  }} as unknown as Providers;
+  const manager=new Coordinator(config,f.store,f.git,f.github,providers);
+  await manager.tick();assert.equal(plans,1);assert.equal(changes,0);assert.equal(f.calls.validate,0);assert.equal(f.store.get(f.task.id)?.status,'waiting_input');
+  await manager.tick();assert.equal(plans,1,'awaiting approval must not re-run the planner');
+  const tasks=f.store.approvePlan(f.task.id,'developer');
+  await manager.tick();assert.equal(changes,1);assert.equal(f.store.get(tasks[1]!.id)?.status,'queued');assert.equal(f.calls.merge,0);
+  f.store.update(tasks[0]!.id,{status:'failed'});await manager.tick();assert.equal(changes,1,'failed prerequisite must not unblock its dependent');
+  f.store.update(tasks[0]!.id,{status:'ready'});await manager.tick();assert.equal(changes,2);f.store.close();
+});
 test('stale base returns to queue without merging',async()=>{
   const f=fixture({main:'new-base'});f.store.update(f.task.id,{status:'awaiting_checks',pr:1,headSha:'head',baseSha:'base'});await f.coordinator.tick();assert.equal(f.store.get(f.task.id)?.status,'queued');assert.equal(f.calls.merge,0);f.store.close();
 });

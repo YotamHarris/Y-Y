@@ -7,6 +7,7 @@ import { redact, ProcessFailure } from './process.js';
 import { remote, terminal, type Task } from './types.js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { projectContext } from './manager-context.js';
 
 export class Coordinator {
   private busy=false;
@@ -21,7 +22,7 @@ export class Coordinator {
     if(this.busy || this.stopping) return; this.busy=true;
     try {
       // Recover remote work before accepting another change; main evolves serially.
-      const task=this.store.list().find(t=>t.cancelPending || remote.has(t.status)) || this.store.list().find(t=>t.status==='queued' && t.threadId);
+      const task=this.store.list().find(t=>t.cancelPending || remote.has(t.status)) || this.store.list().find(t=>t.status==='queued' && (t.threadId || t.source==='multica') && this.store.runnable(t));
       if(!task) return;
       const abort=new AbortController();this.active={id:task.id,abort};
       try {
@@ -50,17 +51,28 @@ export class Coordinator {
       }
     } finally {this.active=undefined;this.busy=false;}
   }
-  private async agent(task:Task,prompt:string,signal:AbortSignal,readonly=false) {
-    return this.providers.execute(task.provider,{cwd:task.worktree || this.config.root,prompt,model:task.model,readonly,signal,onEvent:event=>{
+  private async agent(task:Task,prompt:string,signal:AbortSignal,readonly=false,planning=false) {
+    return this.providers.execute(task.provider,{cwd:task.worktree || this.config.root,prompt,model:task.model,readonly,planning,signal,onEvent:event=>{
       if(event.sessionId) this.store.update(task.id,{sessionId:event.sessionId});
+      if(event.type==='progress' && event.text) this.store.update(task.id,{progress:redact(event.text).slice(-4000)});
     }});
   }
   private async local(task:Task,signal:AbortSignal) {
+    const context=task.kind==='ask' || task.kind==='plan' ? projectContext(this.config.root,this.config.games[task.game]!.directory) : '';
+    if(task.kind==='plan') {
+      this.stage(task.id,'implementing','Read-only planning');
+      const result=await this.agent(task,`Plan the requested change to ${task.game}, reading README.md, docs/setup.md, AGENTS.md and relevant code from the supplied snapshot. You may use read-only file inspection (rg, Get-Content, git diff/status) if available, but no commands are needed to read the supplied files. Do not edit files, run builds, install tools or change repository state. Propose few whole implementation tasks, at most eight, each with a title, prompt explaining Why, Approach and What to do, and depends containing zero-based indices of earlier tasks. Implementation may only touch engine/, games/${task.game}/ and tests/. Ask about unresolved choices and return tasks=[] while choices remain. Never propose infrastructure edits. Approval belongs to the owner.\n${context}\n${this.store.context(task.id)}\n${task.prompt}`,signal,true,true);
+      const proposed=!!result.tasks?.length;
+      const question=result.question || (proposed ? 'Review the proposed tasks and comment /yy approve to start implementation.' : undefined);
+      this.store.message(task.id,'assistant',result.summary+'\n'+result.question);
+      this.store.update(task.id,{status:proposed || result.outcome==='needs_input' ? 'waiting_input' : 'completed',summary:result.summary,question,proposal:result.tasks || [],proposalAt:Date.now()});
+      this.store.notify(task.id,result.summary+'\n'+(result.tasks || []).map((t,i)=>`${i+1}. ${t.title}\n${t.prompt}\nDepends on: ${t.depends.map(n=>n+1).join(', ') || 'none'}`).join('\n\n')+(question ? '\n'+question : ''));return;
+    }
     if(task.kind==='ask') {
       this.stage(task.id,'implementing','Read-only discussion');
-      const result=await this.agent(task,`Discuss ${task.game}. Read files if useful; do not edit or run commands.\n${this.store.context(task.id)}\n${task.prompt}`,signal,true);
+      const result=await this.agent(task,`Discuss ${task.game}. Use the supplied file snapshot; no commands are needed to read it. Read-only inspection commands (rg, Get-Content, git diff/status) are allowed if available. Do not edit files, run builds, install tools or change repository state.\n${context}\n${this.store.context(task.id)}\n${task.prompt}`,signal,true);
       this.store.message(task.id,'assistant',result.summary+'\n'+result.question);
-      this.store.update(task.id,{status:result.outcome==='needs_input' ? 'waiting_input' : 'completed',summary:result.summary});
+      this.store.update(task.id,{status:result.outcome==='needs_input' ? 'waiting_input' : 'completed',summary:result.summary,question:result.question || undefined});
       this.store.notify(task.id,result.summary+(result.question ? '\n'+result.question : ''));return;
     }
     this.stage(task.id,'preparing');
@@ -72,7 +84,7 @@ export class Coordinator {
       if(!task.headSha || feedback) {
         this.stage(task.id,'implementing',attempt ? `Repair ${attempt}/2` : undefined);
         const result=await this.agent(task,`Implement this game change: ${task.prompt}\nConversation:\n${this.store.context(task.id)}\nOnly edit engine/, ${this.config.games[task.game]!.directory}/, and tests/. Do not change automation, workflows, config, dependencies, or git metadata.\n${feedback}`,signal);
-        if(result.outcome==='needs_input') {this.store.update(task.id,{status:'waiting_input',summary:result.summary});this.store.notify(task.id,result.question || result.summary);return;}
+        if(result.outcome==='needs_input') {this.store.message(task.id,'assistant',result.summary+'\n'+result.question);this.store.update(task.id,{status:'waiting_input',summary:result.summary,question:result.question || result.summary});this.store.notify(task.id,result.question || result.summary);return;}
         this.store.update(task.id,{summary:result.summary});
       }
       try {
@@ -181,7 +193,7 @@ export class Coordinator {
     if(task.mergeSha && task.runId && task.status==='failed') {
       await this.github.rerun(task.runId);this.store.update(id,{rerunAt:Date.now()});
     }
-    this.store.update(id,{status:task.mergeSha ? 'building' : task.pausedFrom && remote.has(task.pausedFrom) ? task.pausedFrom : 'queued',cancelRequested:false,error:undefined});
+    this.store.update(id,{status:task.mergeSha ? 'building' : task.pausedFrom && remote.has(task.pausedFrom) ? task.pausedFrom : 'queued',cancelRequested:false,error:undefined,question:undefined});
   }
   async shutdown() {
     this.stopping=true;this.active?.abort.abort();

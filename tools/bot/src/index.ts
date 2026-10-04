@@ -9,6 +9,7 @@ import { GitHub } from './github.js';
 import { Coordinator } from './coordinator.js';
 import { redact } from './process.js';
 import type { Kind,Provider } from './types.js';
+import { BoardBridge, MulticaCLI, loadBoardConfig } from './multica.js';
 
 const config=loadConfig();mkdirSync(config.data,{recursive:true});
 const lock=resolve(config.data,'service.lock');
@@ -20,6 +21,8 @@ try {const fd=openSync(lock,'wx');writeFileSync(fd,String(process.pid));closeSyn
 }
 const store=new Store(resolve(config.data,'tasks.sqlite'));store.recover();
 const coordinator=new Coordinator(config,store,new Git(config),new GitHub(config),new Providers(config));
+const boardConfig=loadBoardConfig(config);
+const board=boardConfig ? new BoardBridge(config,boardConfig,store,coordinator,new MulticaCLI(boardConfig,config.root)) : undefined;
 const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent]});
 const safeSend=async(channelId:string,text:string)=>{
   const channel=await client.channels.fetch(channelId);
@@ -73,16 +76,18 @@ client.on(Events.Error,err=>console.error(redact(String(err))));
 let draining=false;
 const flush=async()=>{
   if(draining || !client.isReady()) return;draining=true;
-  try {for(const item of store.pending()) {const task=store.get(item.taskId);if(!task?.threadId) continue;await safeSend(task.threadId,item.content);store.sent(item.id);}}
+  try {for(const item of store.pending()) {const task=store.get(item.taskId);if(!task?.threadId) {if(task?.source==='multica') store.sent(item.id);continue;}await safeSend(task.threadId,item.content);store.sent(item.id);}}
   catch(err){console.error(`Notification pending: ${redact(String(err))}`);}finally{draining=false;}
 };
 client.once(Events.ClientReady,()=>console.log('YYEngine bot connected.'));
-const queueTimer=setInterval(()=>{if(client.isReady()) void coordinator.tick().catch(err=>console.error(redact(String(err))));},5000);
+const queueTimer=setInterval(()=>{if(client.isReady() || board) void coordinator.tick().catch(err=>console.error(redact(String(err))));},5000);
 const outboxTimer=setInterval(()=>void flush(),1500);
+const boardTimer=board ? setInterval(()=>void board.tick().catch(err=>console.error(`Board sync pending: ${redact(String(err))}`)),10_000) : undefined;
+if(board) void board.tick().catch(err=>console.error(`Board sync pending: ${redact(String(err))}`));
 // Leave in-flight tasks persisted for restart recovery; do not turn a service stop into user cancellation.
 let shuttingDown=false;
 for(const signal of ['SIGINT','SIGTERM'] as const) process.once(signal,()=>void (async()=>{
   if(shuttingDown) return;shuttingDown=true;
-  clearInterval(queueTimer);clearInterval(outboxTimer);await coordinator.shutdown();client.destroy();store.close();unlinkSync(lock);process.exit(0);
+  clearInterval(queueTimer);clearInterval(outboxTimer);clearInterval(boardTimer);await coordinator.shutdown();await board?.shutdown();client.destroy();store.close();unlinkSync(lock);process.exit(0);
 })());
 await client.login(config.discordToken);
