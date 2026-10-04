@@ -91,6 +91,17 @@ To encode a file locally, use `[Convert]::ToBase64String([IO.File]::ReadAllBytes
 
 The pipeline waits for checks at the exact commit, selects an installed stable Xcode 26+, creates an ephemeral macOS keychain, generates the Xcode project with CMake, archives/exports with pinned Fastlane, uploads, polls processing, assigns the internal group, and verifies Apple's internal testing state. Debugging symbols, package size, and state/log artifacts are retained for 30 days. Main pushes and explicit build requests use the same workflow; build numbers come from that workflow's monotonically increasing `run_number`. Do not recreate/reset this workflow's numbering for an existing app without adjusting the numbering scheme.
 
+CI prefetches SDL as a commit archive and checks its SHA256 on every cache restore.
+Windows checks, simulator checks, and TestFlight share the archive cache within each
+runner OS. The unsigned simulator job also caches its configured build after a
+successful compile, so later runs reuse CMake's compiler feature checks and SDL
+objects. The cache requires the same Xcode, simulator SDK, CMake, runner image,
+architecture, and CMake configuration; toolchain changes create a fresh cache.
+Game sources still rebuild and the simulator smoke test still runs. Signed device
+builds use the source archive cache but configure and archive afresh; signing
+material and signed build directories are never cached. The first run for a new
+cache key fills it automatically.
+
 ## 6. Complete acceptance on an iPhone
 
 First dispatch **iOS TestFlight** manually with `game=tapdemo`, a published 40-character main SHA, and a unique task ID such as `initial-setup`. Confirm `Verify TestFlight readiness` succeeds and install the build from your internal TestFlight invitation. Hosted macOS minutes/storage and any explicitly configured API usage use their respective billing accounts.

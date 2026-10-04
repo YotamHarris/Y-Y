@@ -80,6 +80,7 @@ jobs:
           ref: ${{ inputs.sha || github.sha }}
       - name: Select stable Xcode
         run: python3 scripts/ios-xcode.py
+      - uses: ./.github/actions/prefetch-sdl
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'

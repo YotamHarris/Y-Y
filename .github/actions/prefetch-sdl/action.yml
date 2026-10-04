@@ -1,0 +1,23 @@
+name: Prefetch pinned SDL
+description: Restore or download and verify the SDL commit archive before CMake runs
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - id: pin
+      shell: bash
+      run: python scripts/prefetch-sdl.py --metadata
+    - id: cache
+      uses: actions/cache/restore@v4
+      with:
+        path: .tools/sdl-cache
+        key: sdl-archive-v1-${{ runner.os }}-${{ steps.pin.outputs.sha256 }}
+    - shell: bash
+      run: python scripts/prefetch-sdl.py
+    - uses: actions/cache/save@v4
+      if: steps.cache.outputs.cache-hit != 'true'
+      with:
+        path: .tools/sdl-cache
+        key: ${{ steps.cache.outputs.cache-primary-key }}

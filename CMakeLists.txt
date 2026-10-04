@@ -25,10 +25,16 @@ if(YY_BUILD_APP)
   set(SDL_STATIC ON CACHE BOOL "" FORCE)
   set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
   set(SDL_TESTS OFF CACHE BOOL "" FORCE)
-  # Fixed release, never a moving main branch.
-  set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
-  FetchContent_Declare(SDL3 GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-    GIT_TAG 7f3ae3d57459e59943a4ecfefc8f6277ec6bf540)
+  # Fixed commit archive: no full Git history, and verify cached downloads too.
+  set(YY_SDL_COMMIT 7f3ae3d57459e59943a4ecfefc8f6277ec6bf540)
+  set(YY_SDL_SHA256 7a8347c770b90b33daac2352858ca03f9c9a2ccc8ce711054870361d1a6b32e5)
+  set(SDL_REVISION "SDL-${YY_SDL_COMMIT}" CACHE STRING "Pinned SDL source revision" FORCE)
+  set(YY_SDL_URL "https://codeload.github.com/libsdl-org/SDL/tar.gz/${YY_SDL_COMMIT}")
+  if(DEFINED ENV{YY_SDL_ARCHIVE} AND NOT "$ENV{YY_SDL_ARCHIVE}" STREQUAL "")
+    set(YY_SDL_URL "$ENV{YY_SDL_ARCHIVE}")
+  endif()
+  FetchContent_Declare(SDL3 URL "${YY_SDL_URL}" URL_HASH "SHA256=${YY_SDL_SHA256}"
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
   FetchContent_MakeAvailable(SDL3)
   add_library(yy_runtime engine/src/runtime.cpp)
   target_link_libraries(yy_runtime PUBLIC yy_core SDL3::SDL3-static)
