@@ -39,7 +39,7 @@ platform :ios do
               include_symbols: true}
     build_app(**options, clean: true, skip_package_ipa: true)
     sh(['python3', File.expand_path('../scripts/verify-ios-archive.py', __dir__),
-        options.fetch(:archive_path), config.fetch('bundleId')].shelljoin)
+        options.fetch(:archive_path), config.fetch('bundleId'), '--no-device-permissions'].shelljoin)
     build_app(**options, skip_build_archive: true)
     ipa = File.join(output, "#{config.fetch('target')}.ipa")
     File.write(File.join(output, 'size.json'), {ipa_bytes: File.size(ipa)}.to_json)

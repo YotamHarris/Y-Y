@@ -102,6 +102,12 @@ builds use the source archive cache but configure and archive afresh; signing
 material and signed build directories are never cached. The first run for a new
 cache key fills it automatically.
 
+The iOS SDL build excludes camera, HIDAPI, controller, haptic, and sensor backends
+because the games use touch, rendering, and audio. The signed archive check also
+rejects camera/Bluetooth API references before export. If a future game needs
+those features, enable its required backend and supply truthful user-facing
+privacy purpose strings for that feature before changing this check.
+
 ## 6. Complete acceptance on an iPhone
 
 First dispatch **iOS TestFlight** manually with `game=tapdemo`, a published 40-character main SHA, and a unique task ID such as `initial-setup`. Confirm `Verify TestFlight readiness` succeeds and install the build from your internal TestFlight invitation. Hosted macOS minutes/storage and any explicitly configured API usage use their respective billing accounts.

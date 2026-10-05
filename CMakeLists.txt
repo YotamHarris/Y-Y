@@ -25,6 +25,13 @@ if(YY_BUILD_APP)
   set(SDL_STATIC ON CACHE BOOL "" FORCE)
   set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
   set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+  if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    # Touch/audio games do not access cameras, Bluetooth controllers, or sensors.
+    # Remove the SDK backends so Apple does not require unused privacy permissions.
+    foreach(subsystem CAMERA JOYSTICK HAPTIC HIDAPI SENSOR)
+      set(SDL_${subsystem} OFF CACHE BOOL "Unused on iOS" FORCE)
+    endforeach()
+  endif()
   # Fixed commit archive: no full Git history, and verify cached downloads too.
   set(YY_SDL_COMMIT 7f3ae3d57459e59943a4ecfefc8f6277ec6bf540)
   set(YY_SDL_SHA256 7a8347c770b90b33daac2352858ca03f9c9a2ccc8ce711054870361d1a6b32e5)
