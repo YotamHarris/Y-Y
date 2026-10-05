@@ -1,9 +1,11 @@
 param(
-    [ValidateSet('Setup', 'Open', 'Start', 'Doctor', 'Status', 'Pause', 'Resume', 'Stop', 'Build')]
+    [ValidateSet('Setup', 'Open', 'Start', 'Doctor', 'Status', 'Pause', 'Resume', 'Stop', 'Build', 'Share', 'ShareStatus', 'Unshare')]
     [string]$Action = 'Open',
     [string]$Guild,
     [string]$Channel,
     [string]$Owner,
+    [string[]]$AllowedMail,
+    [string]$Cloudflared,
     [switch]$Token,
     [switch]$Activate,
     [switch]$Foreground,
@@ -41,7 +43,19 @@ if ($Action -eq 'Setup') {
     exit 0
 }
 if (!(Test-Path -LiteralPath $studioPython)) { throw 'Run ./scripts/studio.ps1 -Action Setup first.' }
+if ($Action -in @('Open', 'Start')) {
+    & $studioPython tools/mobile/studio_share.py start
+    if ($LASTEXITCODE -ne 0) { throw 'Board sharing watcher startup failed.' }
+}
 switch ($Action) {
+    'Share' {
+        $shareArgs = @('tools/mobile/studio_share.py', 'enable')
+        foreach ($email in $AllowedMail) { $shareArgs += @('--allowed-mail', $email) }
+        if ($Cloudflared) { $shareArgs += @('--cloudflared', $Cloudflared) }
+        & $studioPython @shareArgs
+    }
+    'ShareStatus' { & $studioPython tools/mobile/studio_share.py status }
+    'Unshare' { & $studioPython tools/mobile/studio_share.py disable }
     'Open' {
         $openArgs = @('studio/fe_board.py', 'open')
         if ($NoOpen) { $openArgs += '--no-browser' }

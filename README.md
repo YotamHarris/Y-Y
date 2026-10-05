@@ -33,6 +33,9 @@ Existing local Discord credentials and both developer IDs are reused during migr
 The token moves to Windows Credential Manager; manager IDs and the shared checkout registry
 live under `%LOCALAPPDATA%/YYEngine`. Double-click **MobileStudio.cmd** for the board,
 or open http://127.0.0.1:45320. It is local to this PC. Discord uses an outbound Gateway connection.
+Optional email-protected browser sharing starts automatically with Windows and follows board
+availability; see [sharing setup](docs/setup.md). Run scripts/studio.ps1 -Action ShareStatus
+to get the current share link.
 
 Write a goal in the Discord project channel and discuss it in its planning thread.
 **Approve plan** creates tasks; the manager runs up to two isolated workers. **Accept**

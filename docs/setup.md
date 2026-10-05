@@ -40,7 +40,25 @@ the YYEngine Project Manager sign-in task. Keep the PC awake and signed in.
 
 The board is http://127.0.0.1:45320 and is bound to loopback. Double-click MobileStudio.cmd
 to open it. Discord works independently of browser access and needs no incoming public port.
-The board's native unauthenticated local server is not configured for public sharing.
+The board's native server has no login. Optional sharing uses a protected Cloudflare Quick
+Tunnel with an explicit email allowlist; invited visitors receive the same board controls as you.
+
+Install current cloudflared with support for --allowed-mail, then enable automatic sharing:
+
+```powershell
+./scripts/studio.ps1 -Action Share -AllowedMail friend@example.com -Cloudflared 'C:/Program Files (x86)/cloudflared/cloudflared.exe'
+./scripts/studio.ps1 -Action ShareStatus
+```
+
+The sharing watcher starts at Windows sign-in, and the Open/Start launchers also ensure it runs.
+It adopts an existing tunnel only when its executable, local board URL, Host override and email
+allowlist match. Otherwise it starts its own protected tunnel when the board is healthy. It
+restarts a failed tunnel and closes it after the board has been unavailable for 30 seconds.
+The scheduled task retries the watcher if it exits. Configuration, current URL and logs stay
+locally under the board/share directory, outside Git; provider processes cannot configure sharing.
+ShareStatus shows the current HTTPS URL. Keep the PC awake and signed in. Quick Tunnel URLs
+change after a tunnel restart; a permanent short hostname requires a named tunnel and your domain.
+Run ./scripts/studio.ps1 -Action Unshare to close sharing and remove its scheduled task.
 
 ## GitHub coordinator credentials
 
