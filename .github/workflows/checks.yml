@@ -7,8 +7,9 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: checks-${{ github.ref }}
-  cancel-in-progress: true
+  # TestFlight waits for checks at its exact main commit; later pushes must not cancel them.
+  group: checks-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   automation:
     runs-on: ubuntu-24.04

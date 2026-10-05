@@ -3,7 +3,7 @@
 - Read README.md and docs/setup.md before changing architecture or deployment.
 - Game behavior is compiled C++20. Keep deterministic gameplay independent of SDL so it can be tested without a window.
 - SDL3 is pinned to a commit in CMakeLists.txt. Do not replace it with a moving branch.
-- For game tasks, change only engine/, the selected games/<id>/ project, and tests/. The coordinator rejects changes to other paths. Repo maintenance outside a game task can update those paths when explicitly requested.
+- For game tasks, edit engine/, the selected games/<id>/ project, and tests/. The owner also authorizes necessary CI/build and project instruction edits for approved tasks: the additional paths are listed in [mobile].maintenance_paths in studio.toml. Stay within the task's purpose; this access does not authorize unrelated maintenance. The coordinator rejects other paths, including its own permission code and configuration. Repo maintenance outside a managed game task can update other paths when explicitly requested.
 - Run npm run check for service changes and scripts/build.ps1 for engine/game changes. Use scripts/build.ps1 -Smoke for rendering or lifecycle changes.
 - After completing most tasks, commit and push the task's changes once the required automated validations pass, without asking for confirmation. Leave unrelated work out of the commit; report failed checks or push blockers. The coordinator still owns Git publication for bot/provider tasks.
 - Never add credentials, .env, signing material, .yy, or build outputs to Git. Do not use provider processes to push, open PRs, merge, or distribute apps; the coordinator owns those operations.

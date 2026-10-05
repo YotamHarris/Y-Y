@@ -373,6 +373,12 @@ def command(run, config, folder):
             # D256: the web tools too, so a plan can rest on a library's docs or a paper
             cmd += ['--tools', 'Read,Glob,Grep,Bash,PowerShell,WebFetch,WebSearch', '--allowedTools',
                     ','.join(['Read', 'Glob', 'Grep', 'WebFetch', 'WebSearch'] + READONLY_SHELL)]
+        elif run['role'] == 'worker':
+            mobile = studio_config.adapter('mobile')
+            if mobile is not None and hasattr(mobile, 'worker_edit_rules'):
+                rules = mobile.worker_edit_rules()
+                if rules:
+                    cmd += ['--allowedTools', ','.join(rules)]
         if run.get('session'):
             cmd += ['--resume', run['session']]
     return cmd

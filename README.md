@@ -45,6 +45,10 @@ native Agent Studio views. `/status`, `/models`, `/pause`, `/resume`, `/stop`, a
 are registered by the native bot. Quick questions in meatbag-talk stay read-only.
 
 Game workers may edit engine/, the game selected by mobile.game in studio.toml, and tests/.
+Approved tasks may also edit necessary CI/build files and project instructions listed in
+mobile.maintenance_paths. The manager supplies Claude with explicit local Edit permissions
+for those paths. Its trusted release enforces scope; candidates cannot change coordinator
+permission code/configuration or receive publication and signing credentials.
 They commit and return. The mobile supervisor checks scope, builds and smoke-tests the
 candidate through trusted scripts, rebases and revalidates if main changed, then publishes
 without force. Agent Studio's worker self-review and structured evidence remain in place.

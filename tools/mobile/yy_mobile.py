@@ -1,7 +1,7 @@
 """YYEngine's trusted landing and TestFlight adapter for Agent Studio.
 
-Imported by the supervisor's pushed release. Candidate game checkouts cannot
-replace this module or the validation scripts it invokes.
+Imported by the supervisor's pushed release. Candidate checkouts cannot replace
+this module, its scope policy, or the validation scripts it invokes for this run.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import re
 import subprocess
 import sys
 import time
+import tomllib
 import urllib.error
 import urllib.request
 import uuid
@@ -42,15 +43,34 @@ def git(repo, *args, check=True):
     return p.stdout.strip() if check else p
 
 
+def maintenance_paths():
+    """The owner-approved paths in the supervisor's release, not candidate settings."""
+    with (ROOT / "studio.toml").open("rb") as file:
+        paths = tomllib.load(file).get("mobile", {}).get("maintenance_paths", [])
+    if not isinstance(paths, list) or any(not isinstance(p, str) or not p or
+            not re.fullmatch(r"[A-Za-z0-9_.\-/]+", p) or p.startswith("/") or
+            any(part in (".", "..", "") for part in p.rstrip("/").split("/")) for p in paths):
+        raise ValueError("Invalid trusted mobile maintenance paths")
+    return paths
+
+
+def worker_edit_rules():
+    """Pre-authorize local file edits only; shell and publication permissions stay unchanged."""
+    return [f"Edit(/{p}{'**' if p.endswith('/') else ''})" for p in maintenance_paths()]
+
+
 def assert_scope(paths, game_directory):
+    maintenance = maintenance_paths()
     for path in paths:
-        if not path or "\\" in path or any(p in (".", "..") for p in path.split("/")):
+        if not path or "\\" in path or path.startswith("/") or any(p in (".", "..", "") for p in path.split("/")):
             raise ValueError(f"Invalid candidate path: {path}")
-        if not path.startswith(("engine/", game_directory + "/", "tests/")):
-            raise ValueError(f"Game task changed {path}; only engine/, {game_directory}/, and tests/ are allowed")
-        if path.endswith((".p12", ".p8", ".key", ".mobileprovision", ".ipa")) or any(
-                p == ".yy" or p == ".env" or p.startswith(".env.") for p in path.split("/")):
+        if path.lower().startswith("build/") or path.lower().endswith((".p12", ".p8", ".key", ".mobileprovision", ".ipa")) or any(
+                p.lower() in (".yy", ".env") or p.lower().startswith(".env.") for p in path.split("/")):
             raise ValueError(f"Secret or output in candidate: {path}")
+        if not path.startswith(("engine/", game_directory + "/", "tests/")) and not any(
+                path.startswith(p) if p.endswith("/") else path == p for p in maintenance):
+            raise ValueError(f"Task changed {path}; allowed: engine/, {game_directory}/, tests/, "
+                             "and owner-approved CI/build and project instruction paths")
 
 
 def validate(repo, heartbeat):

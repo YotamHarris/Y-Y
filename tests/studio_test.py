@@ -127,6 +127,19 @@ class NativeManagerTests(unittest.TestCase):
         for key in ("GITHUB_TOKEN", "DISCORD_TOKEN", "ASC_KEY_CONTENT", "OPENAI_API_KEY"):
             self.assertNotIn(key, env)
 
+    def test_claude_worker_can_edit_approved_ci_but_planner_stays_readonly(self):
+        with patch("manager_host.claude_cli", return_value=sys.executable):
+            worker = manager_workers.command(dict(provider="claude", role="worker"), self.config, Path(self.temp.name))
+            planner = manager_workers.command(dict(provider="claude", role="planner"), self.config, Path(self.temp.name))
+        self.assertEqual(worker[worker.index("--permission-mode") + 1], "auto")
+        rules = worker[worker.index("--allowedTools") + 1].split(",")
+        self.assertIn("Edit(/.github/workflows/**)", rules)
+        self.assertIn("Edit(/AGENTS.md)", rules)
+        self.assertEqual(set(rules), set(mobile.worker_edit_rules()))
+        self.assertTrue(all(rule.startswith("Edit(/") for rule in rules))
+        self.assertEqual(planner[planner.index("--permission-mode") + 1], "dontAsk")
+        self.assertNotIn("Edit(", planner[planner.index("--allowedTools") + 1])
+
     def test_build_requests_are_explicit_and_idempotent(self):
         self.assertTrue(mobile.build_message(self.board, "make a new TestFlight build", "event"))
         self.assertTrue(mobile.build_message(self.board, "make a new TestFlight build", "event"))
@@ -207,9 +220,32 @@ class MobileSafetyTests(unittest.TestCase):
 
     def test_scope_rejects_renames_secrets_and_other_games(self):
         mobile.assert_scope(["engine/a.cpp", "games/tapdemo/model.cpp", "tests/a_test.py"], "games/tapdemo")
-        for path in ("scripts/build.ps1", "games/puzzle/main.cpp", "engine/../scripts/build.ps1", "tests/.env", "engine/key.p8", "studio/manager.py"):
+        for path in ("games/puzzle/main.cpp", "engine/../scripts/build.ps1", "tests/.env", "engine/key.p8", "studio/manager.py",
+                     "tools/mobile/yy_mobile.py", "studio.toml", ".claude/settings.json", "scripts/studio.ps1",
+                     ".github/workflows/.env.local", "docs/secret.P12", "build/output.txt",
+                     "/engine/a.cpp", "engine//a.cpp", ".github/workflows-other/checks.yml"):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 mobile.assert_scope([path], "games/tapdemo")
+
+    def test_approved_ci_build_and_instruction_paths_pass_landing_scope(self):
+        mobile.assert_scope([".github/workflows/checks.yml", ".github/actions/build/action.yml",
+                             "scripts/build.ps1", "scripts/wait-checks.py", "CMakeLists.txt", "cmake/games.cmake",
+                             "AGENTS.md", "CLAUDE.md", "docs/setup.md", "studio/skills/task/SKILL.md",
+                             ".agents/skills/task/SKILL.md"], "games/tapdemo")
+
+    def test_candidate_config_and_cwd_cannot_expand_trusted_scope(self):
+        with tempfile.TemporaryDirectory() as folder:
+            candidate = Path(folder)
+            (candidate / "studio.toml").write_text('[mobile]\nmaintenance_paths = ["tools/mobile/"]\n')
+            previous = Path.cwd()
+            try:
+                os.chdir(candidate)
+                with patch.object(studio_config, "get", return_value=["tools/mobile/"]):
+                    with self.assertRaises(ValueError):
+                        mobile.assert_scope(["tools/mobile/yy_mobile.py"], "games/tapdemo")
+                    self.assertIn("Edit(/.github/workflows/**)", mobile.worker_edit_rules())
+            finally:
+                os.chdir(previous)
 
     def test_native_sync_refuses_provider_publication(self):
         with patch.dict(os.environ, {"FE_MANAGER_RUN": "worker"}):
@@ -251,7 +287,10 @@ class MobileSafetyTests(unittest.TestCase):
             execute("commit", "-m", "base", cwd=candidate)
             execute("push", "origin", "main", cwd=candidate)
             (candidate / "engine/model.cpp").write_text("after")
-            execute("commit", "-am", "change", cwd=candidate)
+            (candidate / ".github/workflows").mkdir(parents=True)
+            (candidate / ".github/workflows/checks.yml").write_text("# approved CI fix\n")
+            execute("add", "engine/model.cpp", ".github/workflows/checks.yml", cwd=candidate)
+            execute("commit", "-m", "game and approved CI change", cwd=candidate)
             head = execute("rev-parse", "HEAD", cwd=candidate)
             result = dict(status="complete", head=head, summary="Changed model", checks=[dict(name=c, outcome="not_applicable", command="", detail="Not relevant") for c in manager_workers.CHECKS])
             concurrent = Path(folder) / "concurrent"
@@ -269,6 +308,7 @@ class MobileSafetyTests(unittest.TestCase):
             self.assertEqual(execute("rev-parse", "main", cwd=origin), landed["head"])
             self.assertNotEqual(landed["head"], head)
             self.assertEqual((candidate / "engine/other.cpp").read_text(), "concurrent change")
+            self.assertEqual((candidate / ".github/workflows/checks.yml").read_text(), "# approved CI fix\n")
             self.assertEqual(next(c for c in landed["checks"] if c["name"] == "tests")["outcome"], "passed")
 
 

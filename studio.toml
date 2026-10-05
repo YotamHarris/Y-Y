@@ -16,7 +16,7 @@ detached_workers = true
 
 [prompts]
 task_skill = "studio/skills/task/SKILL.md"
-worker_notes = { bench = "This is an iOS C++20/SDL3 game. Read AGENTS.md. Edit only engine/, the game selected by mobile.game in studio.toml, and tests/. Run scripts/build.ps1 -Smoke for rendering or lifecycle changes. Commit and return; the manager publishes and GitHub builds TestFlight. Never push, create PRs, merge, upload, or dispatch builds. Desktop and simulator metrics cannot establish real iPhone performance." }
+worker_notes = { bench = "This is an iOS C++20/SDL3 game. Read AGENTS.md. Edit engine/, the game selected by mobile.game in studio.toml, and tests/. The owner authorizes necessary local CI/build and project instruction edits for approved tasks at mobile.maintenance_paths; this includes fixing failed CI configuration. Stay within the approved task's purpose. Never edit coordinator permission code or studio.toml. Run npm run check for service changes and scripts/build.ps1 -Smoke for rendering or lifecycle changes. Commit and return; the manager publishes and GitHub builds TestFlight. Never push, create PRs, merge, upload, or dispatch builds. Desktop and simulator metrics cannot establish real iPhone performance." }
 goal_name_example = "Improve touch gameplay"
 
 [checks]
@@ -32,6 +32,16 @@ mobile = "yy_mobile"
 game = "tapdemo"
 repository = "YotamHarris/Y-Y"
 workflow = "ios-testflight.yml"
+# Trusted release policy, never loaded from a worker's candidate checkout.
+maintenance_paths = [
+  ".github/workflows/", ".github/actions/", "CMakeLists.txt", "CMakePresets.json", "cmake/",
+  "scripts/build.ps1", "scripts/check.ps1", "scripts/configure.ps1",
+  "scripts/affected-games.py", "scripts/ios-simulator-smoke.py", "scripts/ios-signing.py",
+  "scripts/ios-xcode.py", "scripts/prefetch-sdl.py", "scripts/wait-checks.py",
+  "scripts/verify-ios-archive.py", "scripts/generate-assets.py",
+  "AGENTS.md", "CLAUDE.md", "README.md", "docs/", "studio/skills/",
+  ".agents/skills/", ".claude/skills/",
+]
 
 [manager]
 release_files = ["scripts/build.ps1", "scripts/check.ps1", "config/games.json", "AGENTS.md", "package.json", "scripts/studio-check.py"]

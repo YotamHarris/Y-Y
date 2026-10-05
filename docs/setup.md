@@ -38,6 +38,13 @@ The native manager reserves A1 for your sessions and uses the other two for appr
 It runs a release of published code and follows new published versions. Activate installs
 the YYEngine Project Manager sign-in task. Keep the PC awake and signed in.
 
+Approved workers can edit necessary CI/build and project instruction files listed in
+studio.toml's mobile.maintenance_paths, including workflow configuration and AGENTS.md.
+The trusted manager release supplies scoped Claude Edit permissions and enforces the same
+paths when landing. Changes to candidate instructions cannot expand that policy. Coordinator
+permission code, studio.toml, provider settings, credentials and publication stay with the
+coordinator. Scope access does not authorize changes outside the approved task's purpose.
+
 The board is http://127.0.0.1:45320 and is bound to loopback. Double-click MobileStudio.cmd
 to open it. Discord works independently of browser access and needs no incoming public port.
 The board's native server has no login. Optional sharing uses a protected Cloudflare Quick
@@ -75,6 +82,8 @@ The hosted Checks workflow validates Python services, the Windows game and the u
 simulator. The existing iOS TestFlight workflow continues to wait for the checks at the exact
 commit. Main game pushes select affected games; an explicit build can be requested from the
 board's Manager tab, Discord's project channel, or scripts/studio.ps1 -Action Build.
+Checks for main commits run independently so later pushes cannot cancel a build's prerequisite
+checks; pull requests still cancel obsolete checks on the same PR.
 
 The optional Apple wizard needs a setup token with Actions read and Environments read/write;
 creating an environment additionally requires Administration read/write. The temporary setup
