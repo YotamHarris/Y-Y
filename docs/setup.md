@@ -55,7 +55,9 @@ It adopts an existing tunnel only when its executable, local board URL, Host ove
 allowlist match. Otherwise it starts its own protected tunnel when the board is healthy. It
 restarts a failed tunnel and closes it after the board has been unavailable for 30 seconds.
 The scheduled task retries the watcher if it exits. Configuration, current URL and logs stay
-locally under the board/share directory, outside Git; provider processes cannot configure sharing.
+locally under .yy/studio-sharing, outside Git; provider processes cannot configure sharing.
+This workspace path avoids Windows packaged-app AppData redirection, so the sign-in task and
+Codex read the same configuration and current link.
 ShareStatus shows the current HTTPS URL. Keep the PC awake and signed in. Quick Tunnel URLs
 change after a tunnel restart; a permanent short hostname requires a named tunnel and your domain.
 Run ./scripts/studio.ps1 -Action Unshare to close sharing and remove its scheduled task.

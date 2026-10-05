@@ -204,7 +204,9 @@ def main():
     args = parser.parse_args()
     if os.environ.get("FE_MANAGER_RUN"):
         raise SystemExit("Provider processes cannot configure board sharing")
-    folder = args.state_dir or fe_board.board_dir() / "share"
+    # Packaged desktop apps virtualize AppData; use one ignored workspace path
+    # that the launcher and the non-packaged Windows sign-in task both see.
+    folder = args.state_dir or ROOT / ".yy/studio-sharing"
     if args.action == "enable":
         if os.name != "nt":
             raise SystemExit("Automatic sharing installation requires Windows")
