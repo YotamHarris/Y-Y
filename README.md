@@ -8,12 +8,13 @@ uploads, waits for Apple processing, assigns internal testers and verifies testi
 
 ## Start development
 
-Install Python 3.11+, Node.js, Git and Visual Studio 2022 with Desktop development with C++.
+Install Python 3.11+, Node.js, Git, LLVM (clang-cl), and Visual Studio 2022 with Desktop development with C++.
+The Windows build uses Ninja and clang-cl; Visual Studio supplies the Windows SDK and C++ libraries.
 
 ```powershell
 ./scripts/setup.ps1
 ./scripts/build.ps1 -Smoke
-./build/windows/Release/TapDemo.exe
+./build/windows/TapDemo.exe
 ```
 
 Gameplay stays deterministic and independent of SDL. SDL3 stays pinned in CMakeLists.txt.

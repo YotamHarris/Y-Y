@@ -1,11 +1,11 @@
 {
   "version": 6,
   "configurePresets": [
-    {"name":"windows","generator":"Visual Studio 17 2022","binaryDir":"${sourceDir}/build/windows","architecture":"x64"},
+    {"name":"windows","generator":"Ninja","binaryDir":"${sourceDir}/build/windows","cacheVariables":{"CMAKE_BUILD_TYPE":"Release","CMAKE_C_COMPILER":"clang-cl","CMAKE_CXX_COMPILER":"clang-cl"}},
     {"name":"headless","generator":"Ninja","binaryDir":"${sourceDir}/build/headless","cacheVariables":{"YY_BUILD_APP":"OFF","CMAKE_BUILD_TYPE":"Release"}},
     {"name":"ios-simulator","generator":"Xcode","binaryDir":"${sourceDir}/build/ios-simulator","cacheVariables":{"CMAKE_SYSTEM_NAME":"iOS","CMAKE_OSX_SYSROOT":"iphonesimulator","CMAKE_OSX_ARCHITECTURES":"arm64","CMAKE_OSX_DEPLOYMENT_TARGET":"16.0","YY_BUILD_TESTS":"OFF"}},
     {"name":"ios-device","generator":"Xcode","binaryDir":"${sourceDir}/build/ios-device","cacheVariables":{"CMAKE_SYSTEM_NAME":"iOS","CMAKE_OSX_SYSROOT":"iphoneos","CMAKE_OSX_ARCHITECTURES":"arm64","CMAKE_OSX_DEPLOYMENT_TARGET":"16.0","YY_BUILD_TESTS":"OFF"}}
   ],
-  "buildPresets":[{"name":"windows","configurePreset":"windows","configuration":"Release"},{"name":"headless","configurePreset":"headless"}],
-  "testPresets":[{"name":"windows","configurePreset":"windows","configuration":"Release","output":{"outputOnFailure":true}},{"name":"headless","configurePreset":"headless","output":{"outputOnFailure":true}}]
+  "buildPresets":[{"name":"windows","configurePreset":"windows"},{"name":"headless","configurePreset":"headless"}],
+  "testPresets":[{"name":"windows","configurePreset":"windows","output":{"outputOnFailure":true}},{"name":"headless","configurePreset":"headless","output":{"outputOnFailure":true}}]
 }

@@ -1,5 +1,20 @@
 # Validation and acceptance
 
+## Windows Ninja and clang build (2026-10-05)
+
+The Windows preset uses Ninja with clang-cl in Release mode. The build script imports
+the x64 Visual Studio SDK/library environment even when packaged processes cannot
+discover the installed instance with vswhere. It aliases checkout paths containing
+shell metacharacters and caches CMake outside those paths, so Ninja can run asset
+copy commands in the `D:\Source\Y&Y` checkout. Existing Visual Studio build outputs
+are preserved in a sibling directory when migrating generators.
+
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Smoke`
+passed locally with LLVM 23.1.2: Release compilation, 1/1 deterministic CTest test,
+and the 120-frame TapDemo smoke run. `npm run check` passed 36 Python tests and the
+native board selftest. This validates the Windows build infrastructure; it does not
+establish iPhone haptics or device performance.
+
 ## Agent Studio mobile migration (2026-10-05)
 
 Agent Studio was imported at 89ded6f2d5ce6b4ebc1c2e389e89c1bf4dbe6175.

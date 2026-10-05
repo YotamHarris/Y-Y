@@ -6,7 +6,12 @@ signing settings stay in the existing GitHub testflight-<game> environments.
 
 ## Agent Studio and provider logins
 
-Install Python 3.11+, Git, Node.js and Visual Studio 2022 with Desktop development with C++.
+Install Python 3.11+, Git, Node.js, LLVM (`winget install --id LLVM.LLVM -e`), and Visual Studio 2022
+with Desktop development with C++. Windows builds use Ninja and clang-cl with Visual Studio's
+Windows SDK and C++ libraries. `scripts/build.ps1` imports the x64 toolchain environment and
+uses a local path alias when a checkout path contains shell metacharacters such as `&`.
+The first build preserves an older Visual Studio build tree beside `build/windows` and creates
+a Ninja tree; TapDemo is now `build/windows/TapDemo.exe`.
 Run scripts/setup.ps1 for pinned CMake/Ninja. Install native Codex and Claude executables and
 sign in with codex login and claude auth login. The native manager requires subscription
 logins; it does not inherit provider API keys.
