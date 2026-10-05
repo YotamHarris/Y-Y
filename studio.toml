@@ -12,6 +12,7 @@ processes = ["TapDemo.exe"]
 [routing]
 registry_shared = true
 checkouts = ["A2", "A3"]
+detached_workers = true
 
 [prompts]
 task_skill = "studio/skills/task/SKILL.md"

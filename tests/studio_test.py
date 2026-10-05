@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "studio"), str(ROOT / "tools/mobile")]
 import fe_board
+import fe_sync
 import manager_core
 import manager_discord
 import manager_store
@@ -35,6 +36,56 @@ class NativeManagerTests(unittest.TestCase):
         self.registry.stop()
         self.env.stop()
         self.temp.cleanup()
+
+    def test_approved_task_starts_in_detached_worker_after_main_advances(self):
+        root = Path(self.temp.name)
+        origin, primary, worker = root / "origin.git", root / "primary", root / "worker"
+        def execute(*args, cwd=None):
+            return subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True).stdout.strip()
+        execute("init", "--bare", str(origin))
+        execute("clone", str(origin), str(primary))
+        execute("config", "user.name", "Test", cwd=primary)
+        execute("config", "user.email", "test@example.test", cwd=primary)
+        execute("checkout", "-b", "main", cwd=primary)
+        (primary / "game.txt").write_text("base")
+        execute("add", ".", cwd=primary)
+        execute("commit", "-m", "base", cwd=primary)
+        execute("push", "origin", "main", cwd=primary)
+        execute("worktree", "add", "--detach", str(worker), "origin/main", cwd=primary)
+        (primary / "game.txt").write_text("new main")
+        execute("commit", "-am", "advance", cwd=primary)
+        execute("push", "origin", "main", cwd=primary)
+        latest = execute("rev-parse", "HEAD", cwd=primary)
+        reg = {"remote": "origin", "branch": "main", "agents": {
+            "A1": {"path": str(primary), "primary": True}, "A2": {"path": str(worker)}}}
+        original_get = studio_config.get
+        def settings(key, default=None):
+            return {"routing.detached_workers": True, "routing.checkouts": ["A2"]}.get(key, original_get(key, default))
+        with patch.object(fe_board, "registry", return_value=reg), \
+                patch.object(studio_config, "get", side_effect=settings), \
+                patch.object(fe_sync, "sessions", return_value=[]), \
+                patch.object(fe_sync, "app_processes", return_value=[]):
+            self.assertEqual(fe_sync.checkout_state("A2", reg, [], [])[:2], ([], []))
+            with patch.dict(os.environ, {"FE_AGENT": "A2"}):
+                self.assertFalse(fe_sync.trunk_checkout(root / "unknown", reg, "HEAD"))
+            self.assertFalse(fe_sync.trunk_checkout(primary, reg, "HEAD"))
+            self.assertFalse(fe_sync.trunk_checkout(worker, reg, "feature"))
+            with self.board.tx():
+                goal = self.board.con.execute("INSERT INTO pm_goals(source,body,status,created) VALUES(?,?,?,?)",
+                                              ("test", "goal", "planned", 0)).lastrowid
+            tids = manager_store.plan_tasks(self.board, goal, [dict(title="Change game", body="Update game",
+                                            reasoning="Why: improve play", depends=[])], approved=True, key="dispatch")
+            manager = manager_core.Manager(self.board, self.config)
+            with patch.object(manager, "task_provider", return_value="claude"), \
+                    patch.object(manager_core.models, "choose", return_value=("sonnet", "test")):
+                manager.schedule()
+            run = self.board.q1("SELECT * FROM pm_runs WHERE task_id=?", tids[0])
+            self.assertIsNotNone(run)
+            self.assertEqual((run["agent"], run["state"]), ("A2", "queued"))
+            self.assertIn("Never push", run["prompt"])
+            self.assertIn("This is an iOS C++20/SDL3 game", run["prompt"])
+            self.assertEqual(execute("rev-parse", "HEAD", cwd=worker), latest)
+            self.assertEqual(execute("rev-parse", "--abbrev-ref", "HEAD", cwd=worker), "HEAD")
 
     def test_discord_allowlist_still_enforces_guild_channel_and_known_threads(self):
         for owner in ("11", "22"):

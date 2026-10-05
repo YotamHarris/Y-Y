@@ -174,6 +174,17 @@ def branch_of(repo):
     return git_out(repo, "rev-parse", "--abbrev-ref", "HEAD")
 
 
+def trunk_checkout(repo, reg, branch=None):
+    """Allow detached HEAD only in the project's explicitly configured worker paths."""
+    branch = branch if branch is not None else branch_of(repo)
+    if branch == reg["branch"]:
+        return True
+    name = identify(repo, reg)[2]  # Never authorize a path from FE_AGENT alone.
+    return (branch == "HEAD" and studio_config.get("routing.detached_workers", False)
+            and name in studio_config.get("routing.checkouts", [])
+            and not reg["agents"][name].get("primary", False))
+
+
 def app_processes():
     """[(pid, command line)] of the game's running processes, any checkout
     (studio.toml `[game] processes`, image names; none configured, none)."""
@@ -455,7 +466,7 @@ def checkout_state(name, reg, rows, procs, me=None):
     if ahead:
         busy.append(f"{ahead} unpushed commit(s)")
     branch = branch_of(path)
-    if branch != reg["branch"]:
+    if not trunk_checkout(path, reg, branch):
         busy.append(f"on branch {branch}")
     pids = owned_processes(name, path, procs)
     if pids:
@@ -801,7 +812,7 @@ def sync_pull(repo, reg):
         extra = f" ({ahead} local commit(s) to push)" if ahead else ""
         notes = follow_submodules(repo)
         return SyncResult(True, f"up to date with {upstream}{extra}" + "".join("\n" + n for n in notes))
-    if branch_of(repo) != branch:
+    if not trunk_checkout(repo, reg):
         return SyncResult(False, f"on branch {branch_of(repo)}; switch to {branch} to pull the trunk")
     modified, _ = tree_state(repo)
     if ahead == 0 and not modified:

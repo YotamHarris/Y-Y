@@ -73,11 +73,11 @@ def given(r):
 
 
 def worker_notes(**fill):
-    """The game's own lines for a worker's prompt ([prompts] worker_notes): {name: text} from
-    the file's `## name` sections, `{key}` filled from FILL. None configured or unreadable: {}."""
+    """Worker prompt notes from an inline table or a file's `## name` sections."""
     path = studio_config.get('prompts.worker_notes')
     try:
-        text = (studio_config.repo_root() / path).read_text(encoding='utf-8') if path else ''
+        text = (''.join(f'## {name}\n{body}\n' for name, body in path.items()) if isinstance(path, dict)
+                else (studio_config.repo_root() / path).read_text(encoding='utf-8') if path else '')
     except OSError:
         return {}
     notes = {}
