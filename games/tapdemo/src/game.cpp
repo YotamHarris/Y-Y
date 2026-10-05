@@ -15,6 +15,7 @@ public:
   void render(yy::Renderer& r) override {
     using yy::Color;
     const Color muted{132,155,178}, white{231,240,248}, teal{70,235,196};
+    const Color targetRed{235,70,70};
     r.text({24,30}, "YY / TAP DEMO", teal, 2);
     r.text({24,74}, "CATCH THE MOMENT", white, 2);
     r.rectangle({24,118,342,2}, {40,61,80});
@@ -22,7 +23,7 @@ public:
     r.text({218,140}, "TIME " + std::to_string(static_cast<int>(std::ceil(model.remaining))), muted);
     for(const auto& t: model.targets) {
       r.circle(t.position,t.radius+8,{22,60,65});
-      r.circle(t.position,t.radius,teal);
+      r.circle(t.position,t.radius,targetRed);
       if(!r.sprite("spark.bmp",{t.position.x-15,t.position.y-16,16,16}))
         r.circle({t.position.x-7,t.position.y-8},6,{166,255,226});
     }
