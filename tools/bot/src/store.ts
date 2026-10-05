@@ -13,11 +13,12 @@ export class Store {
       CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY,event_id TEXT UNIQUE,task_id TEXT NOT NULL,role TEXT NOT NULL,content TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS outbox(id INTEGER PRIMARY KEY,task_id TEXT NOT NULL,content TEXT NOT NULL,sent INTEGER NOT NULL DEFAULT 0);`);
     if(!this.db.prepare('PRAGMA table_info(outbox)').all().some(r=>r.name==='board_sent')) this.db.exec('ALTER TABLE outbox ADD COLUMN board_sent INTEGER NOT NULL DEFAULT 0');
+    if(!this.db.prepare('PRAGMA table_info(outbox)').all().some(r=>r.name==='discord_attempts')) this.db.exec('ALTER TABLE outbox ADD COLUMN discord_attempts INTEGER NOT NULL DEFAULT 0');
     this.db.exec('CREATE TABLE IF NOT EXISTS board_commands(id TEXT PRIMARY KEY); CREATE TABLE IF NOT EXISTS board_state(key TEXT PRIMARY KEY,value TEXT NOT NULL);');
   }
   create(input:Pick<Task,'eventId'|'kind'|'game'|'provider'|'model'|'userId'|'channelId'|'prompt'>): Task {
     const existing=this.byEvent(input.eventId); if(existing) return existing;
-    const now=Date.now(); const task:Task={...input,id:randomUUID(),status:'queued',createdAt:now,updatedAt:now,attempt:0};
+    const now=Date.now(); const task:Task={...input,id:randomUUID(),number:this.list().length+1,status:'queued',createdAt:now,updatedAt:now,attempt:0};
     this.db.prepare('INSERT INTO tasks VALUES(?,?,?,?,?)').run(task.id,task.eventId,task.status,now,JSON.stringify(task)); return task;
   }
   get(id:string):Task | undefined { const row=this.db.prepare('SELECT data FROM tasks WHERE id=?').get(id); return row ? JSON.parse(row.data as string) : undefined; }
@@ -46,17 +47,29 @@ export class Store {
   }
   latestUser(taskId:string):string { return this.db.prepare("SELECT content FROM messages WHERE task_id=? AND role='user' ORDER BY id DESC LIMIT 1").get(taskId)?.content as string || this.get(taskId)?.prompt || ''; }
   notify(id:string,text:string) { this.db.prepare('INSERT INTO outbox(task_id,content) VALUES(?,?)').run(id,text); }
-  pending():{id:number;taskId:string;content:string}[] { return this.db.prepare('SELECT id,task_id,content FROM outbox WHERE sent=0 ORDER BY id').all().map(r=>({id:Number(r.id),taskId:r.task_id as string,content:r.content as string})); }
+  pending():{id:number;taskId:string;content:string;attempts:number}[] { return this.db.prepare('SELECT id,task_id,content,discord_attempts FROM outbox WHERE sent=0 ORDER BY id').all().map(r=>({id:Number(r.id),taskId:r.task_id as string,content:r.content as string,attempts:Number(r.discord_attempts)})); }
+  deliveryAttempt(id:number) { this.db.prepare('UPDATE outbox SET discord_attempts=discord_attempts+1 WHERE id=?').run(id); }
   sent(id:number) { this.db.prepare('UPDATE outbox SET sent=1 WHERE id=?').run(id); }
   boardPending() { return this.db.prepare('SELECT id,task_id,content FROM outbox WHERE board_sent=0 ORDER BY id').all().map(r=>({id:Number(r.id),taskId:r.task_id as string,content:r.content as string})); }
   boardSent(id:number) { this.db.prepare('UPDATE outbox SET board_sent=1 WHERE id=?').run(id); }
   command(id:string) { return this.db.prepare('INSERT OR IGNORE INTO board_commands VALUES(?)').run(id).changes>0; }
   state(key:string):string|undefined { return this.db.prepare('SELECT value FROM board_state WHERE key=?').get(key)?.value as string|undefined; }
   setState(key:string,value:string) { this.db.prepare('INSERT INTO board_state VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,value); }
-  runnable(task:Task) { return (task.dependencies || []).every(id=>['completed','ready'].includes(this.get(id)?.status || '')); }
+  runnable(task:Task) { return (task.dependencies || []).every(id=>{
+    const dependency=this.get(id);if(!dependency || dependency.status==='cancelled') return false;
+    if(dependency.reviewSha) return dependency.acceptedSha===dependency.reviewSha;
+    return ['completed','ready'].includes(dependency.status);
+  }); }
+  accept(id:string,sha:string) {
+    const task=this.get(id);
+    if(!task || !task.mergeSha || task.reviewSha!==sha || task.mergeSha!==sha || task.status==='cancelled') throw new Error('This review is outdated or the task has not been published. Use the latest result.');
+    if(task.acceptedSha===sha) return;
+    this.update(id,{acceptedSha:sha,acceptance:'accepted'});
+    this.notify(id,'Accepted. Dependent tasks can now start; TestFlight delivery is tracked separately.');
+  }
   approvePlan(id:string,userId:string):Task[] {
     const plan=this.get(id);if(!plan || plan.kind!=='plan' || !plan.proposal?.length) throw new Error('No proposed implementation tasks to approve');
-    if(plan.approvedBy) return this.list().filter(t=>t.parentTaskId===id);
+    if(plan.approvedBy) return this.list().filter(t=>t.parentTaskId===id && t.planRound===plan.proposalAt);
     if(plan.status!=='waiting_input') throw new Error('The plan is not waiting for approval');
     this.db.exec('BEGIN IMMEDIATE');
     try {
@@ -65,7 +78,7 @@ export class Store {
         if(item.depends.some(n=>!Number.isInteger(n) || n<0 || n>=i)) throw new Error('Plan dependencies must refer to earlier tasks');
         const task=this.create({eventId:`approved-plan:${id}:${plan.proposalAt}:${i}`,kind:'change',game:plan.game,provider:plan.provider,model:plan.model,
           userId,channelId:plan.channelId,prompt:`${item.title}\n\n${item.prompt}`});
-        tasks.push(this.update(task.id,{source:plan.source,threadId:plan.threadId,parentTaskId:id,dependencies:item.depends.map(n=>tasks[n]!.id)}));
+        tasks.push(this.update(task.id,{source:plan.source || 'discord',parentTaskId:id,planRound:plan.proposalAt,goalName:plan.goalName,dependencies:item.depends.map(n=>tasks[n]!.id)}));
         this.message(task.id,'context',this.context(id));this.message(task.id,'user',task.prompt);
         this.notify(task.id,`Approved plan task: ${item.title}`);
       }

@@ -20,7 +20,9 @@ test('real Git worktree/commit/push preserves the developer checkout and rejects
   const config={root,data,games:{tapdemo:{directory:'games/tapdemo'}},githubToken:'fixture-token'} as unknown as Config;
   const adapter=new Git(config);const signal=new AbortController().signal;
   const task={id:'git-test',game:'tapdemo',prompt:'Double score',attempt:0,status:'queued'} as Task;
-  Object.assign(task,await adapter.prepare(task,signal));
+  const parallel={...task,id:'parallel-task'};
+  const prepared=await Promise.all([adapter.prepare(task,signal),adapter.prepare(parallel,signal)]);
+  Object.assign(task,prepared[0]);Object.assign(parallel,prepared[1]);assert.notEqual(task.worktree,parallel.worktree);
   assert.notEqual(task.worktree,root);
   writeFileSync(resolve(task.worktree!,'games/tapdemo/src/model.cpp'),'score = 2;\n');
   task.headSha=await adapter.commit(task,signal);await adapter.assertClean(task,signal);await adapter.push(task,signal);

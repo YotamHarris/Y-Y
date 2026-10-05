@@ -12,7 +12,8 @@ import { Coordinator } from '../src/coordinator.js';
 import { GitHub } from '../src/github.js';
 import type { Task } from '../src/types.js';
 import type { Git } from '../src/git.js';
-import { reply } from '../src/conversation.js';
+import { reply, answer, hearQuick } from '../src/conversation.js';
+import { parsePlan } from '../src/providers.js';
 
 const input=(eventId='event',kind:Task['kind']='change')=>({eventId,kind,game:'tapdemo',provider:'codex' as const,userId:'developer',channelId:'channel',prompt:'Add a point'});
 const config={root:process.cwd(),data:mkdtempSync(resolve(tmpdir(),'yy-test-')),games:{tapdemo:{directory:'games/tapdemo'}},githubToken:'private-token'} as unknown as Config;
@@ -27,6 +28,122 @@ function fixture(options:{agent?:()=>Promise<any>;checks?:'pending'|'passed'|'fa
   const providers={execute:options.agent || (async(_p:unknown,o:any)=>{if(o.readonly) calls.review++;return {outcome:'completed',summary:'Done',question:'',review:o.readonly ? 'approve' : 'none'};})} as unknown as Providers;
   return {store,task,calls,git,github,coordinator:new Coordinator(config,store,git,github,providers)};
 }
+
+test('two isolated workers fill available slots while another task remains in flight',async()=>{
+  const f=fixture();const pending=new Map<string,(r:any)=>void>();const paths:string[]=[];
+  (f.git as any).prepare=async(t:Task)=>{paths.push(t.id);return {worktree:t.id,branch:'codex/'+t.id,baseSha:'base'};};
+  const providers={execute:async(_p:unknown,o:any)=>o.readonly ? {outcome:'completed',summary:'Reviewed',question:'',review:'approve'} : new Promise(r=>pending.set(o.cwd,r))} as unknown as Providers;
+  const manager=new Coordinator(config,f.store,f.git,f.github,providers);
+  const second=f.store.update(f.store.create(input('second')).id,{threadId:'second-thread'});
+  const third=f.store.update(f.store.create(input('third')).id,{threadId:'third-thread'});
+  const firstRun=manager.tick();await new Promise(r=>setImmediate(r));
+  assert.equal(pending.size,2);assert.equal(new Set(paths).size,2);assert.equal(f.store.get(third.id)?.status,'queued');
+  pending.get(f.task.id)!({outcome:'completed',summary:'First',question:'',review:'none'});await new Promise(r=>setImmediate(r));
+  const fill=manager.tick();await new Promise(r=>setImmediate(r));assert(pending.has(third.id));assert.equal(f.store.get(second.id)?.status,'implementing');
+  pending.get(second.id)!({outcome:'completed',summary:'Second',question:'',review:'none'});pending.get(third.id)!({outcome:'completed',summary:'Third',question:'',review:'none'});
+  await Promise.all([firstRun,fill]);assert.equal(f.calls.validate,3);f.store.close();
+});
+
+test('pause finishes active work and keeps planning and quick chat available',async()=>{
+  let finish!:(r:any)=>void;
+  const f=fixture({agent:async()=>new Promise(r=>{finish=r;})});
+  const operation=f.coordinator.tick();await new Promise(r=>setImmediate(r));await f.coordinator.setMode('paused');
+  const queued=f.store.update(f.store.create(input('queued')).id,{threadId:'next'});
+  const ask=f.store.update(f.store.create(input('ask','ask')).id,{source:'multica'});
+  // Replace only the separate reader coordinator's adapter: the working invocation remains untouched.
+  const reader=new Coordinator(config,f.store,f.git,f.github,{execute:async()=>({outcome:'completed',summary:'Answer',question:'',review:'none'})} as unknown as Providers);
+  await reader.tick(true);await reader.tick();assert.equal(f.store.get(ask.id)?.status,'completed');assert.equal(f.store.get(queued.id)?.status,'queued');
+  finish({outcome:'completed',summary:'Changed',question:'',review:'none'});await new Promise(r=>setImmediate(r));finish({outcome:'completed',summary:'Reviewed',question:'',review:'approve'});await operation;
+  assert.equal(f.store.get(f.task.id)?.status,'awaiting_checks');assert.equal(f.store.get(queued.id)?.status,'queued');f.store.close();
+});
+
+test('stop aborts owned work, preserves sessions and resumes only stop-interrupted tasks',async()=>{
+  const f=fixture();const old=f.store.update(f.store.create(input('old')).id,{status:'failed',error:'Needs login'});
+  const manager=new Coordinator(config,f.store,f.git,f.github,{execute:async(_p:unknown,o:any)=>new Promise((_r,reject)=>{
+    o.onEvent({type:'session',sessionId:'worker-session'});o.signal.addEventListener('abort',()=>reject(new Error('aborted')),{once:true});
+  })} as unknown as Providers);
+  f.store.update(f.task.id,{provider:'claude'});
+  const operation=manager.tick();await new Promise(r=>setImmediate(r));await manager.setMode('stopped');await operation;
+  assert.equal(f.store.get(f.task.id)?.status,'interrupted');assert.equal(f.store.get(f.task.id)?.worktree,'isolated');assert.equal(f.store.get(f.task.id)?.workerSessionId,'worker-session');
+  await manager.setMode('running');assert.equal(f.store.get(f.task.id)?.status,'queued');assert.equal(f.store.get(old.id)?.status,'failed');f.store.close();
+});
+
+test('publication is automatic, acceptance unlocks dependencies independently of delivery, and revisions retain identity',async()=>{
+  const f=fixture();f.store.update(f.task.id,{status:'awaiting_checks',pr:1,headSha:'head',baseSha:'base',workerSessionId:'saved',worktree:'preserved'});
+  const dependent=f.store.update(f.store.create(input('dependent')).id,{dependencies:[f.task.id],threadId:'dependent'});
+  await f.coordinator.tickRemote();const published=f.store.get(f.task.id)!;
+  assert.equal(f.calls.merge,1);assert.equal(published.acceptance,'pending');assert.equal(f.store.runnable(dependent),false);
+  assert.throws(()=>f.store.accept(published.id,'stale'),/outdated/);
+  f.store.accept(published.id,'merge');assert.equal(f.store.get(published.id)?.status,'building');assert.equal(f.store.runnable(dependent),true);
+  const count=f.store.pending().length;f.store.accept(published.id,'merge');assert.equal(f.store.pending().length,count);
+  await f.coordinator.requestChanges(published.id,'Targets still overlap','merge');const revised=f.store.get(published.id)!;
+  assert.equal(revised.id,published.id);assert.equal(revised.worktree,'preserved');assert.equal(revised.workerSessionId,'saved');assert.equal(revised.revision,1);
+  assert.equal(revised.reviewSha,undefined);assert.equal(revised.pr,undefined);assert.equal(revised.deliveries?.[0]?.sha,'merge');assert.equal(f.store.runnable(dependent),false);
+  await assert.rejects(()=>f.coordinator.requestChanges(published.id,'Another change','merge'),/outdated/);f.store.close();
+});
+
+test('an immediate resume during stop unwinding does not lose the interrupted task',async()=>{
+  const f=fixture();let rejectWorker!:(e:Error)=>void;
+  const manager=new Coordinator(config,f.store,f.git,f.github,{execute:async()=>new Promise((_r,reject)=>{rejectWorker=reject;})} as unknown as Providers);
+  const operation=manager.tick();await new Promise(r=>setImmediate(r));await manager.setMode('stopped');await manager.setMode('running');rejectWorker(new Error('aborted'));await operation;
+  assert.equal(f.store.get(f.task.id)?.status,'queued');assert.equal(f.store.get(f.task.id)?.worktree,'isolated');f.store.close();
+});
+
+test('owner steering during a merge becomes a revision rather than disappearing',async()=>{
+  const f=fixture();let merged!:(sha:string)=>void;
+  f.store.update(f.task.id,{status:'awaiting_checks',pr:1,headSha:'head',baseSha:'base'});
+  (f.github as any).merge=()=>new Promise(r=>{merged=r;});
+  const operation=f.coordinator.tickRemote();await new Promise(r=>setImmediate(r));
+  await reply(f.store,f.coordinator,f.store.get(f.task.id)!,'Also make the hit area larger','steering','developer');merged('published');await operation;
+  assert.equal(f.store.get(f.task.id)?.status,'queued');assert.equal(f.store.get(f.task.id)?.revision,1);assert.equal(f.store.get(f.task.id)?.deliveries?.[0]?.sha,'published');
+  assert.match(f.store.context(f.task.id),/hit area larger/);assert.equal(f.calls.dispatch,0);f.store.close();
+});
+
+test('approved planning conversations keep later rounds separate and questions collect all answers',async()=>{
+  const f=fixture();const proposal=[{title:'One',prompt:'Why: easier hits. Verify model tests.',depends:[]}];
+  const plan=f.store.update(f.task.id,{kind:'plan',status:'waiting_input',proposal,proposalAt:10});
+  const first=f.store.approvePlan(plan.id,'developer');assert.equal(f.store.approvePlan(plan.id,'developer')[0]?.id,first[0]?.id);
+  await reply(f.store,f.coordinator,f.store.get(plan.id)!,'Next, improve colors','round-two','developer');
+  f.store.update(plan.id,{status:'waiting_input',proposal,proposalAt:20});const second=f.store.approvePlan(plan.id,'developer');assert.notEqual(second[0]?.id,first[0]?.id);
+  assert.equal(first[0]?.threadId,undefined,'children must receive their own conversation');
+  const questions=f.store.update(plan.id,{status:'waiting_input',proposal:undefined,questionVersion:30,questions:[{question:'Color?',options:['Blue','Red']},{question:'Size?',options:['Large','Small']}]});
+  assert.equal(await answer(f.store,f.coordinator,questions,30,{0:'Blue'},'color','developer'),false);assert.equal(f.store.get(plan.id)?.status,'waiting_input');
+  assert.equal(await answer(f.store,f.coordinator,f.store.get(plan.id)!,30,{1:'Large'},'size','developer'),true);assert.equal(f.store.get(plan.id)?.status,'queued');assert.match(f.store.latestUser(plan.id),/Blue[\s\S]*Large/);
+  await assert.rejects(()=>answer(f.store,f.coordinator,f.store.get(plan.id)!,30,{1:'Small'},'old','developer'),/replaced/);f.store.close();
+});
+
+test('quick-chat commands are only conversation, reuse an active session and reset after quiet time',()=>{
+  const f=fixture();const quickConfig={...config,defaultProvider:'codex',quickProvider:'claude',quickModel:'sonnet'} as Config;
+  const request={key:'talk',text:'stop and build the app',eventId:'quick1',userId:'developer',game:'tapdemo',channelId:'talk',threadId:'talk'};
+  const first=hearQuick(f.store,quickConfig,request);f.store.update(first.id,{status:'implementing',sessionId:'session'});
+  const second=hearQuick(f.store,quickConfig,{...request,text:'approve',eventId:'quick2'});assert.equal(second.id,first.id);assert.equal(second.status,'implementing');assert.equal(second.provider,'claude');
+  assert.equal(f.store.get(f.task.id)?.status,'queued');assert.equal(f.store.state('manager-mode'),undefined);
+  const future=Date.now()+4*3600_000;const original=Date.now;Date.now=()=>future;
+  try {assert.notEqual(hearQuick(f.store,quickConfig,{...request,eventId:'quick3'}).id,first.id);}finally{Date.now=original;f.store.close();}
+});
+
+test('Claude resumes with latest words, retries a missing session once, and never retries a usage limit',async()=>{
+  const adapterConfig={...config,auth:{codex:'subscription',claude:'subscription'},executables:{codex:'codex',claude:'claude'},timeout:1000} as Config;
+  let attempts=0;
+  const runner:typeof run=async(_exe,args,o)=>{
+    if(args[0]==='auth') return '{"loggedIn":true,"authMethod":"claude.ai"}';attempts++;
+    if(attempts===1) {assert(args.includes('--resume'));assert.match(o.input!,/latest words/);throw new Error('session could not resume');}
+    assert(!args.includes('--resume'));assert.match(o.input!,/saved transcript/);
+    o.onLine?.(JSON.stringify({type:'result',structured_output:{outcome:'completed',summary:'Recovered',question:'',review:'none',asks:[]}}));return '';
+  };
+  const options={cwd:config.root,prompt:'saved transcript',resumePrompt:'latest words',sessionId:'old-session',readonly:true,signal:new AbortController().signal};
+  assert.equal((await new Providers(adapterConfig,runner).execute('claude',options)).summary,'Recovered');assert.equal(attempts,2);
+  attempts=0;await assert.rejects(()=>new Providers(adapterConfig,async(_exe,args)=>{if(args[0]==='auth') return '{"loggedIn":true,"authMethod":"claude.ai"}';attempts++;throw new AgentPaused('usage limit');}).execute('claude',options),/limit/);assert.equal(attempts,1);
+  assert.deepEqual(normalizeEvent('codex',{type:'turn.completed',usage:{input_tokens:12,output_tokens:3,cached_input_tokens:8}})?.usage,{input:12,output:3,cached:8});
+  assert.deepEqual(normalizeEvent('claude',{type:'result',usage:{input_tokens:4,output_tokens:3,cache_creation_input_tokens:10,cache_read_input_tokens:100}})?.usage,{input:114,output:3,cached:100});
+  assert.throws(()=>parsePlan({outcome:'completed',summary:'Choose',question:'Color?',review:'none',asks:[{question:'Color?',options:['Blue','Red']}],tasks:[{title:'X',prompt:'X',depends:[]}]}),/Unresolved/);
+});
+
+test('independent review never inherits a worker session',async()=>{
+  const f=fixture();f.store.update(f.task.id,{provider:'claude',workerSessionId:'worker'});const seen:any[]=[];
+  const manager=new Coordinator(config,f.store,f.git,f.github,{execute:async(_p:unknown,o:any)=>{seen.push(o.sessionId);o.onEvent({type:'session',sessionId:o.readonly ? 'reviewer' : 'resumed-worker'});return {outcome:'completed',summary:'Done',question:'',review:o.readonly ? 'approve' : 'none'};}} as unknown as Providers);
+  await manager.tick();assert.deepEqual(seen,['worker',undefined]);assert.equal(f.store.get(f.task.id)?.workerSessionId,'resumed-worker');f.store.close();
+});
 test('duplicates are idempotent; transcript events and notifications persist',()=>{
   const path=resolve(config.data,'persist.sqlite');let store=new Store(path);
   const a=store.create(input());assert.equal(store.create(input()).id,a.id);
@@ -136,7 +253,7 @@ test('ask follow-ups stay read-only and task-thread selection preserves the plan
   assert.equal(f.store.get(ask.id)?.kind,'ask');assert.equal(f.store.get(ask.id)?.status,'queued');assert.equal(f.store.list().length,3);f.store.close();
 });
 test('stale base returns to queue without merging',async()=>{
-  const f=fixture({main:'new-base'});f.store.update(f.task.id,{status:'awaiting_checks',pr:1,headSha:'head',baseSha:'base'});await f.coordinator.tick();assert.equal(f.store.get(f.task.id)?.status,'queued');assert.equal(f.calls.merge,0);f.store.close();
+  const f=fixture({main:'new-base'});f.store.update(f.task.id,{status:'awaiting_checks',pr:1,headSha:'head',baseSha:'base'});await f.coordinator.tickRemote();assert.equal(f.store.get(f.task.id)?.status,'queued');assert.equal(f.calls.merge,0);f.store.close();
 });
 test('restart after merge reconciles PR without a second merge',async()=>{
   const f=fixture({merged:true});f.store.update(f.task.id,{status:'merging',pr:1,headSha:'head'});await f.coordinator.tick();assert.equal(f.calls.merge,0);assert.equal(f.store.get(f.task.id)?.mergeSha,'merge');f.store.close();
@@ -208,7 +325,9 @@ test('native provider adapters consume structured streams and preserve explicit 
       assert.match(options.input!,/prompt & literal/);
       const result={outcome:'completed',summary:'ok',question:'',review:'none'};
       if(provider==='codex') {
-        assert(args.includes('workspace-write'));options.onLine?.('{"type":"thread.started","thread_id":"session"}');
+        assert(args.includes('workspace-write'));assert(args.includes('--approve-for-me'));assert(args.includes('approval_policy="on-request"'));
+        if(process.platform==='win32') assert(args.includes('windows.sandbox="unelevated"'));
+        options.onLine?.('{"type":"thread.started","thread_id":"session"}');
         options.onLine?.(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:JSON.stringify(result)}}));
       } else {assert(args.includes('--permission-prompts'));options.onLine?.(JSON.stringify({type:'system',subtype:'init',session_id:'session'}));options.onLine?.(JSON.stringify({type:'result',is_error:false,structured_output:result}));}
       return '';
@@ -231,7 +350,7 @@ test('validated candidate merges without requiring branch protection',async()=>{
 });
 test('main advancing after checks is refreshed before merge',async()=>{
   const f=fixture();let reads=0;(f.github as any).main=async()=>++reads===1 ? 'base' : 'new-base';
-  f.store.update(f.task.id,{status:'awaiting_checks',pr:1,headSha:'head',baseSha:'base'});await f.coordinator.tick();
+  f.store.update(f.task.id,{status:'awaiting_checks',pr:1,headSha:'head',baseSha:'base'});await f.coordinator.tickRemote();
   assert.equal(f.calls.merge,0);assert.equal(f.store.get(f.task.id)?.status,'queued');f.store.close();
 });
 test('failed signing never reports uploaded or ready',async()=>{

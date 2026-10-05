@@ -30,17 +30,25 @@ Create a fine-grained GitHub token for this repository with Contents read/write,
 
 In the [Discord Developer Portal](https://discord.com/developers/applications), create an application and bot. Copy the application ID, bot token, server ID, and your two user IDs into `.env` (enable Developer Mode to copy IDs). Set exactly two distinct users in `DISCORD_USER_IDS`.
 
-Enable the **Message Content Intent** on the Bot page, because the bot reads messages in its task threads. Invite it with `bot` and `applications.commands` scopes and these channel permissions: View Channels, Send Messages, Send Messages in Threads, Create Public Threads, and Read Message History. Choose a private server/channel shared by the two of you. The bot additionally enforces the server/user allowlist for every command and message.
+Enable the **Message Content Intent** on the Bot page, because the bot reads messages in its task threads. Invite it with `bot` and `applications.commands` scopes and these channel permissions: View Channels, Send Messages, Send Messages in Threads, Create Public Threads, Read Message History, Embed Links and Attach Files. Choose a private server/channel shared by the two of you. The bot additionally enforces the server/user allowlist for every command and message.
 
-Ordinary messages in the channel already used by your tasks open planning
-conversations or read-only questions. For a fresh setup, set the optional
-`YY_DISCORD_CHANNEL_ID` to that project channel. Reply in a planning thread and
-click **Approve plan** to start its tasks. **Continue**, **Status** and **Cancel**
-buttons avoid routine commands. A channel named `meatbag-talk`, or the optional
-`YY_DISCORD_TALK_CHANNEL_ID`, is always read-only. Conversations run separately
-from the serial implementation/build queue so a build does not prevent answers.
+Ordinary project-channel messages open planning conversations on the original
+message. For a fresh setup, set `YY_DISCORD_CHANNEL_ID`. Reply naturally and
+**Approve plan** once; approved tasks get separate threads. Published results
+show **Accept** / **Request changes**, and questions show choices plus a free-text
+form. Routine updates and live progress have no buttons.
 
-Run `npm run register` to register the five guild commands. All command requests are acknowledged before work begins; ongoing messages go into ordinary Discord threads. Agent text is sent with mentions disabled.
+Use a `meatbag-talk` channel, or set `YY_DISCORD_TALK_CHANNEL_ID` to a channel
+or persistent public thread, for read-only quick questions. Set
+`YY_QUICK_PROVIDER=claude` and `YY_QUICK_MODEL=sonnet` to match BodySimulation's
+quick lane after authenticating Claude. Workers keep `YY_DEFAULT_PROVIDER`.
+`YY_WORKER_SLOTS` permits one or two isolated workers (default two). Publication
+is serialized. Planning and quick chat run independently while workers are paused.
+
+Run `npm run register` for the five global guild commands: `/status`, `/models`,
+`/pause`, `/resume`, `/stop`. Say those controls in the project channel as well.
+A paused task accepts a normal answer or continue; cancel in a task conversation
+stops that task. Agent text is sent with mentions disabled.
 
 ## 3. Configure Codex and Claude
 
@@ -127,4 +135,4 @@ archive, or upload another binary. Leave `build_number` empty for normal builds.
 
 First dispatch **iOS TestFlight** manually with `game=tapdemo`, a published 40-character main SHA, and a unique task ID such as `initial-setup`. Confirm `Verify TestFlight readiness` succeeds and install the build from your internal TestFlight invitation. Hosted macOS minutes/storage and any explicitly configured API usage use their respective billing accounts.
 
-Then start the bot and request `/change game:tapdemo request:Award two points for each successful tap and update the scoring test`. Watch the PR/checks/merge/build messages, install the new TestFlight version, and confirm the scoring change. Check touch alignment, pause/resume, audio, safe areas, 60 FPS behavior, memory, battery/thermal behavior, and installation size on your actual iPhone. Desktop/simulator measurements do not establish iPhone performance.
+Then start the bot and describe “Award two points for each successful tap and update the scoring test” in the project channel, refine the plan and approve it. Watch the PR/checks/merge/build messages, install the new TestFlight version, and confirm the scoring change. Check touch alignment, pause/resume, audio, safe areas, 60 FPS behavior, memory, battery/thermal behavior, and installation size on your actual iPhone. Desktop/simulator measurements do not establish iPhone performance.

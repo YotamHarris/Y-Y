@@ -36,25 +36,40 @@ The bot runs while this PC is awake and connected. You can run `scripts/start.ps
 
 ## Discord workflow
 
-Write a goal in the existing project channel to open a planning conversation.
-Reply naturally to refine it, then click **Approve plan** to queue implementation.
-Approved tasks get their own threads. Questions are read-only and can be answered
-while implementation or builds run. Reply **continue** or **try again** on a
-paused task; status and cancellation also have buttons. A `meatbag-talk` channel,
-if present, is always for read-only questions. Optional commands remain available:
+Write a goal in the project channel. The manager opens a planning thread on your
+message, reads the code, discusses choices and proposes a few whole tasks. Reply
+naturally, then **Approve plan** once. Keep that conversation for later goals.
+Approved tasks receive separate threads and cards; up to two workers use isolated
+worktrees. Validation and independent review precede automatic commit/push and merge.
 
-| Command | Behavior |
+Published work asks for **Accept** or **Request changes**. Acceptance unlocks
+dependent tasks; TestFlight delivery continues separately. Describe revisions in
+the task conversation to reopen the same task with its worktree and saved context.
+Questions offer choices and **Answer in my own words**. Routine updates have no
+buttons, and each run has one live progress line that disappears when it finishes.
+
+Ask read-only questions in **meatbag-talk** or the board's **quick questions** card,
+even while workers are busy or paused. Claude resumes its conversation; quick chat
+starts fresh after three quiet hours. Codex uses the saved transcript. Quick chat
+cannot start or control work.
+
+| Global command | Behavior |
 | --- | --- |
-| `/ask game:tapdemo request:...` | Start a read-only discussion thread. Both developers can continue chatting there. |
-| `/change game:tapdemo request:... provider:codex` | Start implementation, checks, independent review, PR, automatic merge, and TestFlight delivery. |
-| `/build game:tapdemo` | Build and distribute the current main commit. |
-| `/status task:<id>` | Show state, PR, build link, and failures; omit the ID inside a task thread. |
-| `/status task:<id> resume:true` | Resume after clarification, login, interruption, or failure. Failed builds rerun the same workflow. |
-| `/cancel task:<id>` | Cancel remaining work; preserve branches and report any merge already completed. |
+| `/status` | Working on, Needs you, Queued, and reported Usage. |
+| `/models` | Show configured worker and quick-chat providers/models. |
+| `/pause` | Let active work finish; hold queued workers. |
+| `/resume` | Release queued work and resume stop-interrupted tasks. |
+| `/stop` | Interrupt managed local processes, preserving work and sessions. |
 
-`/ask` and `/change` accept `provider:claude` and an optional `model`. To turn a discussion into implementation, invoke `/change` from its thread: the new task inherits the transcript. Ordinary discussion messages never start a new implementation task. An answer in a paused change thread resumes that previously requested task.
+You can also say status, pause, resume or stop in the project channel or manager
+card. Answer a paused task or say continue after fixing a prerequisite. Say cancel
+in that task's conversation to stop it. “Make a new TestFlight build” explicitly
+requests a build of current main.
 
-Game tasks can edit the selected game, engine, and tests. Changes to workflows, service code, build configuration, and other games need normal development in the repo. Jobs run serially; working branches use `codex/`. Each review starts a separate provider invocation without the implementation session.
+Game tasks can edit the selected game, engine and tests. Service, workflow and
+configuration changes need normal repository development. Working branches use
+`codex/`; publication is serialized and every independent review uses a fresh
+read-only invocation without the worker's session.
 
 ## Layout and checks
 
@@ -88,7 +103,7 @@ See [architecture and recovery](docs/architecture.md) and [acceptance evidence](
 See [Multica setup and sharing](docs/multica.md) for the local self-hosted task board,
 TapDemo project, shared Discord/board coordinator, and temporary public HTTPS link.
 Double-click **TapDemoBoard.cmd** or the **TapDemo board** desktop shortcut to start
-and open it. Write goals and questions in ordinary comments on the manager card.
+and open it. Write goals in ordinary comments on the manager card and questions on the quick-questions card.
 Refine a proposed plan in its card and reply **approve** to start it. The board and
-Discord use the same persistent coordinator; `/yy` commands remain optional.
+Discord use the same persistent coordinator.
 Use `./scripts/multica.ps1 -Action Stop` to close public access.

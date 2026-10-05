@@ -19,6 +19,7 @@ export function statusPaths(output:string):string[] {
   return paths;
 }
 export class Git {
+  private preparing:Promise<void>=Promise.resolve();
   constructor(private config:Pick<Config,'root'|'data'|'games'|'githubToken'>) {}
   private execute(cwd:string,args:string[],signal?:AbortSignal,auth=false) {
     const env=withoutSecrets();
@@ -31,6 +32,14 @@ export class Git {
     return run('git',args,{cwd,signal,env,timeout:120_000});
   }
   async prepare(task:Task,signal:AbortSignal):Promise<{worktree:string;branch:string;baseSha:string}> {
+    // Fetch and worktree registration touch the shared Git directory. Coding,
+    // validation and review remain independent once each checkout is prepared.
+    const previous=this.preparing;let release!:()=>void;
+    this.preparing=new Promise<void>(resolve=>{release=resolve;});
+    await previous;
+    try {return await this.prepareWorktree(task,signal);}finally{release();}
+  }
+  private async prepareWorktree(task:Task,signal:AbortSignal):Promise<{worktree:string;branch:string;baseSha:string}> {
     const baseSha=(await this.execute(this.config.root,['fetch','origin','main'],signal,true),await this.execute(this.config.root,['rev-parse','origin/main'],signal)).trim();
     const branch=task.branch || `codex/${task.game}-${task.id}`;
     const worktree=task.worktree || resolve(this.config.data,'worktrees',task.id);
@@ -63,6 +72,6 @@ export class Git {
   }
   async validate(task:Task,signal:AbortSignal) {
     const powershell=process.platform==='win32' ? 'powershell.exe' : 'pwsh';
-    await run(powershell,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',resolve(this.config.root,'scripts/check.ps1'),'-RepoRoot',task.worktree!, '-ToolsRoot',this.config.root],{cwd:task.worktree!,signal,env:withoutSecrets(),timeout:600_000});
+    await run(powershell,['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',resolve(this.config.root,'scripts/check.ps1'),'-RepoRoot',task.worktree!, '-ToolsRoot',this.config.root,'-Smoke'],{cwd:task.worktree!,signal,env:withoutSecrets(),timeout:600_000});
   }
 }

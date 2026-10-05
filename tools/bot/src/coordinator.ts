@@ -8,31 +8,58 @@ import { remote, terminal, type Task } from './types.js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { projectContext } from './manager-context.js';
+import { managerMode, managerOutlook, type ManagerMode } from './manager-state.js';
 
 export class Coordinator {
-  private busy=false;
   private stopping=false;
-  private active?:{id:string;abort:AbortController};
-  private reading=false;
-  private readActive?:{id:string;abort:AbortController};
+  private workers=new Map<string,AbortController>();
+  private readers=new Map<'ask'|'plan',{id:string;abort:AbortController}>();
+  private remoting=false;
+  private remoteActive?:{id:string;abort:AbortController};
   constructor(private config:Config,public store:Store,private git:Git,private github:GitHub,private providers:Providers) {}
   private stage(id:string,status:Task['status'],detail?:string) {
     if(this.store.get(id)?.cancelRequested) throw new Error('Cancelled');
     const task=this.store.update(id,{status});
-    const label=status==='implementing' && task.kind==='ask' ? 'Answering your question (read-only)' : status==='implementing' && task.kind==='plan' ? 'Preparing a plan with you (read-only)' : status;
-    this.store.notify(id,`${label}${detail && task.kind!=='ask' && task.kind!=='plan' ? ` — ${detail}` : ''}`); return task;
+    if(status==='ready') this.store.notify(id,`TestFlight upload, Apple processing, tester assignment and internal testing readiness verified.\n${task.runUrl || detail || ''}`);
+    if(status==='completed') this.store.notify(id,detail || 'No changes were needed.');
+    return task;
   }
   async tick(readonly=false) {
-    if((readonly ? this.reading : this.busy) || this.stopping) return;
-    if(readonly) this.reading=true;else this.busy=true;
+    if(readonly) {await Promise.all([this.tickConversation('plan'),this.tickConversation('ask')]);return;}
+    if(this.stopping || managerMode(this.store)==='stopped') return;
+    await this.tickRemote();
+    if(managerMode(this.store)!=='running') return;
+    const available=(this.config.workerSlots || 2)-this.workers.size;
+    const tasks=this.store.list().filter(t=>!['ask','plan'].includes(t.kind) && t.status==='queued' && !this.workers.has(t.id) && (t.threadId || t.source==='multica') && this.store.runnable(t)).slice(0,Math.max(0,available));
+    const runs=tasks.map(task=>{const abort=new AbortController();this.workers.set(task.id,abort);return this.executeTask(task,abort,'worker').finally(()=>this.workers.delete(task.id));});
+    if(runs.length) await Promise.all(runs);else await this.tick(true);
+  }
+  async tickConversation(kind:'ask'|'plan') {
+    if(this.stopping || this.readers.has(kind) || managerMode(this.store)==='stopped') return;
+    const task=this.store.list().find(t=>t.kind===kind && t.status==='queued' && (t.threadId || t.source==='multica'));if(!task) return;
+    const abort=new AbortController();this.readers.set(kind,{id:task.id,abort});
+    try {await this.executeTask(task,abort,'reader');}finally{this.readers.delete(kind);}
+  }
+  async tickRemote() {
+    if(this.stopping || this.remoting || managerMode(this.store)==='stopped') return;
+    const task=this.store.list().filter(t=>t.cancelPending || remote.has(t.status)).sort((a,b)=>(a.remotePollAt || 0)-(b.remotePollAt || 0))[0];if(!task) return;
+    this.store.update(task.id,{remotePollAt:Date.now()});
+    this.remoting=true;const abort=new AbortController();this.remoteActive={id:task.id,abort};
+    try {await this.executeTask(task,abort,'remote');}finally{this.remoting=false;this.remoteActive=undefined;}
+  }
+  async setMode(mode:ManagerMode) {
+    this.store.setState('manager-mode',mode);
+    if(mode==='stopped') {
+      for(const abort of this.workers.values()) abort.abort('manager-stop');
+      for(const reader of this.readers.values()) reader.abort.abort('manager-stop');
+      this.remoteActive?.abort.abort('manager-stop');
+    }
+    if(mode==='running') for(const task of this.store.list().filter(t=>t.status==='interrupted' && t.error==='Manager stopped; work and sessions preserved.')) await this.resume(task.id);
+  }
+  private async executeTask(task:Task,abort:AbortController,lane:'worker'|'reader'|'remote') {
+    const started=Date.now();
+    if(lane!=='remote') this.store.update(task.id,{runStartedAt:started,runCount:(task.runCount || 0)+1,progress:undefined,lastStep:undefined});
     try {
-      // Recover remote work before accepting another change; main evolves serially.
-      const tasks=this.store.list();
-      const task=readonly ? tasks.find(t=>['ask','plan'].includes(t.kind) && t.status==='queued' && (t.threadId || t.source==='multica'))
-        : tasks.find(t=>t.cancelPending || remote.has(t.status)) || tasks.find(t=>!['ask','plan'].includes(t.kind) && t.status==='queued' && (t.threadId || t.source==='multica') && this.store.runnable(t));
-      if(!task) {if(!readonly) await this.tick(true);return;}
-      const abort=new AbortController();if(readonly) this.readActive={id:task.id,abort};else this.active={id:task.id,abort};
-      try {
         if(task.cancelRequested) { await this.cancel(task.id); return; }
         if(remote.has(task.status)) await this.reconcile(task,abort.signal);
         else if(task.kind==='build') {
@@ -44,6 +71,10 @@ export class Coordinator {
         const current=this.store.get(task.id)!;
         if(this.stopping) return; // Startup recovery marks unfinished local work interrupted.
         if(current.status==='cancelled') return;
+        if(abort.signal.reason==='manager-stop' || managerMode(this.store)==='stopped') {
+          if(lane!=='remote') this.store.update(task.id,{status:managerMode(this.store)==='running' ? 'queued' : 'interrupted',error:managerMode(this.store)==='running' ? undefined : 'Manager stopped; work and sessions preserved.',pausedFrom:current.status});
+          return;
+        }
         if(remote.has(current.status) && !(err instanceof AgentPaused) && !current.cancelRequested && /GitHub|fetch failed|network|ECONN|timeout/i.test(String(err))) {
           if(!current.remoteErrorAt || Date.now()-current.remoteErrorAt>300_000) {
             this.store.update(task.id,{remoteErrorAt:Date.now()});this.store.notify(task.id,'GitHub is temporarily unavailable; keeping the task for reconciliation.');
@@ -54,14 +85,22 @@ export class Coordinator {
         mkdirSync(resolve(this.config.data,'logs'),{recursive:true});writeFileSync(resolve(this.config.data,'logs',`${task.id}.log`),error);
         const status=current.cancelRequested ? 'cancelled' : err instanceof AgentPaused ? 'waiting_input' : 'failed';
         this.store.update(task.id,{status,error:error.slice(-10_000),pausedFrom:status==='waiting_input' ? current.status : undefined});
-        this.store.notify(task.id,`${status}: ${error.slice(-1500)}${current.mergeSha ? `\nAlready merged: ${current.mergeSha}` : ''}\nTask: ${task.id}`);
-      }
-    } finally {if(readonly){this.readActive=undefined;this.reading=false;}else{this.active=undefined;this.busy=false;}}
+        this.store.notify(task.id,`${status==='waiting_input' ? 'Needs your attention' : 'Stopped after a failure'}: ${error.split('\n')[0]?.slice(0,400)}${current.mergeSha ? `\nAlready published: ${current.mergeSha.slice(0,12)}` : ''}\nReply with your answer, or continue after fixing the prerequisite.`);
+    } finally {
+      if(lane!=='remote') {const latest=this.store.get(task.id)!;this.store.update(task.id,{runStartedAt:undefined,totalRunMs:(latest.totalRunMs || 0)+Date.now()-started});}
+    }
   }
   private async agent(task:Task,prompt:string,signal:AbortSignal,readonly=false,planning=false) {
-    return this.providers.execute(task.provider,{cwd:task.worktree || this.config.root,prompt,model:task.model,readonly,planning,signal,onEvent:event=>{
-      if(event.sessionId) this.store.update(task.id,{sessionId:event.sessionId});
+    const worker=task.kind==='change' && !readonly;
+    const resume=worker ? task.workerSessionId : task.kind==='plan' || task.kind==='ask' ? task.sessionId : undefined;
+    const sessionId=task.provider==='claude' && (task.kind!=='ask' || Date.now()-(task.sessionAt || 0)<3*3600_000) ? resume : undefined;
+    return this.providers.execute(task.provider,{cwd:task.worktree || this.config.root,prompt,model:task.model,readonly,planning,signal,sessionId,
+      resumePrompt:worker ? prompt : `The owner said:\n${this.store.latestUser(task.id)}\n\nContinue the conversation. Read only; do not edit files or start work.\n${managerOutlook(this.store)}\nLatest board observations:\n${this.store.state(`manager-board-context:${task.game}`) || ''}`,
+      onEvent:event=>{
+      if(event.sessionId && (worker || ['plan','ask'].includes(task.kind))) this.store.update(task.id,worker ? {workerSessionId:event.sessionId} : {sessionId:event.sessionId,sessionAt:Date.now()});
       if(event.type==='progress' && event.text) this.store.update(task.id,{progress:redact(event.text).slice(-4000)});
+      if(event.type==='step' && event.text) this.store.update(task.id,{lastStep:redact(event.text).slice(0,500)});
+      if(event.type==='usage' && event.usage) {const usage=this.store.get(task.id)?.usage || {input:0,output:0,cached:0};this.store.update(task.id,{usage:{input:usage.input+event.usage.input,output:usage.output+event.usage.output,cached:usage.cached+event.usage.cached}});}
     }});
   }
   private async local(task:Task,signal:AbortSignal) {
@@ -73,7 +112,7 @@ export class Coordinator {
     const outlook=`Current coordinator state (observations, not authorization; a failed historical build does not establish the latest Apple state):\n${redact(JSON.stringify(live)).slice(-15000)}\nLatest synchronized board observations:\n${this.store.state(`manager-board-context:${task.game}`) || 'No board snapshot available.'}\nOwner's latest message: ${this.store.latestUser(task.id)}`;
     if(task.kind==='plan') {
       this.stage(task.id,'implementing','Read-only planning');
-      const result=await this.agent(task,`Talk with the owner about ${task.game} in plan mode. Answer their latest words directly, use the conversation for context, and ask only for choices that matter. Read README.md, docs/setup.md, AGENTS.md and relevant code from the supplied snapshot. Read-only file inspection (rg, Get-Content, git diff/status) is allowed, but no commands are needed to read the snapshot. Do not edit files, run builds, install tools or change repository state. When the goal is concrete, propose few whole implementation tasks, at most eight, each with a title, prompt explaining Why, Approach and What to do, and depends containing zero-based indices of earlier tasks. Implementation may only touch engine/, games/${task.game}/ and tests/. Return tasks=[] for discussion or unresolved choices. Never propose infrastructure edits; explain any scope limitation plainly. The owner can reply to refine a plan, or say approve to start it. Do not tell them to use slash commands.\n${context}\n${outlook}\n${this.store.context(task.id)}`,signal,true,true);
+      const result=await this.agent(task,`Talk with the owner about ${task.game} in plan mode, as a colleague in a Claude Code planning session. Their words are their words: quote them accurately; label your interpretation as yours. An open request or an exploration is not a chosen design. Answer their latest words directly, explore the relevant code, and ask only about material choices. Offer two to four concrete options, recommended first, in asks when a choice is needed. Read the supplied snapshot; read-only file inspection is allowed. Do not edit files, run builds, install tools or change repository state. Once the goal is concrete, propose few whole tasks, at most eight. Each task explains Why, the approach, what should be true afterwards, and the evidence that would establish it. depends contains zero-based indices of earlier tasks; split only when something must be accepted before another part starts. Implementation may only touch engine/, games/${task.game}/ and tests/. Return tasks=[] for discussion or unresolved choices. Never propose infrastructure edits; explain a scope limitation plainly. Give this goal a short descriptive goalName. The owner refines the plan by replying, then approves it once. This same planning conversation stays open afterwards. Do not tell them to use commands.\n${context}\n${outlook}\n${this.store.context(task.id)}`,signal,true,true);
       if(this.store.get(task.id)?.cancelRequested) return;
       if((this.store.get(task.id)?.replyVersion || 0)!==(task.replyVersion || 0)) {
         this.store.update(task.id,{status:'queued',proposal:undefined,proposalAt:undefined});
@@ -82,19 +121,22 @@ export class Coordinator {
       const proposed=!!result.tasks?.length;
       const question=result.question || (proposed ? 'Reply “approve” to start these tasks, or tell me what to change.' : undefined);
       this.store.message(task.id,'assistant',result.summary+'\n'+result.question);
-      this.store.update(task.id,{status:proposed || result.outcome==='needs_input' ? 'waiting_input' : 'completed',summary:result.summary,question,proposal:result.tasks || [],proposalAt:Date.now()});
-      this.store.notify(task.id,result.summary+'\n'+(result.tasks || []).map((t,i)=>`${i+1}. ${t.title}\n${t.prompt}\nDepends on: ${t.depends.map(n=>n+1).join(', ') || 'none'}`).join('\n\n')+(question ? '\n'+question : ''));return;
+      this.store.update(task.id,{status:proposed || result.outcome==='needs_input' ? 'waiting_input' : 'completed',summary:result.summary,question,proposal:result.tasks || [],proposalAt:Date.now(),
+        goalName:result.goalName || task.goalName,questions:result.asks?.length ? result.asks : result.outcome==='needs_input' && result.question ? [{question:result.question,options:[]}] : undefined,questionVersion:Date.now(),answers:undefined});
+      this.store.notify(task.id,result.summary+'\n'+(result.tasks || []).map((t,i)=>`${i+1}. ${t.title}\n${t.prompt.replace(/\s+/g,' ').slice(0,350)}${t.depends.length ? '\nAfter task '+t.depends.map(n=>n+1).join(', ') : ''}`).join('\n\n')+(question ? '\n'+question : ''));return;
     }
     if(task.kind==='ask') {
       this.stage(task.id,'implementing','Read-only discussion');
       const result=await this.agent(task,`Answer the owner's latest question about ${task.game} concisely. Use the supplied file snapshot and current coordinator/board observations, preferring live evidence over old README acceptance statements. Do not invent progress or claim TestFlight readiness without verified evidence. Read-only inspection commands (rg, Get-Content, git diff/status) are allowed if available. Do not edit files, run builds, install tools, start tasks or change repository state. A change described in this conversation remains a discussion; direct the owner to describe a goal on the manager card or in the project channel for a plan.\n${context}\n${outlook}\n${this.store.context(task.id)}`,signal,true);
       if(this.store.get(task.id)?.cancelRequested) return;
       this.store.message(task.id,'assistant',result.summary+'\n'+result.question);
-      this.store.update(task.id,{status:(this.store.get(task.id)?.replyVersion || 0)!==(task.replyVersion || 0) ? 'queued' : result.outcome==='needs_input' ? 'waiting_input' : 'completed',summary:result.summary,question:result.question || undefined});
+      this.store.update(task.id,{status:(this.store.get(task.id)?.replyVersion || 0)!==(task.replyVersion || 0) ? 'queued' : result.outcome==='needs_input' ? 'waiting_input' : 'completed',summary:result.summary,question:result.question || undefined,
+        questions:result.asks?.length ? result.asks : result.outcome==='needs_input' && result.question ? [{question:result.question,options:[]}] : undefined,questionVersion:Date.now(),answers:undefined});
       this.store.notify(task.id,result.summary+(result.question ? '\n'+result.question : ''));return;
     }
     this.stage(task.id,'preparing');
     task=this.store.update(task.id,await this.git.prepare(task,signal));
+    const turnVersion=task.replyVersion || 0;
     // A stale candidate has already been implemented. Rebase then validate/review again.
     let feedback='';
     for(let attempt=task.attempt;attempt<=2;++attempt) {
@@ -102,7 +144,9 @@ export class Coordinator {
       if(!task.headSha || feedback) {
         this.stage(task.id,'implementing',attempt ? `Repair ${attempt}/2` : undefined);
         const result=await this.agent(task,`Implement this game change: ${task.prompt}\nConversation:\n${this.store.context(task.id)}\nOnly edit engine/, ${this.config.games[task.game]!.directory}/, and tests/. Do not change automation, workflows, config, dependencies, or git metadata.\n${feedback}`,signal);
-        if(result.outcome==='needs_input') {this.store.message(task.id,'assistant',result.summary+'\n'+result.question);this.store.update(task.id,{status:'waiting_input',summary:result.summary,question:result.question || result.summary});this.store.notify(task.id,result.question || result.summary);return;}
+        if((this.store.get(task.id)?.replyVersion || 0)!==turnVersion) {this.store.update(task.id,{status:'queued',headSha:undefined});return;}
+        if(result.outcome==='needs_input') {this.store.message(task.id,'assistant',result.summary+'\n'+result.question);this.store.update(task.id,{status:'waiting_input',summary:result.summary,question:result.question || result.summary,
+          questions:result.asks?.length ? result.asks : [{question:result.question || result.summary,options:[]}],questionVersion:Date.now(),answers:undefined});this.store.notify(task.id,result.summary+(result.question ? '\n'+result.question : ''));return;}
         this.store.update(task.id,{summary:result.summary});
       }
       try {
@@ -111,7 +155,7 @@ export class Coordinator {
         this.stage(task.id,'checking');await this.git.validate(task,signal);
         this.stage(task.id,'reviewing');
         const diff=await this.git.diff(task,signal);
-        const result=await this.agent(task,`Independently review the candidate against request: ${task.prompt}\nDo not edit files. Inspect correctness, tests, mobile lifecycle, and unintended changes. Return review=approve only if acceptable, otherwise request_changes.\nDiff:\n${diff.slice(0,120_000)}`,signal,true);
+        const result=await this.agent(task,`Independently review the candidate against request: ${task.prompt}\nOwner conversation and revisions:\n${this.store.context(task.id)}\nDo not edit files. Inspect correctness, tests, mobile lifecycle, and unintended changes. Return review=approve only if acceptable, otherwise request_changes.\nDiff:\n${diff.slice(0,120_000)}`,signal,true);
         if(result.outcome==='needs_input') throw new AgentPaused(result.question || result.summary);
         if(result.review!=='approve') throw new Error(`Review requested changes: ${result.summary}`);
         await this.git.assertClean(task,signal);
@@ -122,17 +166,20 @@ export class Coordinator {
         feedback=`Repair the following validation failure, preserving the original request:\n${err instanceof ProcessFailure ? err.output : String(err)}`;
       }
     }
+    if((this.store.get(task.id)?.replyVersion || 0)!==turnVersion) {this.store.update(task.id,{status:'queued',headSha:undefined});return;}
     // Infrastructure failures must not consume coding repair attempts or rewrite a reviewed candidate.
     await this.git.push(task,signal);
     const pr=await this.github.pull(task.branch!,`Update ${task.game}: ${task.prompt.replace(/[\r\n]/g,' ').slice(0,100)}`,
       `${this.store.get(task.id)?.summary || task.prompt}\n\nValidation: local engine/game tests and Release compilation; independent agent review. CI checks must pass before automatic merge.\n\nTask: ${task.id}`);
-    this.store.update(task.id,{pr:pr.number,prUrl:pr.html_url});this.stage(task.id,'awaiting_checks',pr.html_url);
+    this.store.update(task.id,{pr:pr.number,prUrl:pr.html_url});
+    if((this.store.get(task.id)?.replyVersion || 0)!==turnVersion) {this.store.update(task.id,{status:'queued',headSha:undefined});return;}
+    this.stage(task.id,'awaiting_checks',pr.html_url);
   }
   private async reconcile(task:Task,signal:AbortSignal) {
     if(task.status==='awaiting_checks' || task.status==='merging') {
       if(!task.pr || !task.headSha) throw new Error('Missing persisted PR reference');
       const pull=await this.github.pullState(task.pr);
-      if(pull.merged) {task=this.store.update(task.id,{mergeSha:pull.merge_commit_sha!});await this.startBuild(task);return;}
+      if(pull.merged) {task=this.published(task,pull.merge_commit_sha!);await this.startBuild(task);return;}
       if(pull.state==='closed') throw new Error('PR was closed without merging');
       if(pull.head.sha!==task.headSha) throw new Error('PR head changed outside this task; refusing automatic merge');
       const base=await this.github.main();
@@ -149,13 +196,17 @@ export class Coordinator {
       await this.git.assertClean(task,signal);
       // Refresh the base immediately before merging the validated head SHA.
       if(await this.github.main()!==task.baseSha) {this.store.update(task.id,{status:'queued'});return;}
+      if(this.store.get(task.id)?.headSha!==task.headSha || !['awaiting_checks','merging'].includes(this.store.get(task.id)!.status)) return;
       this.stage(task.id,'merging');
+      const mergingVersion=task.replyVersion || 0;
       task=this.store.update(task.id,{mergeSha:await this.github.merge(task.pr,task.headSha)});
       if(task.cancelRequested) {
         this.store.update(task.id,{status:'cancelled',cancelPending:true});
         this.store.notify(task.id,`The in-flight merge completed before cancellation: ${task.mergeSha}. Waiting to cancel its remote build.`);return;
       }
-      this.store.notify(task.id,`Merged ${task.mergeSha}.`);await this.startBuild(task);return;
+      task=this.published(task,task.mergeSha!);
+      if((task.replyVersion || 0)!==mergingVersion) {await this.requestChanges(task.id,this.store.latestUser(task.id),task.mergeSha);return;}
+      await this.startBuild(task);return;
     }
     if(!task.mergeSha) throw new Error('Missing build commit');
     if(!task.runId) {
@@ -172,6 +223,23 @@ export class Coordinator {
     if(task.rerunAt && Date.now()-task.rerunAt<60_000 && state.status==='failed') return;
     if(state.status!==task.status) this.stage(task.id,state.status,`${state.detail || ''} ${state.url}`.trim());
   }
+  private published(task:Task,sha:string) {
+    const latest=this.store.get(task.id)!;
+    task=this.store.update(task.id,{mergeSha:sha,reviewSha:sha,acceptance:latest.acceptedSha===sha ? 'accepted' : 'pending'});
+    if(latest.reviewSha!==sha) this.store.notify(task.id,`Published and ready for your review.\n${task.summary || task.prompt}\nCommit: ${sha}\nTry the result, then Accept or Request changes. Dependent tasks wait for your acceptance; the build continues separately.\n${task.prUrl || ''}`);
+    return task;
+  }
+  async requestChanges(id:string,feedback:string,sha?:string) {
+    const task=this.store.get(id);
+    if(!task || task.kind!=='change' || !task.mergeSha || !task.reviewSha || sha && task.reviewSha!==sha) throw new Error('This review is outdated or has not been published. Use the latest result.');
+    if(!feedback.trim()) throw new Error('Describe what should change.');
+    this.store.message(id,'user',feedback);
+    this.store.update(id,{status:'queued',revision:(task.revision || 0)+1,replyVersion:(task.replyVersion || 0)+1,
+      deliveries:[...(task.deliveries || []),{sha:task.mergeSha,url:task.runUrl,runId:task.runId,status:task.status}],
+      reviewSha:undefined,acceptedSha:undefined,acceptance:undefined,mergeSha:undefined,runId:undefined,runUrl:undefined,dispatchAt:undefined,
+      headSha:undefined,pr:undefined,prUrl:undefined,attempt:0,error:undefined,question:undefined,cancelRequested:false});
+    this.store.notify(id,'Got your changes. Reopening this task with its conversation and worktree; I’ll validate and publish the revision.');
+  }
   private async startBuild(task:Task,retry=false) {
     const runs=await this.github.runs(task.mergeSha!);
     const existing=runs.find(r=>r.display_title.includes(task.id) || (task.kind==='change' && r.head_sha===task.mergeSha && r.display_title.includes('[all]')));
@@ -187,8 +255,9 @@ export class Coordinator {
     const task=this.store.get(id);if(!task) throw new Error('Unknown task');
     if(terminal.has(task.status) && !task.cancelPending) return;
     this.store.update(id,{cancelRequested:true,status:'cancelled',cancelPending:!!task.mergeSha && (task.kind==='change' || !!task.dispatchAt || !!task.runId)});
-    if(this.active?.id===id) this.active.abort.abort();
-    if(this.readActive?.id===id) this.readActive.abort.abort();
+    this.workers.get(id)?.abort();
+    for(const reader of this.readers.values()) if(reader.id===id) reader.abort.abort();
+    if(this.remoteActive?.id===id) this.remoteActive.abort.abort();
     let runId=task.runId;
     if(!runId && task.mergeSha) {
       const runs=await this.github.runs(task.mergeSha);
@@ -215,7 +284,8 @@ export class Coordinator {
     this.store.update(id,{status:task.mergeSha ? 'building' : task.pausedFrom && remote.has(task.pausedFrom) ? task.pausedFrom : 'queued',cancelRequested:false,error:undefined,question:undefined});
   }
   async shutdown() {
-    this.stopping=true;this.active?.abort.abort();this.readActive?.abort.abort();
-    while(this.busy || this.reading) await new Promise(resolve=>setTimeout(resolve,25));
+    this.stopping=true;
+    for(const abort of this.workers.values()) abort.abort();for(const reader of this.readers.values()) reader.abort.abort();this.remoteActive?.abort.abort();
+    while(this.workers.size || this.readers.size || this.remoting) await new Promise(resolve=>setTimeout(resolve,25));
   }
 }

@@ -49,20 +49,21 @@ test('fresh owner prose opens read-only planning; ordinary replies refine it and
   assert.equal(f.store.list().length,2,'manager replies are not fed back as owner requests');f.store.close();
 });
 
-test('a question on a working card answers read-only without reopening, approving or changing its lifecycle',async()=>{
-  const f=fixture();const work=f.store.create(input('work'));f.store.update(work.id,{boardIssueId:'card',status:'processing',mergeSha:'sha'});
+test('quick-chat questions leave the working task and quick-card lifecycle unchanged',async()=>{
+  const f=fixture({...board,talkIssueId:'card'});f.issues.push({id:'work-card',identifier:'YYEN-2',title:'Working task',description:'',status:'in_progress',project_id:'project'});
+  const work=f.store.create(input('work'));f.store.update(work.id,{boardIssueId:'work-card',status:'processing',mergeSha:'sha'});
   f.command('question','Why is Apple taking so long?');await f.bridge.tick();
-  const ask=f.store.list().find(t=>t.kind==='ask')!;assert.equal(ask.conversationParentId,work.id);assert.equal(ask.boardIssueId,'card');
-  assert.equal(f.store.get(work.id)?.status,'processing');assert.equal(f.issues[0]?.status,'in_progress');
-  f.store.update(ask.id,{status:'completed'});await f.bridge.tick();assert.equal(f.issues[0]?.status,'in_progress');f.store.close();
+  const ask=f.store.list().find(t=>t.kind==='ask')!;assert.equal(ask.conversationParentId,'talk');assert.equal(ask.boardIssueId,'card');
+  assert.equal(f.store.get(work.id)?.status,'processing');assert.equal(f.issues[0]?.status,'backlog');
+  f.store.update(ask.id,{status:'completed'});await f.bridge.tick();assert.equal(f.issues[0]?.status,'backlog');f.store.close();
 });
 
-test('manager card stays a conversation hub; goals get their own cards and questions answer on the hub',async()=>{
+test('project hub opens planning conversations for all prose, rather than guessing question intent',async()=>{
   const f=fixture({...board,managerIssueId:'card'});f.command('goal','Make the game more fun');await f.bridge.tick();await f.bridge.tick();
   const plan=f.store.list()[0]!;assert.equal(plan.kind,'plan');assert.notEqual(f.store.get(plan.id)?.boardIssueId,'card');
   assert.equal(f.issues[0]?.status,'backlog');assert.match(f.comments.card!.at(-1)!.content,/opened YYEN/);
   f.command('question','What does the current game do?');await f.bridge.tick();await f.bridge.tick();
-  assert.equal(f.store.list().length,2);assert.equal(f.store.list()[1]?.conversationParentId,'manager');f.store.close();
+  assert.equal(f.store.list().length,2);assert.equal(f.store.list()[1]?.kind,'plan');assert.equal(f.store.list()[1]?.originBoardIssueId,'card');f.store.close();
 });
 
 test('migration cursor persists across restarts and deleted/non-member comments cannot start conversation',async()=>{
@@ -85,7 +86,7 @@ test('approved implementation cards accept plain clarification and retry without
 test('plain build requests are explicit on the hub but cannot turn a read-only question into delivery',async()=>{
   const f=fixture({...board,managerIssueId:'card'});f.command('build','make a new TestFlight build');await f.bridge.tick();
   assert.equal(f.store.list()[0]?.kind,'build');f.store.close();
-  const q=fixture();q.command('ask','How does this work?');await q.bridge.tick();
+  const q=fixture({...board,talkIssueId:'card'});q.command('ask','How does this work?');await q.bridge.tick();
   q.store.update(q.store.list()[0]!.id,{status:'completed'});q.command('followup','upload a new build');await q.bridge.tick();
   assert.equal(q.store.list().length,1);assert.equal(q.store.list()[0]?.kind,'ask');q.store.close();
 });
@@ -95,7 +96,7 @@ test('approved plans atomically become whole tasks once, with dependencies and p
     {title:'Award points',prompt:'Why: scoring. Approach: deterministic model. What to do: update tests and scoring.',depends:[]},
     {title:'Display score',prompt:'Update score display after the model change.',depends:[0]}]});
   const tasks=store.approvePlan(plan.id,'developer');assert.equal(tasks.length,2);assert.equal(store.approvePlan(plan.id,'developer').length,2);assert.equal(store.list().length,3);
-  assert.equal(store.runnable(tasks[0]!),true);assert.equal(store.runnable(tasks[1]!),false);assert.match(waitingOn(tasks[1]!,store),/Dependencies/);
+  assert.equal(store.runnable(tasks[0]!),true);assert.equal(store.runnable(tasks[1]!),false);assert.match(waitingOn(tasks[1]!,store),/accepted dependencies/);
   store.update(tasks[0]!.id,{status:'failed'});assert.equal(store.runnable(tasks[1]!),false);
   store.update(tasks[0]!.id,{status:'ready'});assert.equal(store.runnable(tasks[1]!),true);store.close();
 });

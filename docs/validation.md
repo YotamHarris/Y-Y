@@ -23,7 +23,7 @@ The [initial hosted Checks run](https://github.com/YotamHarris/Y-Y/actions/runs/
 
 Signed TapDemo build 10 [uploaded successfully](https://github.com/YotamHarris/Y-Y/actions/runs/37276849496) and passed Apple processing after the unused camera/Bluetooth backends were excluded. Assignment to YY Internal succeeded. The [latest readiness diagnostics](https://github.com/YotamHarris/Y-Y/actions/runs/37280295605) reported `READY_FOR_BETA_TESTING`, so testing/installation readiness is still unconfirmed. The diagnostic polling run was deliberately cancelled after capturing that state. Owner sign-in to App Store Connect is pending to inspect the tester setup. A complete live game change/PR/merge and real iPhone installation/performance remain acceptance work. Branch protection is optional.
 
-Keep the first live workflow logs and iPhone results as acceptance evidence. Diagnose missing configuration/signing separately from code failures; use `/status resume:true` after fixing prerequisites so the existing build is reconciled rather than manually starting duplicate uploads.
+Keep the first live workflow logs and iPhone results as acceptance evidence. Diagnose missing configuration/signing separately from code failures; reply continue on the existing task after fixing prerequisites so the existing build is reconciled rather than manually starting duplicate uploads.
 
 ## Conversational manager (2026-10-05)
 
@@ -49,3 +49,29 @@ or build, and the acceptance card stayed in progress until the coordinator
 explicitly recorded the successful check. Discord button clicks and a complete approved live
 game-change path still need human acceptance; unit coverage does not establish
 those external interactions.
+
+## BodySimulation manager migration (2026-10-05)
+
+The expanded migration ports ongoing planning rounds, two isolated workers,
+serial publication, separate quick chat, native Claude session resume,
+structured owner choices/forms, task revisions, acceptance distinct from
+delivery, global pause/resume/stop/status/models, concise reports and receipt
+reconciliation. Routine Status/Cancel buttons were removed from code and 16
+existing controls were cleared from eight Discord messages.
+
+`npm run check` passed 60 tests, including slot refill while another worker is
+active, pause/stop preservation, exact-commit acceptance, revisions, steering
+during a merge, new planning rounds, multi-question answers, session fallback,
+reviewer isolation and recovery of a lost Discord send response. Claude's native
+subscription authentication was verified locally. These tests do not establish
+human Discord button/form acceptance or a new live game change.
+
+Live migration checks: the restarted bot connected, and Discord registration
+replaced the old menu with the five global commands. A new meatbag-talk public
+thread was created in general (the bot cannot create guild channels), and board
+card YYEN-13 provides the same quick-question lane. A real Sonnet board answer
+completed in 12.6 seconds; a second question reused both its task and native
+Claude session. Replies arrived on the board, with no worktree, PR or build.
+A disposable native Codex workspace-write probe changed its one requested file
+successfully after matching BodySimulation's automatic approval mode and explicit
+Windows sandbox setting. Game validations now request rendering smoke as well.

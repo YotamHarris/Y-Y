@@ -9,6 +9,7 @@ export interface Config {
   auth: Record<Provider,'subscription' | 'api'>; executables: Record<Provider,string>;
   timeout: number; games: Record<string,GameConfig>;
   conversationChannelId?:string; talkChannelId?:string;
+  workerSlots?:number; quickProvider?:Provider; quickModel?:string;
 }
 export function loadConfig(env: NodeJS.ProcessEnv=process.env): Config {
   const root=resolve(env.YY_REPO_ROOT || fileURLToPath(new URL('../../../../',import.meta.url)));
@@ -31,11 +32,16 @@ export function loadConfig(env: NodeJS.ProcessEnv=process.env): Config {
   const timeout=Number(env.YY_AGENT_TIMEOUT_MS || 1_800_000);
   if(!Number.isSafeInteger(timeout) || timeout<1000) throw new Error('Invalid YY_AGENT_TIMEOUT_MS');
   for(const key of ['YY_DISCORD_CHANNEL_ID','YY_DISCORD_TALK_CHANNEL_ID']) if(env[key] && !/^\d{17,20}$/.test(env[key]!)) throw new Error(`${key} must be a Discord ID`);
+  const workerSlots=Number(env.YY_WORKER_SLOTS || 2);
+  if(!Number.isInteger(workerSlots) || workerSlots<1 || workerSlots>2) throw new Error('YY_WORKER_SLOTS must be 1 or 2');
+  const quickProvider=env.YY_QUICK_PROVIDER || provider;
+  if(quickProvider!=='codex' && quickProvider!=='claude') throw new Error('YY_QUICK_PROVIDER must be codex or claude');
   return {root,data:resolve(env.YY_DATA_DIR || resolve(root,'.yy')),guildId:snowflake('DISCORD_GUILD_ID'),applicationId:snowflake('DISCORD_APPLICATION_ID'),users,
     discordToken:required('DISCORD_TOKEN'),githubToken:required('GITHUB_TOKEN'),repository,defaultProvider:provider,
     auth:{codex:authMode('YY_CODEX_AUTH'),claude:authMode('YY_CLAUDE_AUTH')},
     executables:{codex:env.YY_CODEX_PATH || 'codex',claude:env.YY_CLAUDE_PATH || 'claude'},timeout,games,
-    conversationChannelId:env.YY_DISCORD_CHANNEL_ID,talkChannelId:env.YY_DISCORD_TALK_CHANNEL_ID};
+    conversationChannelId:env.YY_DISCORD_CHANNEL_ID,talkChannelId:env.YY_DISCORD_TALK_CHANNEL_ID,workerSlots,quickProvider,
+    quickModel:env.YY_QUICK_MODEL || (quickProvider==='claude' ? 'sonnet' : undefined)};
 }
 export function authorized(config: Pick<Config,'guildId'|'users'>,guildId:string|null,userId:string) {
   return guildId===config.guildId && config.users.has(userId);

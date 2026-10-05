@@ -1,4 +1,4 @@
-param([string]$RepoRoot = (Split-Path $PSScriptRoot -Parent), [string]$ToolsRoot = $RepoRoot)
+param([string]$RepoRoot = (Split-Path $PSScriptRoot -Parent), [string]$ToolsRoot = $RepoRoot, [switch]$Smoke)
 $ErrorActionPreference = 'Stop'
 # Game jobs cannot edit service files. Validate the trusted service checkout separately from candidate C++.
 Push-Location -LiteralPath $ToolsRoot
@@ -9,4 +9,4 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Build tooling checks failed' }
 }
 finally { Pop-Location }
-& (Join-Path $PSScriptRoot 'build.ps1') -RepoRoot $RepoRoot -ToolsRoot $ToolsRoot
+& (Join-Path $PSScriptRoot 'build.ps1') -RepoRoot $RepoRoot -ToolsRoot $ToolsRoot -Smoke:$Smoke

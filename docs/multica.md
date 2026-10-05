@@ -62,68 +62,63 @@ native Multica runtime that could execute the same request separately.
 
 ## Request work and follow progress
 
-Open **YYEngine manager — how to request work** and write a goal or a question
-in ordinary comments. You can also create a TapDemo issue and describe the goal
-in a comment. Leave it unassigned to native agents.
+Open **YYEngine manager — how to request work** and describe a goal in ordinary
+comments. It gets a planning card. Reply to discuss choices and refine the proposed
+whole tasks, then say **approve** once. The planning conversation remains open
+for later goals; new replies invalidate an unapproved proposal.
 
-- “Make the targets easier to hit” opens read-only planning. Goals posted on the
-  manager card get their own cards, so the manager stays available for other questions.
-- Reply naturally on the planning card to refine it. A new reply invalidates the
-  previous proposal, including an answer sent while the planner was running.
-- “Approve” or “go ahead” queues the latest proposed tasks once, with dependencies.
-  Each implementation task gets its own card and, for Discord plans, its own thread.
-- “What is happening?” shows the board and coordinator state. Other questions are
-  read-only and run in a separate conversation lane while implementation/builds run.
-  Asking about a task does not reopen it or mark its acceptance complete.
-- Answer a paused task's question directly, or say “continue” / “try again.”
-  Say “cancel” on the task to stop it; cancelling an approved plan also cancels its tasks.
-- “Make a new TestFlight build” explicitly requests a build of current main.
-  A read-only question conversation stays read-only even if a follow-up mentions a build.
+Use **YYEngine manager — quick questions** for read-only conversation about the
+project and current work. It is available while workers are busy or paused. A
+quick-chat reply cannot approve a plan, edit code, start a build or control workers.
+Claude resumes saved sessions and resets quick chat after three quiet hours;
+Codex receives the saved transcript.
 
-In Discord, write in the channel already used by your tasks. With no existing
-tasks, configure `YY_DISCORD_CHANNEL_ID` locally. `YY_DISCORD_TALK_CHANNEL_ID`
-selects an optional read-only channel; a channel named `meatbag-talk` is also
-recognized. Plans have **Approve plan** buttons; paused work has **Continue**,
-and task threads have **Status** / **Cancel** buttons and a live progress line.
-Buttons are checked against the current proposal and authorized users after restarts.
+Approved tasks get separate cards and, for Discord goals, separate threads. Two
+workers can implement unrelated tasks in isolated worktrees. Independent review,
+local validation and required CI precede automatic publication. **Accept** the
+published result to unlock dependent tasks, or describe changes in its comments
+to reopen the same task, worktree and conversation. Acceptance is independent of
+TestFlight delivery; no extra approval gates commit/push.
 
-These commands remain optional, including explicit provider/dependency selection:
+On the manager card, say **status**, **pause**, **resume** or **stop**. Status groups
+Working on, Needs you, Queued and reported Usage. Pause lets active workers finish
+and holds queued workers; stop interrupts managed local processes while retaining
+work. Resume releases stopped work. In a task conversation, answer its question,
+say continue after fixing a prerequisite, or cancel that task. “Make a new
+TestFlight build” on the manager card explicitly requests a build of current main.
 
-| Comment | Behavior |
-| --- | --- |
-| `/yy ask Explain the scoring` | Read-only discussion. |
-| `/yy plan Describe the goal` | Read-only proposal of up to eight whole tasks. |
-| `/yy approve` | Approve the proposed tasks once; implementation queues automatically. |
-| `/yy change provider=codex Add two points per hit` | Implement through existing checks, independent review, CI, merge and TestFlight. |
-| `/yy change provider=claude depends=YYEN-12 Update the score display` | Wait for the referenced coordinator task to complete successfully. |
-| `/yy build` | Build and distribute current main. |
-| `/yy resume Your answer` | Continue a paused task with your answer, or retry after fixing prerequisites. |
-| `/yy cancel` | Cancel remaining work and preserve the branch. |
+In Discord, normal project-channel messages start planning on the original message.
+Use `YY_DISCORD_CHANNEL_ID` for a fresh setup. `YY_DISCORD_TALK_CHANNEL_ID` can
+select a read-only channel or persistent thread named `meatbag-talk`. Decision
+controls appear only for plan approval, questions, published-result review and
+recovery. Questions offer a few choices, recommended first, plus **Answer in my
+own words**. Routine updates have no buttons. One progress line per run is removed
+when that run ends; task reports retain the detail in an attachment.
 
-Card creation and dragging statuses do not start work. Fresh owner comments open
-read-only conversations; implementation starts only after approving a proposal
-or explicitly requesting a change/build. Comments older than the first deployment
-of conversation support are not reinterpreted on restart. Generated manager replies
-are excluded from input, even though the CLI posts with the owner's account.
-Invited observers cannot request work;
-to enable your second developer, add their Multica member UUID and existing
-authorized Discord user ID to the `owners` mapping in local `board.json`, then
-restart the bot. Commands do not silently switch your chosen provider.
+Discord has five global commands: `/status`, `/models`, `/pause`, `/resume`,
+`/stop`. The old per-task command menu is retired. The board still recognizes
+historical `/yy` inputs for compatibility; ordinary conversation is the normal
+workflow. Controls reject outdated proposals/questions/commit reviews and enforce
+the owner allowlist after restarts.
 
-Discord tasks automatically receive matching cards, including their original
-thread link. Comments retain stage transitions, results and workflow links.
-Metadata shows `pipeline_status`, `waiting_on`, `latest_progress`, `question`,
-`pr_url` and `build_url`. The manager guide has a `last_seen` heartbeat while the
-connection runs. Sync occurs every ten seconds; outages retain pending updates.
+Card creation and dragging statuses do not start work. Only mapped owners can
+request work; generated manager comments are excluded even when posted through
+the owner's CLI account. To enable the second developer, add their member UUID
+and authorized Discord user ID to the local `owners` mapping and restart the bot.
+Provider selection never silently changes after a login or usage failure.
 
-BodySimulation's manager informed approval consumption, dependency ordering,
-preserved work, persistent transcripts and explicit owner questions. Approval
-atomically creates tasks with stable event IDs, preventing duplicate execution
-after restart. Dependencies wait for `completed` or verified `ready`, including
-TestFlight acceptance for change tasks. A failed prerequisite does not count as
-success. Revisions to an unapproved plan are ordinary replies; describe further
-goals on the manager card or in the project channel. YYEngine retains its own review and
-deployment gates; BodySimulation's GPU and landing tools are not required.
+Cards show `pipeline_status`, `waiting_on`, `latest_progress`, `question`,
+`owner_review`, `review_commit`, `accepted_commit`, PR and build links. The
+manager guide has a `last_seen` heartbeat and mode. Sync runs every ten seconds;
+receipt markers recover lost create/comment responses without duplicating work.
+Discord uses receipt footers and startup history reconciliation for the same
+recovery guarantees. Existing cards retain their recorded acceptance state.
+
+This ports BodySimulation's planning conversations, task management, two-worker
+scheduling, independent quick chat, revisions, owner acceptance, global controls
+and report structure. YYEngine retains its game scope, trusted validations and
+coordinator-owned publication/distribution. Its Apple readiness checks remain
+required; unrelated BodySimulation GPU tools are not part of this service.
 
 The initial project records the completed baseline, the signing failure, live
 change/merge acceptance and real iPhone testing. Acceptance tracking cards do not

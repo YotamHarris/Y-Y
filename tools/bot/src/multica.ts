@@ -6,11 +6,12 @@ import { Store } from './store.js';
 import type { Coordinator } from './coordinator.js';
 import { redact, run, withoutSecrets } from './process.js';
 import type { Kind, Task } from './types.js';
-import { buildRequest, control, question, reply, statusText } from './conversation.js';
+import { buildRequest, control, hearQuick, reply, statusText } from './conversation.js';
+import { managerAction, managerOutlook } from './manager-state.js';
 
 export interface BoardConfig {
   executable:string; profile:string; projectId:string; game:string;
-  owners:Record<string,string>; managerIssueId?:string;
+  owners:Record<string,string>; managerIssueId?:string; talkIssueId?:string;
 }
 export interface BoardIssue { id:string; identifier:string; title:string; description:string|null; status:string; assignee_type?:string|null; project_id:string|null }
 export interface BoardComment { id:string; author_id:string; author_type:string; content:string; created_at:string; deleted_at?:string|null }
@@ -50,16 +51,18 @@ export function loadBoardConfig(config:Config):BoardConfig|undefined {
     || Object.values(board.owners).some(id=>!config.users.has(id))) throw new Error('Invalid Multica board configuration or owner mapping');
   return board;
 }
-export function boardStatus(task:Task):string {
-  if(task.status==='ready' || task.status==='completed') return 'done';
+export function boardStatus(task:Task,store?:Store):string {
   if(task.status==='cancelled') return 'cancelled';
+  if(task.acceptance==='pending') return 'in_review';
+  if(task.kind==='plan' && task.approvedBy && store && store.list().some(t=>t.parentTaskId===task.id && (t.reviewSha ? t.acceptedSha!==t.reviewSha : !['completed','ready','cancelled'].includes(t.status)))) return 'in_progress';
+  if(task.status==='ready' || task.status==='completed') return 'done';
   if(['failed','waiting_input','interrupted'].includes(task.status)) return 'blocked';
   if(task.status==='queued') return 'todo';
   if(['reviewing','awaiting_checks'].includes(task.status)) return 'in_review';
   return 'in_progress';
 }
 export function waitingOn(task:Task,store:Store):string {
-  if(task.status==='queued' && !store.runnable(task)) return 'Dependencies: '+(task.dependencies || []).filter(id=>!['ready','completed'].includes(store.get(id)?.status || '')).join(', ');
+  if(task.status==='queued' && !store.runnable(task)) return 'Waiting for accepted dependencies: '+(task.dependencies || []).filter(id=>!store.runnable({...task,dependencies:[id]})).join(', ');
   if(task.kind==='plan' && task.status==='waiting_input' && task.proposal?.length) return 'Owner approval of proposed tasks';
   if(task.status==='waiting_input') return task.question || task.error || 'Owner clarification or local provider attention';
   if(task.status==='interrupted') return 'Owner resume after service interruption; preserved worktree';
@@ -86,6 +89,7 @@ export class BoardBridge {
       this.store.setState(`manager-board-context:${this.board.game}`,redact(JSON.stringify(issues.map(i=>({
         card:i.identifier,title:i.title,status:i.status,description:i.description?.slice(0,2000)
       })))).slice(-20000));
+      if(this.board.talkIssueId) for(const task of this.store.list().filter(t=>t.quickKey && t.game===this.board.game && !t.boardIssueId)) this.store.update(task.id,{boardIssueId:this.board.talkIssueId});
       for(const task of this.store.list().filter(t=>t.game===this.board.game)) {
         // Recover a create whose response was lost, using an immutable task marker.
         const marker=`YYEngine task: ${task.id}`;
@@ -120,8 +124,8 @@ export class BoardBridge {
       }
       for(const task of this.store.list().filter(t=>t.game===this.board.game && t.boardIssueId)) {
         if(task.kind==='ask' || task.conversationParentId || task.boardIssueId===this.board.managerIssueId) continue;
-        const status=boardStatus(task),waiting=redact(waitingOn(task,this.store)).slice(0,1500);
-        const snapshot={status,waiting,progress:task.progress,summary:task.summary,question:task.question,pr:task.prUrl,build:task.runUrl};
+        const status=boardStatus(task,this.store),waiting=task.acceptance==='pending' ? 'Owner acceptance of the published commit; delivery tracked separately' : redact(waitingOn(task,this.store)).slice(0,1500);
+        const snapshot={status,waiting,progress:task.progress,summary:task.summary,question:task.question,pr:task.prUrl,build:task.runUrl,review:task.reviewSha,accepted:task.acceptedSha};
         const key=`snapshot:${task.id}`,hash=digest(snapshot);
         if(this.store.state(key)===hash) continue;
         const issue=issues.find(i=>i.id===task.boardIssueId);if(!issue) continue;
@@ -132,7 +136,8 @@ export class BoardBridge {
         }
         if(issue.status!==status) {await this.api.update(issue.id,status);issue.status=status;}
         for(const [name,value] of Object.entries({yy_task_id:task.id,pipeline_status:task.status,waiting_on:waiting,provider:task.provider,
-          latest_progress:redact(task.progress || '').slice(-2000),question:redact(task.question || '').slice(-1500),pr_url:task.prUrl || '',build_url:task.runUrl || ''})) {
+          latest_progress:redact(task.progress || '').slice(-2000),question:redact(task.question || '').slice(-1500),pr_url:task.prUrl || '',build_url:task.runUrl || '',
+          owner_review:task.acceptance || '',review_commit:task.reviewSha || '',accepted_commit:task.acceptedSha || ''})) {
           const metadataKey=`meta:${task.id}:${name}`;if(this.store.state(metadataKey)===value) continue;
           await this.api.metadata(issue.id,name,value);this.store.setState(metadataKey,value);
         }
@@ -147,7 +152,8 @@ export class BoardBridge {
       }
       if(this.board.managerIssueId && Date.now()-Number(this.store.state('heartbeat') || 0)>60_000) {
         await this.api.metadata(this.board.managerIssueId,'last_seen',new Date().toISOString());
-        await this.api.metadata(this.board.managerIssueId,'coordinator','Connected: Discord + Multica, one serial work queue');
+        await this.api.metadata(this.board.managerIssueId,'coordinator',`Connected: Discord + Multica, ${this.config.workerSlots || 2} isolated workers, serial publication`);
+        await this.api.metadata(this.board.managerIssueId,'manager_mode',this.store.state('manager-mode') || 'running');
         this.store.setState('heartbeat',String(Date.now()));
       }
     } finally {this.busy=false;}
@@ -158,29 +164,33 @@ export class BoardBridge {
     const text=comment.content.trim();if(!text) return;
     const userId=this.board.owners[comment.author_id]!;
     const hub=issue.id===this.board.managerIssueId;
+    const talk=issue.id===this.board.talkIssueId;
+    if(talk) {hearQuick(this.store,this.config,{key:`board:${issue.id}`,text,eventId:comment.id,userId,game:this.board.game,channelId:'multica',boardIssueId:issue.id});return;}
     const current=hub ? undefined : this.store.conversationByBoard(issue.id);
+    const global=hub ? managerAction(text) : undefined;
+    if(global) {
+      if(global!=='status') await this.coordinator.setMode(global==='pause' ? 'paused' : global==='stop' ? 'stopped' : 'running');
+      await this.api.comment(issue.id,'YYEngine manager: '+managerOutlook(this.store));return;
+    }
     const action=control(text);
     if(action==='status' && !current) {
       await this.api.comment(issue.id,'YYEngine manager: Current board:\n'+issues.filter(i=>i.id!==this.board.managerIssueId).map(i=>`${i.identifier} · ${i.title} · ${i.status}\n${redact(i.description || '').slice(0,1500)}`).join('\n\n')+'\n\nCoordinator:\n'+(this.store.list().filter(t=>t.game===this.board.game && !t.conversationParentId).slice(-10).map(t=>statusText(t,this.store)).join('\n\n') || 'No coordinator tasks yet.'));return;
     }
     if(action && !current) throw new Error('Open the relevant task card to approve, continue or cancel it. You can describe a new goal here.');
-    if(current && (action || current.kind==='ask' || !buildRequest(text) && (current.kind==='plan' && !current.approvedBy || !question(text) && ['waiting_input','interrupted','failed'].includes(current.status)))) {
+    if(current && !buildRequest(text)) {
       await reply(this.store,this.coordinator,current,text,comment.id,userId);return;
     }
-    const kind=buildRequest(text) ? 'build' : question(text) ? 'ask' : 'plan';
+    const kind=buildRequest(text) ? 'build' : 'plan';
     const task=this.store.create({eventId:`multica:${comment.id}`,kind,game:this.board.game,provider:current?.provider || this.config.defaultProvider,
       userId,channelId:'multica',prompt:text});
-    this.store.update(task.id,{source:'multica',boardIssueId:(hub || current) && kind!=='ask' ? undefined : issue.id,
-      originBoardIssueId:(hub || current) && kind!=='ask' ? issue.id : undefined,
-      conversationParentId:kind==='ask' && (current || hub) ? current?.id || 'manager' : undefined});
+    this.store.update(task.id,{source:'multica',boardIssueId:hub || current ? undefined : issue.id,
+      originBoardIssueId:hub || current ? issue.id : undefined,
+      conversationParentId:undefined});
     if(current) this.store.message(task.id,'context',this.store.context(current.id));
-    if(kind==='ask') for(const previous of this.store.list().filter(t=>t.id!==task.id && t.kind==='ask' && t.boardIssueId===issue.id).slice(-3)) {
-      this.store.message(task.id,'context',this.store.context(previous.id));
-    }
     this.store.message(task.id,'context',`Current TapDemo board observations:\n${redact(JSON.stringify(issues.map(i=>({card:i.identifier,title:i.title,status:i.status,description:i.description?.slice(0,2000)})))).slice(-20000)}`);
     if(!hub) this.store.message(task.id,'context',`${issue.title}\n${issue.description || ''}`);
     this.store.message(task.id,'user',text,comment.id);
-    this.store.notify(task.id,kind==='ask' ? 'I’m checking. This conversation is read-only.' : kind==='build' ? 'Queued a TestFlight build of current main. I’ll report upload, processing and testing readiness separately.' : 'I’m looking into this and will propose a plan. Reply naturally to refine it; approve starts the proposed tasks.');
+    this.store.notify(task.id,kind==='build' ? 'Queued a TestFlight build of current main. I’ll report upload, processing and testing readiness separately.' : 'Let’s plan this here. I’ll read the code, discuss the choices, and propose complete tasks; approval starts them. This conversation stays open for follow-up goals.');
   }
   private async command(issue:BoardIssue,comment:BoardComment,issues:BoardIssue[]) {
     if(issue.assignee_type==='agent' || issue.assignee_type==='squad') throw new Error('Remove the native agent assignment first; this card is managed by the YYEngine coordinator');
