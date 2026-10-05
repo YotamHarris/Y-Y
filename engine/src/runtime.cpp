@@ -204,9 +204,10 @@ bool Runtime::event(const void* raw) {
   const auto& event=*static_cast<const SDL_Event*>(raw);
   if(event.type==SDL_EVENT_QUIT) return false;
   if(event.type==SDL_EVENT_WILL_ENTER_BACKGROUND || event.type==SDL_EVENT_WINDOW_MINIMIZED) {
+    // Pause first so a game can tell these forced releases from a player letting go.
+    impl->paused=true; impl->clock.reset(); impl->game->pause(true);
     for(const auto& ended: impl->pointers.cancel()) impl->deliver(ended);
     if(impl->haptics) impl->haptics->humStop();
-    impl->paused=true; impl->clock.reset(); impl->game->pause(true);
     if(impl->audio.stream) SDL_PauseAudioStreamDevice(impl->audio.stream);
   }
   if(event.type==SDL_EVENT_DID_ENTER_FOREGROUND || event.type==SDL_EVENT_WINDOW_RESTORED) {
