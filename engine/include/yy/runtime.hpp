@@ -1,5 +1,6 @@
 #pragma once
 #include "core.hpp"
+#include "input.hpp"
 #include <memory>
 #include <string>
 #include <string_view>
@@ -19,14 +20,29 @@ public:
   virtual ~Audio() = default;
   virtual void tone(float hz, float seconds=0.08f) = 0;
 };
-struct Services { Renderer& renderer; Audio& audio; };
+// Phone haptics. Desktop and devices without a haptic engine ignore every call.
+class Haptics {
+public:
+  virtual ~Haptics() = default;
+  virtual void impact(float strength) = 0;   // short tap, strength 0..1
+  virtual void humStart(float intensity) = 0; // continuous hum 0..1; calling again while humming changes its intensity
+  virtual void humStop() = 0;
+  virtual void thump() = 0;                   // firm release
+};
+struct Services { Renderer& renderer; Audio& audio; Haptics& haptics; };
 class Game {
 public:
   virtual ~Game() = default;
   virtual void initialize(Services&) = 0;
   virtual void update(float seconds) = 0;
   virtual void render(Renderer&) = 0;
-  virtual void tap(Vec2 position) = 0;
+  virtual void tap(Vec2 position) = 0; // on every pointer down, after pointerDown
+  // Per-contact input in logical coordinates; see PointerTracker for ids. Pinch is the game's to recognize.
+  virtual void pointerDown(int /*id*/, Vec2 /*position*/) {}
+  virtual void pointerMove(int /*id*/, Vec2 /*position*/) {}
+  virtual void pointerUp(int /*id*/, Vec2 /*position*/) {}
+  // Mouse wheel at a logical point: positive steps zoom in.
+  virtual void zoom(Vec2 /*at*/, float /*steps*/) {}
   virtual void pause(bool paused) = 0;
   virtual void shutdown() = 0;
 };

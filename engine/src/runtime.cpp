@@ -11,6 +11,10 @@
 #include <psapi.h>
 #elif defined(__APPLE__)
 #include <mach/mach.h>
+#include <TargetConditionals.h>
+#endif
+#if defined(__APPLE__) && TARGET_OS_IOS
+#include "apple_haptics.hpp"
 #endif
 
 namespace yy {
@@ -91,12 +95,26 @@ public:
     SDL_PutAudioStreamData(stream,samples.data(),count*sizeof(float));
   }
 };
+class NoHaptics final: public Haptics {
+public:
+  void impact(float) override {}
+  void humStart(float) override {}
+  void humStop() override {}
+  void thump() override {}
+};
+#if defined(__APPLE__) && TARGET_OS_IOS
+using PlatformHaptics=AppleHaptics;
+#else
+using PlatformHaptics=NoHaptics;
+#endif
 }
 struct Runtime::Impl {
   std::unique_ptr<Game> game;
   SDL_Window* window{};
   SDLRenderer renderer;
   SDLAudio audio;
+  std::unique_ptr<Haptics> haptics;
+  PointerTracker pointers;
   FixedClock clock;
   std::uint64_t previous{}, frames{};
   double totalMs{}, worstMs{};
@@ -108,6 +126,39 @@ struct Runtime::Impl {
     SDL_Rect safe{0,0,w,h}; SDL_GetWindowSafeArea(window,&safe);
     renderer.viewport.safe={static_cast<float>(safe.x),static_cast<float>(safe.y),static_cast<float>(safe.w),static_cast<float>(safe.h)};
     renderer.pixelScale=w>0 ? static_cast<float>(pw)/w : 1;
+  }
+  void deliver(const std::optional<PointerEvent>& e) {
+    if(!e) return;
+    if(e->phase==PointerEvent::Phase::Down) { game->pointerDown(e->id,e->position); game->tap(e->position); }
+    else if(e->phase==PointerEvent::Phase::Move) game->pointerMove(e->id,e->position);
+    else game->pointerUp(e->id,e->position);
+  }
+  void pointer(const SDL_Event& event) {
+    viewport(); const auto& v=renderer.viewport;
+    switch(event.type) {
+    case SDL_EVENT_FINGER_DOWN: case SDL_EVENT_FINGER_MOTION: case SDL_EVENT_FINGER_UP: case SDL_EVENT_FINGER_CANCELED: {
+      int w=0,h=0; SDL_GetWindowSize(window,&w,&h);
+      const Vec2 p{event.tfinger.x*w,event.tfinger.y*h}; const auto finger=static_cast<std::uint64_t>(event.tfinger.fingerID);
+      if(event.type==SDL_EVENT_FINGER_DOWN) deliver(pointers.down(finger,p,v));
+      else if(event.type==SDL_EVENT_FINGER_MOTION) deliver(pointers.move(finger,p,v));
+      else deliver(pointers.up(finger,p,v));
+      break;
+    }
+    case SDL_EVENT_MOUSE_BUTTON_DOWN: case SDL_EVENT_MOUSE_BUTTON_UP:
+      if(event.button.button!=SDL_BUTTON_LEFT || event.button.which==SDL_TOUCH_MOUSEID) break;
+      if(event.type==SDL_EVENT_MOUSE_BUTTON_DOWN) deliver(pointers.down(PointerTracker::mouse,{event.button.x,event.button.y},v));
+      else deliver(pointers.up(PointerTracker::mouse,{event.button.x,event.button.y},v));
+      break;
+    case SDL_EVENT_MOUSE_MOTION:
+      if(event.motion.which!=SDL_TOUCH_MOUSEID) deliver(pointers.move(PointerTracker::mouse,{event.motion.x,event.motion.y},v));
+      break;
+    case SDL_EVENT_MOUSE_WHEEL:
+      if(event.wheel.which==SDL_TOUCH_MOUSEID) break;
+      if(auto at=v.map({event.wheel.mouse_x,event.wheel.mouse_y}))
+        game->zoom(*at,event.wheel.direction==SDL_MOUSEWHEEL_FLIPPED ? -event.wheel.y : event.wheel.y);
+      break;
+    default: break;
+    }
   }
   void metrics() {
     if(!frames) return;
@@ -145,14 +196,16 @@ bool Runtime::initialize() {
   impl->renderer.handle=SDL_CreateRenderer(impl->window,driver);
   if(!impl->renderer.handle) { SDL_Log("Renderer: %s",SDL_GetError()); return false; }
   SDL_SetRenderVSync(impl->renderer.handle,1);
-  impl->audio.initialize(); impl->viewport();
-  Services services{impl->renderer,impl->audio}; impl->game->initialize(services);
+  impl->audio.initialize(); impl->viewport(); impl->haptics=std::make_unique<PlatformHaptics>();
+  Services services{impl->renderer,impl->audio,*impl->haptics}; impl->game->initialize(services);
   impl->previous=SDL_GetTicksNS(); impl->initialized=true; return true;
 }
 bool Runtime::event(const void* raw) {
   const auto& event=*static_cast<const SDL_Event*>(raw);
   if(event.type==SDL_EVENT_QUIT) return false;
   if(event.type==SDL_EVENT_WILL_ENTER_BACKGROUND || event.type==SDL_EVENT_WINDOW_MINIMIZED) {
+    for(const auto& ended: impl->pointers.cancel()) impl->deliver(ended);
+    if(impl->haptics) impl->haptics->humStop();
     impl->paused=true; impl->clock.reset(); impl->game->pause(true);
     if(impl->audio.stream) SDL_PauseAudioStreamDevice(impl->audio.stream);
   }
@@ -160,16 +213,7 @@ bool Runtime::event(const void* raw) {
     impl->paused=false; impl->clock.reset(); impl->previous=SDL_GetTicksNS(); impl->game->pause(false);
     if(impl->audio.stream) SDL_ResumeAudioStreamDevice(impl->audio.stream);
   }
-  if(!impl->paused && (event.type==SDL_EVENT_MOUSE_BUTTON_DOWN || event.type==SDL_EVENT_FINGER_DOWN)) {
-    impl->viewport(); Vec2 p;
-    if(event.type==SDL_EVENT_FINGER_DOWN) {
-      int w=0,h=0; SDL_GetWindowSize(impl->window,&w,&h); p={event.tfinger.x*w,event.tfinger.y*h};
-    } else {
-      if(event.button.button!=SDL_BUTTON_LEFT || event.button.which==SDL_TOUCH_MOUSEID) return true;
-      p={event.button.x,event.button.y};
-    }
-    if(auto logical=impl->renderer.viewport.map(p)) impl->game->tap(*logical);
-  }
+  if(!impl->paused) impl->pointer(event);
   return true;
 }
 bool Runtime::iterate() {
