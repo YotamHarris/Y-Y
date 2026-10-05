@@ -129,6 +129,11 @@ class NativeManagerTests(unittest.TestCase):
 
 
 class MobileSafetyTests(unittest.TestCase):
+    def test_codex_extended_paths_are_normalized_before_checkout_matching(self):
+        import fe_codex
+        self.assertEqual(fe_codex.plain_path("\\\\?\\C:\\game\\studio"), "C:/game/studio")
+        self.assertEqual(fe_codex.plain_path("\\\\?\\\\tmp\\game"), "/tmp/game")
+
     def test_native_presence_refresh_survives_a_board_restart(self):
         live = fe_board.Live()
         live.data = {"A2": {"doing": "last reading"}}

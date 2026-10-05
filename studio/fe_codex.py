@@ -63,7 +63,7 @@ def state_db(root=None):
 def plain_path(path):
     """Codex stores Windows paths in their extended form (\\\\?\\D:\\...)."""
     path = str(path or "")
-    return path[4:] if path.startswith("\\\\?\\") else path
+    return (path[4:] if path.startswith("\\\\?\\") else path).replace("\\", "/")
 
 
 def stamp(ts):
