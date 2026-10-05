@@ -369,6 +369,49 @@ static void tapdemoChecks() {
     m.restart(0,500); check(m.ballCount==1 && m.bouncesPerBall==Model::maxSetting,"debug values clamp");
   }
   {
+    // A press that touches a brick holds the ball at the closest open spot within one cell.
+    Model m(30); const float c=Model::cell;
+    only(m,{},1); std::fill(m.bricks.begin(),m.bricks.end(),1);
+    for(int r=20; r<23; ++r) for(int col=10; col<13; ++col) m.bricks[r*Model::columns+col]=0; // a 3x3 cavity
+    m.refreshFog();
+    const yy::Vec2 inside{11.5f*c,21.5f*c};
+    auto spot=m.placeNear(inside);
+    check(spot && spot->x==inside.x && spot->y==inside.y,"an open tap is unchanged");
+    const yy::Vec2 beside{10*c-4,21.5f*c}; // 4 units into the brick left of the cavity
+    spot=m.placeNear(beside);
+    check(spot && m.canPlace(*spot),"a tap onto a brick snaps to an open spot");
+    check(spot && near(spot->x,10*c+Model::ballRadius,0.3f) && near(spot->y,beside.y,0.3f),"it is the closest open spot");
+    check(spot && std::hypot(spot->x-beside.x,spot->y-beside.y)<=c,"within one cell of the tap");
+    // Just past a corner of the cavity the closest spot is the corner of the open square.
+    spot=m.placeNear({10*c-3,20*c-3});
+    check(spot && m.canPlace(*spot) && near(spot->x,10*c+Model::ballRadius,0.3f) && near(spot->y,20*c+Model::ballRadius,0.3f),"a tap past a cavity corner snaps to the corner");
+    check(!m.placeNear({10*c-30,21.5f*c}),"nothing open within one cell: rejected");
+    check(!m.placeNear({3.5f*c,3.5f*c}),"deep in solid bricks: rejected");
+    check(!m.placeNear({std::nanf(""),10}),"a non-finite tap is rejected");
+    only(m,{},1);
+    spot=m.placeNear({4,400});
+    check(spot && near(spot->x,Model::ballRadius,0.3f) && near(spot->y,400,0.3f),"a tap near the wall snaps inward");
+    spot=m.placeNear({Model::width()+5,Model::height()-3});
+    check(spot && m.canPlace(*spot) && near(spot->x,Model::width()-Model::ballRadius,0.3f) && near(spot->y,Model::height()-Model::ballRadius,0.3f),"a tap past the corner of the grid snaps to the corner");
+  }
+  {
+    // The touch path: down beside a cavity anchors the aim on the snapped spot, and up launches from it.
+    Model m(31); tapdemo::Touch t(m); t.instructions=false; const float c=Model::cell;
+    std::fill(m.bricks.begin(),m.bricks.end(),1); std::fill(m.powers.begin(),m.powers.end(),Power::None); m.goal=-1;
+    for(int r=20; r<23; ++r) for(int col=10; col<13; ++col) m.bricks[r*Model::columns+col]=0;
+    m.refreshFog();
+    const yy::Vec2 tap{10*c-4,21.5f*c};
+    t.down(0,t.camera.toScreen(tap));
+    check(t.aim && near(t.aim->anchor.x,10*c+Model::ballRadius,0.3f) && near(t.aim->anchor.y,tap.y,0.3f) && t.rejectTime==0,"down on a brick beside a cavity anchors the aim at the snapped spot");
+    const yy::Vec2 anchor=t.aim->anchor;
+    const yy::Vec2 finger=t.camera.toScreen({anchor.x,anchor.y+30});
+    t.move(0,finger);
+    check(near(t.aim->pull.x,0,0.1f) && near(t.aim->pull.y,30,0.1f),"pull is measured from the snapped spot");
+    check(t.up(0,finger) && m.balls.size()==1 && near(m.balls[0].position.x,anchor.x,0.1f) && near(m.balls[0].position.y,anchor.y,0.1f),"release launches from the snapped spot");
+    t.down(0,t.camera.toScreen({3.5f*c,3.5f*c}));
+    check(!t.aim && t.rejectTime>0,"down deep in the bricks is still rejected");
+  }
+  {
     // The player's path: press in a pocket, pull, release, and a brick loses a hit point.
     Model m(21); tapdemo::Touch t(m); Recorder haptics; t.haptics=&haptics;
     const auto& cam=t.camera;

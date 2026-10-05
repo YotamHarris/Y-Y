@@ -2,6 +2,7 @@
 #include <yy/core.hpp>
 #include <algorithm>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace tapdemo {
@@ -86,6 +87,9 @@ public:
   bool visible(int column, int row) const { return fogDistance(column,row)<=fogReach; }
   // The ball circle at p lies inside the walls and overlaps no brick; flying balls do not block it.
   bool canPlace(yy::Vec2 p) const { return open(p); }
+  // Where a press at `tap` holds a ball: the tap itself when open, else the closest open spot
+  // within one cell of it, else nothing.
+  std::optional<yy::Vec2> placeNear(yy::Vec2 tap) const;
   // Launches from `at` opposite `pull` (finger minus ball). A pull shorter than minPull,
   // no balls left, a finished round or a spot a brick covers launches nothing.
   bool launch(yy::Vec2 at, yy::Vec2 pull);

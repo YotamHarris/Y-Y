@@ -102,6 +102,24 @@ bool Model::open(yy::Vec2 p) const {
   if(p.x<ballRadius || p.y<ballRadius || p.x>width()-ballRadius || p.y>height()-ballRadius) return false;
   return brickIndexHit(p)<0;
 }
+// Rings of growing radius around the tap; the first open sample is the closest, and the
+// angular order (from the +x direction, clockwise on screen) settles ties.
+std::optional<yy::Vec2> Model::placeNear(yy::Vec2 tap) const {
+  if(canPlace(tap)) return tap;
+  constexpr float ringStep=0.25f;
+  constexpr float twoPi=6.28318530718f;
+  const int rings=static_cast<int>(cell/ringStep);
+  for(int k=1; k<=rings; ++k) {
+    const float radius=k*ringStep;
+    const int steps=std::max(16,static_cast<int>(std::ceil(twoPi*radius/ringStep)));
+    for(int s=0; s<steps; ++s) {
+      const float angle=twoPi*s/steps;
+      const yy::Vec2 candidate{tap.x+radius*std::cos(angle), tap.y+radius*std::sin(angle)};
+      if(open(candidate)) return candidate;
+    }
+  }
+  return std::nullopt;
+}
 // Takes hit points off a brick; a glowing brick that breaks queues its power-up for fire().
 void Model::damage(int index, int points) {
   if(bricks[index]<=0) return;

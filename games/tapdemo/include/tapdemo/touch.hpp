@@ -38,7 +38,7 @@ struct Camera {
 
 // Turns pointer events into slingshot aims, pinch zoom and pans, with the aim's haptics.
 // While the instructions show, the first press only dismisses them. Then one finger on open
-// space holds a ball there; pulling aims it and letting go launches it opposite the pull.
+// space, or within a cell of it, holds a ball there; pulling aims it and letting go launches it opposite the pull.
 // One finger elsewhere pans; a second finger cancels any aim and pinches.
 class Touch {
   struct Finger { int id; yy::Vec2 position; };
@@ -76,8 +76,9 @@ public:
     fingers.push_back({id,p});
     if(fingers.size()==2) { cancel(); startPinch(); return; }
     const yy::Vec2 world=camera.toWorld(p);
-    if(!model.over() && model.ballsLeft>0 && model.canPlace(world)) {
-      aim=Aim{id,world,{}};
+    const auto spot=(!model.over() && model.ballsLeft>0) ? model.placeNear(world) : std::nullopt;
+    if(spot) {
+      aim=Aim{id,*spot,{}};
       if(haptics) haptics->humStart(humLevel());
     } else { rejected=world; rejectTime=0.45f; }
   }
