@@ -10,6 +10,8 @@
 #include <utility>
 #include <vector>
 
+void paletteChecks();
+
 static void check(bool condition, const char* label) { if(!condition) { std::cerr<<label<<'\n'; std::exit(1); } }
 
 using tapdemo::Hits;
@@ -449,5 +451,6 @@ int main() {
   clock.advance(1.0/30,[&](float){++ticks;}); check(ticks==2,"fixed updates");
   clock.reset(); clock.advance(100,[&](float){++ticks;}); check(ticks==8,"resume catch-up capped");
   tapdemoChecks();
+  paletteChecks();
   std::cout<<"Engine and TapDemo checks passed\n";
 }
