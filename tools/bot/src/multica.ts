@@ -7,7 +7,7 @@ import type { Coordinator } from './coordinator.js';
 import { redact, run, withoutSecrets } from './process.js';
 import type { Kind, Task } from './types.js';
 import { buildRequest, control, hearQuick, reply, statusText } from './conversation.js';
-import { managerAction, managerOutlook } from './manager-state.js';
+import { managerAction, managerOutlook, taskActivity, externalWork } from './manager-state.js';
 
 export interface BoardConfig {
   executable:string; profile:string; projectId:string; game:string;
@@ -54,7 +54,10 @@ export function loadBoardConfig(config:Config):BoardConfig|undefined {
 export function boardStatus(task:Task,store?:Store):string {
   if(task.status==='cancelled') return 'cancelled';
   if(task.acceptance==='pending') return 'in_review';
-  if(task.kind==='plan' && task.approvedBy && store && store.list().some(t=>t.parentTaskId===task.id && (t.reviewSha ? t.acceptedSha!==t.reviewSha : !['completed','ready','cancelled'].includes(t.status)))) return 'in_progress';
+  if(task.kind==='plan' && task.approvedBy && store) {
+    const pending=store.list().filter(t=>t.parentTaskId===task.id && t.status!=='cancelled' && (t.reviewSha ? t.acceptedSha!==t.reviewSha : !['completed','ready'].includes(t.status)));
+    if(pending.length) return pending.every(t=>!!t.reviewSha) ? 'in_review' : 'in_progress';
+  }
   if(task.status==='ready' || task.status==='completed') return 'done';
   if(['failed','waiting_input','interrupted'].includes(task.status)) return 'blocked';
   if(task.status==='queued') return 'todo';
@@ -62,14 +65,17 @@ export function boardStatus(task:Task,store?:Store):string {
   return 'in_progress';
 }
 export function waitingOn(task:Task,store:Store):string {
+  if(task.kind==='plan' && task.approvedBy) {
+    const reviews=store.list().filter(t=>t.parentTaskId===task.id && t.status!=='cancelled' && t.reviewSha && t.acceptedSha!==t.reviewSha);
+    if(reviews.length) return 'Owner acceptance of published tasks: '+reviews.map(t=>t.prompt.split('\n')[0]).join(', ');
+  }
   if(task.status==='queued' && !store.runnable(task)) return 'Waiting for accepted dependencies: '+(task.dependencies || []).filter(id=>!store.runnable({...task,dependencies:[id]})).join(', ');
   if(task.kind==='plan' && task.status==='waiting_input' && task.proposal?.length) return 'Owner approval of proposed tasks';
   if(task.status==='waiting_input') return task.question || task.error || 'Owner clarification or local provider attention';
   if(task.status==='interrupted') return 'Owner resume after service interruption; preserved worktree';
   if(task.status==='failed') return task.error || 'Failed checks/build; see the workflow and status updates';
   if(task.status==='queued') return 'Coordinator slot';
-  if(task.status==='awaiting_checks') return 'GitHub CI at the candidate commit';
-  if(['building','uploaded','processing'].includes(task.status)) return 'Hosted build / Apple processing and tester assignment';
+  if(externalWork.has(task.status)) return taskActivity(task);
   return '';
 }
 function digest(value:unknown) { return createHash('sha256').update(JSON.stringify(value)).digest('hex'); }
@@ -125,7 +131,8 @@ export class BoardBridge {
       for(const task of this.store.list().filter(t=>t.game===this.board.game && t.boardIssueId)) {
         if(task.kind==='ask' || task.conversationParentId || task.boardIssueId===this.board.managerIssueId) continue;
         const status=boardStatus(task,this.store),waiting=task.acceptance==='pending' ? 'Owner acceptance of the published commit; delivery tracked separately' : redact(waitingOn(task,this.store)).slice(0,1500);
-        const snapshot={status,waiting,progress:task.progress,summary:task.summary,question:task.question,pr:task.prUrl,build:task.runUrl,review:task.reviewSha,accepted:task.acceptedSha};
+        const progress=task.kind==='plan' && task.approvedBy && status==='in_review' ? waiting : taskActivity(task);
+        const snapshot={status,waiting,progress,summary:task.summary,question:task.question,pr:task.prUrl,build:task.runUrl,review:task.reviewSha,accepted:task.acceptedSha};
         const key=`snapshot:${task.id}`,hash=digest(snapshot);
         if(this.store.state(key)===hash) continue;
         const issue=issues.find(i=>i.id===task.boardIssueId);if(!issue) continue;
@@ -136,7 +143,7 @@ export class BoardBridge {
         }
         if(issue.status!==status) {await this.api.update(issue.id,status);issue.status=status;}
         for(const [name,value] of Object.entries({yy_task_id:task.id,pipeline_status:task.status,waiting_on:waiting,provider:task.provider,
-          latest_progress:redact(task.progress || '').slice(-2000),question:redact(task.question || '').slice(-1500),pr_url:task.prUrl || '',build_url:task.runUrl || '',
+          latest_progress:redact(progress).slice(-2000),question:redact(task.question || '').slice(-1500),pr_url:task.prUrl || '',build_url:task.runUrl || '',
           owner_review:task.acceptance || '',review_commit:task.reviewSha || '',accepted_commit:task.acceptedSha || ''})) {
           const metadataKey=`meta:${task.id}:${name}`;if(this.store.state(metadataKey)===value) continue;
           await this.api.metadata(issue.id,name,value);this.store.setState(metadataKey,value);

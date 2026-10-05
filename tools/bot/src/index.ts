@@ -13,6 +13,7 @@ import { BoardBridge, MulticaCLI, loadBoardConfig } from './multica.js';
 import { answer, buildRequest, hearQuick, reply } from './conversation.js';
 import { managerAction, managerOutlook, taskName } from './manager-state.js';
 import { decisions, deliverUpdate, type DeliveryChannel } from './discord-view.js';
+import { refreshLiveProgress } from './live-progress.js';
 
 const config=loadConfig();mkdirSync(config.data,{recursive:true});
 const lock=resolve(config.data,'service.lock');
@@ -206,20 +207,14 @@ let progressing=false;
 const liveProgress=async()=>{
   if(progressing || !client.isReady()) return;progressing=true;
   try {
-    for(const task of store.list().filter(t=>t.threadId)) {
-      const key=`discord-live:${task.id}`,id=store.state(key);
-      const running=['preparing','implementing','checking','reviewing','awaiting_checks','merging','building','uploaded','processing'].includes(task.status);
-      if(!running && !id) continue;
-      const channel=await client.channels.fetch(task.threadId!);if(!channel?.isSendable()) continue;
-      let line=id ? await channel.messages.fetch(id).catch(()=>undefined) : undefined;
-      if(!running) {if(line) await line.delete();store.setState(key,'');continue;}
-      const label=task.kind==='ask' ? 'Answering' : task.kind==='plan' ? 'Planning' : task.status.replaceAll('_',' ');
-      const elapsed=Math.max(0,Math.floor((Date.now()-(task.runStartedAt || task.updatedAt))/1000));
-      const content=redact(`${label} · ${task.provider}${task.model ? ' / '+task.model : ''} · ${elapsed}s${task.runCount ? ' · run '+task.runCount : ''}\n${task.progress?.slice(-750) || task.runUrl || 'I’ll post the result here.'}\n${task.lastStep || ''}`).slice(0,1900);
-      if(line) await line.edit({content,allowedMentions:{parse:[]},components:[]});
-      else {line=await channel.send({content,allowedMentions:{parse:[]},components:[]});store.setState(key,line.id);}
-    }
-  }catch(err){console.error(`Live progress pending: ${redact(String(err))}`);}finally{progressing=false;}
+    await refreshLiveProgress(store.list().filter(t=>t.threadId),{
+      readId:task=>store.state(`discord-live:${task.id}`),writeId:(task,id)=>store.setState(`discord-live:${task.id}`,id),
+      target:async task=>{const channel=await client.channels.fetch(task.threadId!);if(!channel?.isSendable()) return;
+        return {archived:channel.isThread() ? channel.archived || false : false,setArchived:channel.isThread() ? value=>channel.setArchived(value) : undefined,
+          fetch:id=>channel.messages.fetch(id).catch(()=>undefined),send:payload=>channel.send(payload)};},
+      onError:(task,err)=>console.error(`Live progress pending for ${task.id}: ${redact(String(err))}`)
+    });
+  }finally{progressing=false;}
 };
 const progressTimer=setInterval(()=>void liveProgress(),6000);
 const boardTimer=board ? setInterval(()=>void board.tick().catch(err=>console.error(`Board sync pending: ${redact(String(err))}`)),10_000) : undefined;

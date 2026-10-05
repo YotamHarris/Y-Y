@@ -25,6 +25,7 @@ export interface Task {
   usage?:{input:number;output:number;cached:number};
   number?:number;
   remotePollAt?:number;
+  phaseStartedAt?:number;
 }
 export interface AgentResult { outcome: 'completed' | 'needs_input'; summary: string; question: string; review: 'approve' | 'request_changes' | 'none'; sessionId?: string; asks?:Question[]; goalName?:string }
 export interface AgentEvent { type: 'progress' | 'session' | 'error' | 'step' | 'usage'; text?: string; sessionId?: string; usage?:{input:number;output:number;cached:number} }

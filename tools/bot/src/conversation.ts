@@ -13,7 +13,7 @@ On this manager card or in the project channel, say status, pause, resume or sto
 
 Only mapped owners can request work. Card creation, dragging statuses and manager-generated replies do not start tasks. Leave cards unassigned to native Multica agents. Game work is limited to engine/, games/tapdemo/ and tests/. The coordinator owns checks, publication and distribution; provider processes cannot publish. TestFlight readiness requires verified Apple processing, tester assignment and internal testing state. iPhone performance requires a device measurement.
 
-Task cards contain results, questions, review state, dependencies, PR and build links. Status groups Working on, Needs you, Queued and reported Usage. The last_seen metadata confirms the board connection.`;
+Task cards contain results, questions, review state, dependencies, PR and build links. Status separates active local workers from Waiting on services, and groups Needs you, Queued and reported Usage. A plan whose coding is published waits In review for your acceptance. The last_seen metadata confirms the board connection.`;
 
 export const quickGuide=`Ask the manager questions here in ordinary comments: what is happening, how the game works, or what a change might involve. This is an ongoing read-only conversation with the current coordinator and board context, available while workers are busy or paused. It cannot edit files, approve a plan, start builds or stop work. Describe a goal on the manager card when you want implementation. Claude resumes the conversation and quick chat starts fresh after three quiet hours. The same lane is available in Discord's meatbag-talk thread.`;
 

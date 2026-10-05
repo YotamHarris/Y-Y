@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } from 'discord.js';
 import type { Task } from './types.js';
-import { taskName } from './manager-state.js';
+import { taskName, taskActivity } from './manager-state.js';
 import { redact } from './process.js';
 
 export function decisions(task?:Task) {
@@ -59,7 +59,7 @@ export async function deliverUpdate(options:{channel:DeliveryChannel;task:Task;t
     const embed=new EmbedBuilder().setDescription(redact(chunk) || 'Update').setFooter({text:key});
     if(task.kind==='change' || task.kind==='build') {
       embed.setTitle(taskName(task));
-      const standing=task.acceptance==='pending' ? 'Published; waiting for your acceptance. Delivery continues separately.' : task.status.replaceAll('_',' ');
+      const standing=task.acceptance==='pending' ? `Published; waiting for your acceptance.\n${taskActivity(task)}` : taskActivity(task);
       const call=task.questions?.map(q=>q.question).join('\n') || task.question || (task.acceptance==='pending' ? 'Try the result. Accept, or Request changes.' : 'Nothing for now.');
       embed.addFields({name:'Where it stands',value:standing.slice(0,1000)},{name:'Your call',value:redact(call).slice(0,1000)});
       const links=[task.prUrl ? `[Change](${task.prUrl})` : '',task.runUrl ? `[Build](${task.runUrl})` : ''].filter(Boolean).join(' · ');

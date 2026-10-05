@@ -14,6 +14,7 @@ import type { Task } from '../src/types.js';
 import type { Git } from '../src/git.js';
 import { reply, answer, hearQuick } from '../src/conversation.js';
 import { parsePlan } from '../src/providers.js';
+import { managerOutlook } from '../src/manager-state.js';
 
 const input=(eventId='event',kind:Task['kind']='change')=>({eventId,kind,game:'tapdemo',provider:'codex' as const,userId:'developer',channelId:'channel',prompt:'Add a point'});
 const config={root:process.cwd(),data:mkdtempSync(resolve(tmpdir(),'yy-test-')),games:{tapdemo:{directory:'games/tapdemo'}},githubToken:'private-token'} as unknown as Config;
@@ -271,7 +272,10 @@ test('build resume reruns the same workflow rather than allocating a new upload'
   const f=fixture();f.store.update(f.task.id,{status:'failed',mergeSha:'merge',runId:7});await f.coordinator.resume(f.task.id);assert.equal(f.calls.rerun,1);assert.equal(f.calls.dispatch,0);assert.equal(f.store.get(f.task.id)?.runId,7);f.store.close();
 });
 test('delayed TestFlight processing is not reported ready',async()=>{
-  const f=fixture();(f.github as any).runs=async()=>[{id:7,display_title:`iOS [tapdemo] ${f.task.id}`,html_url:'run'}];f.store.update(f.task.id,{status:'building',mergeSha:'merge'});await f.coordinator.tick();assert.equal(f.store.get(f.task.id)?.status,'processing');f.store.close();
+  const f=fixture();(f.github as any).runs=async()=>[{id:7,display_title:`iOS [tapdemo] ${f.task.id}`,html_url:'run'}];f.store.update(f.task.id,{status:'building',mergeSha:'merge',progress:'Waiting for required CI',lastStep:'Read source'});await f.coordinator.tick();
+  const task=f.store.get(f.task.id)!;assert.equal(task.status,'processing');assert.match(task.progress!,/Apple/);assert.equal(task.lastStep,undefined);
+  const start=task.phaseStartedAt;await f.coordinator.tickRemote();assert.equal(f.store.get(task.id)?.phaseStartedAt,start);
+  const status=managerOutlook(f.store);assert.match(status,/No local worker running/);assert.match(status,/Waiting on services/);assert(!status.includes('Waiting for required CI'));f.store.close();
 });
 test('Actions API requires all three named jobs on the requested commit',async()=>{
   const passed=['automation','windows','ios'].map(name=>({name,status:'completed',conclusion:'success'}));

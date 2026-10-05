@@ -8,7 +8,7 @@ import { remote, terminal, type Task } from './types.js';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { projectContext } from './manager-context.js';
-import { managerMode, managerOutlook, type ManagerMode } from './manager-state.js';
+import { managerMode, managerOutlook, taskActivity, type ManagerMode } from './manager-state.js';
 
 export class Coordinator {
   private stopping=false;
@@ -20,7 +20,10 @@ export class Coordinator {
   private stage(id:string,status:Task['status'],detail?:string) {
     if(this.store.get(id)?.cancelRequested) throw new Error('Cancelled');
     const progress=status==='checking' ? 'Running coordinator tests, Release compilation and rendering smoke.' : status==='reviewing' ? 'Coordinator validations passed; obtaining independent review.' : status==='awaiting_checks' ? 'Local validations and review passed; waiting for required CI.' : undefined;
-    const task=this.store.update(id,{status,...(progress ? {progress} : {})});
+    const current=this.store.get(id)!;
+    const external=remote.has(status) || ['ready','completed','cancelled'].includes(status);
+    const task=this.store.update(id,{status,phaseStartedAt:current.status===status ? current.phaseStartedAt || Date.now() : Date.now(),
+      ...(progress ? {progress} : external ? {progress:taskActivity({...current,status}),lastStep:undefined} : {})});
     if(status==='ready') this.store.notify(id,`TestFlight upload, Apple processing, tester assignment and internal testing readiness verified.\n${task.runUrl || detail || ''}`);
     if(status==='completed') this.store.notify(id,detail || 'No changes were needed.');
     return task;
@@ -223,6 +226,7 @@ export class Coordinator {
     const state=await this.github.buildState(task.runId!,task.game);
     if(task.rerunAt && Date.now()-task.rerunAt<60_000 && state.status==='failed') return;
     if(state.status!==task.status) this.stage(task.id,state.status,`${state.detail || ''} ${state.url}`.trim());
+    else if(task.progress!==taskActivity(task) || task.lastStep || !task.phaseStartedAt) this.store.update(task.id,{progress:taskActivity(task),lastStep:undefined,phaseStartedAt:task.phaseStartedAt || Date.now()});
   }
   private published(task:Task,sha:string) {
     const latest=this.store.get(task.id)!;

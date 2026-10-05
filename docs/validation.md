@@ -82,3 +82,16 @@ rendering edit. Its sandbox could not access the compiler; the worker handoff
 now explicitly leaves required build/smoke checks with the coordinator instead
 of asking the owner to run them. Its candidate is preserved for trusted
 validation. Publication and device acceptance are not claimed by this check.
+
+## Worker versus delivery status (2026-10-05)
+
+The version-display change was merged and uploaded while its GitHub workflow
+waited at Distribute to internal testers. No local worker was active. Status
+now separates local workers from GitHub/Apple waits and replaces stale CI text
+on remote phases. Published planning goals wait in review for owner acceptance.
+Live progress cleans archived threads without leaving them open and isolates
+each channel failure, so an old thread cannot suppress other task updates.
+
+`npm run check` passed 62 tests. Regression cases cover archived-thread cleanup,
+updates surviving a different channel failure, delivery labels without a coding
+agent, stable phase timing across polls and parent goals waiting in review.

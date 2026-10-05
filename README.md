@@ -55,7 +55,7 @@ cannot start or control work.
 
 | Global command | Behavior |
 | --- | --- |
-| `/status` | Working on, Needs you, Queued, and reported Usage. |
+| `/status` | Active workers, waits on GitHub/Apple, decisions, queue, and reported usage. |
 | `/models` | Show configured worker and quick-chat providers/models. |
 | `/pause` | Let active work finish; hold queued workers. |
 | `/resume` | Release queued work and resume stop-interrupted tasks. |

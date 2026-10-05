@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Store } from '../src/store.js';
-import { BoardBridge, MulticaCLI, waitingOn, type BoardAPI, type BoardIssue, type BoardComment, type BoardConfig } from '../src/multica.js';
+import { BoardBridge, MulticaCLI, waitingOn, boardStatus, type BoardAPI, type BoardIssue, type BoardComment, type BoardConfig } from '../src/multica.js';
 import type { Config } from '../src/config.js';
 import type { Coordinator } from '../src/coordinator.js';
 import { parsePlan } from '../src/providers.js';
@@ -27,6 +27,13 @@ function fixture(boardConfig=board) {
   const command=(id:string,content:string,author='owner')=>comments.card!.push({id,content,author_id:author,author_type:'member',created_at:new Date().toISOString()});
   return {store,api,issues,comments,bridge,coordinator,command,creates:()=>creates,posts:()=>posts};
 }
+
+test('a goal whose implementation is published waits in review rather than appearing to have an active worker',()=>{
+  const f=fixture();const plan=f.store.update(f.store.create(input('goal','plan')).id,{status:'completed',approvedBy:'developer'});
+  const child=f.store.update(f.store.create(input('published')).id,{parentTaskId:plan.id,status:'processing',mergeSha:'sha',reviewSha:'sha',acceptance:'pending'});
+  assert.equal(boardStatus(plan,f.store),'in_review');assert.match(waitingOn(plan,f.store),/Owner acceptance/);
+  f.store.accept(child.id,'sha');assert.equal(boardStatus(f.store.get(plan.id)!,f.store),'done');f.store.close();
+});
 test('legacy commands retain owner authorization and durable deduplication; old prose is not reinterpreted',async()=>{
   const f=fixture();f.command('observer','/yy change Change scoring','outsider');f.command('chat','Please change it');
   f.comments.card![1]!.created_at='2020-01-01T00:00:00.000Z';
