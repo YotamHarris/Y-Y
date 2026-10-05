@@ -1,14 +1,10 @@
 {
   "name": "yyengine-workspace",
   "private": true,
-  "workspaces": ["tools/bot"],
-  "engines": {"node": ">=24.13.0"},
   "scripts": {
-    "build": "npm run build --workspace @yy/bot",
-    "test": "npm run test --workspace @yy/bot",
-    "check": "npm run build && npm test",
-    "bot": "npm run start --workspace @yy/bot",
-    "register": "npm run register --workspace @yy/bot",
-    "doctor": "npm run doctor --workspace @yy/bot"
+    "test": "node scripts/studio-check.cjs",
+    "check": "npm test",
+    "bot": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start.ps1",
+    "doctor": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/studio.ps1 -Action Doctor"
   }
 }

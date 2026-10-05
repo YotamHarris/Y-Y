@@ -1,0 +1,5 @@
+# engine/tools/fe_plan.py (D239). Installed by the tool into engine/target/plan-tools.
+# PyMuPDF lays out HTML+CSS into PDF pages (Story) and rasterizes pages for review; no network at render time.
+# markdown turns the document's Markdown into the HTML Story lays out.
+pymupdf==1.24.14
+markdown==3.7

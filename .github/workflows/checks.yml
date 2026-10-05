@@ -20,8 +20,11 @@ jobs:
           node-version: '24.13.1'
           cache: npm
       - run: npm ci
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -r studio/manager-requirements.txt
       - run: npm run check
-      - run: python3 -m unittest discover -s tests -p '*_test.py'
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'

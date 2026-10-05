@@ -1,0 +1,49 @@
+# The game the studio serves. Every studio tool reads this file through
+# studio/studio_config.py; a value left out takes the studio's default, and an
+# adapter left out turns its feature off. Paths are relative to this folder.
+# BodySimulation's studio.toml is a full example.
+
+name = "{name}"                    # %LOCALAPPDATA%\<name>: the board, the manager, its logs
+owner = "{owner}"                  # who directs the work, as the prompts name them
+game_tools = "tools"               # the game's own tools; adapters are imported from here
+artifacts = ".studio"              # scratch: land logs, the index, plan PDFs (gitignore it)
+agents = "studio.agents.json"      # the checkouts, their agents and control ports
+
+[board]
+port = {board_port}                # the board's UI (FE_BOARD_PORT overrides)
+
+# [game]
+# processes = ["mygame.exe"]       # a running game's image names (routing, the Agents view)
+# control_port = 45400             # a checkout's port when the registry names none
+
+# [[sync.push_gate]]               # a check `fe_sync.py push` runs when these paths changed
+# name = "compile"
+# paths = ["src/"]
+# cmd = ["cargo", "check"]
+
+# [land.version]                   # a runtime change bumps this
+# file = "src/version.rs"
+# regex = 'VERSION: u32 = (\d+)'
+
+# [[land.gate]]                    # the game's gates, in order (see BodySimulation's)
+# name = "build"
+# runtime = true
+# cmd = ["{{python}}", "{{game_tools}}/build.py"]
+
+# [checks]                         # what a worker must show before its work lands
+# names = ["tests", "player_path", "visual"]
+
+# [adapters]                       # game modules (in game_tools) the studio calls
+# gpu = "gpu_lease"                # pre_bash, session_lines, notice, is_bench, pid_alive
+
+# [[nightly]]                      # a job the manager runs once a night
+# name = "bench"
+# module = "nightly_bench"
+# hour = 4
+# holds_work = true
+
+[docs.categories]
+# The game's decision categories: slug = {{title, scope}}. The studio's own rules are its S log.
+design = {{ title = "Design", scope = "the game's design: its rules, its look, its feel" }}
+engine = {{ title = "Engine", scope = "the code's architecture, platform and toolchain" }}
+process = {{ title = "Process", scope = "how this game is built: tools, checkouts, conventions" }}

@@ -1,0 +1,66 @@
+name = "YYEngine"
+owner = "Yotam and the authorized developer"
+game_tools = "tools/mobile"
+artifacts = ".studio"
+
+[board]
+port = 45320
+
+[game]
+processes = ["TapDemo.exe"]
+
+[routing]
+registry_shared = true
+checkouts = ["A2", "A3"]
+
+[prompts]
+task_skill = "studio/skills/task/SKILL.md"
+worker_notes = { bench = "This is an iOS C++20/SDL3 game. Read AGENTS.md. Edit only engine/, the game selected by mobile.game in studio.toml, and tests/. Run scripts/build.ps1 -Smoke for rendering or lifecycle changes. Commit and return; the manager publishes and GitHub builds TestFlight. Never push, create PRs, merge, upload, or dispatch builds. Desktop and simulator metrics cannot establish real iPhone performance." }
+goal_name_example = "Improve touch gameplay"
+
+[checks]
+names = ["tests", "player_path", "visual", "device"]
+
+[checks.land]
+tests = ["mobile"]
+
+[adapters]
+mobile = "yy_mobile"
+
+[mobile]
+game = "tapdemo"
+repository = "YotamHarris/Y-Y"
+workflow = "ios-testflight.yml"
+
+[manager]
+release_files = ["scripts/build.ps1", "scripts/check.ps1", "config/games.json", "AGENTS.md", "package.json", "scripts/studio-check.py"]
+
+[docs.categories]
+design = { title = "Design", scope = "game rules, touch interaction, look and feel" }
+engine = { title = "Engine", scope = "C++20, SDL3, iOS and deterministic simulation" }
+process = { title = "Process", scope = "Agent Studio, Discord and TestFlight delivery" }
+
+[[loc.area]]
+name = "engine"
+prefix = "engine/"
+ext = [".cpp", ".hpp", ".h"]
+
+[[loc.area]]
+name = "games"
+prefix = "games/"
+ext = [".cpp", ".hpp", ".h"]
+
+[[loc.area]]
+name = "tests"
+prefix = "tests/"
+ext = [".cpp", ".py", ".ps1", ".rb"]
+
+[[loc.area]]
+name = "studio"
+prefix = "studio/"
+ext = [".py", ".js", ".css", ".html"]
+
+[[loc.area]]
+name = "mobile-tools"
+prefix = "tools/mobile/"
+ext = [".py"]

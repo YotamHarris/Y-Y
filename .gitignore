@@ -21,3 +21,5 @@ __pycache__/
 *.pyc
 vendor/bundle/
 config/local.json
+.studio/
+.claude/settings.local.json

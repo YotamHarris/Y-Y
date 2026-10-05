@@ -1,0 +1,209 @@
+# Jev's questions (D161): the wording, options and thresholds of every use in
+# the agents' process, kept as data so they are versioned and reviewed like
+# code. `fe_jev.py` reads this file; `fe_jev_eval.py` measures these same
+# questions against labels before a use is switched on.
+#
+# Jev reads instructions literally ("it answers the question you wrote, not the
+# one you meant", docs.typesafe.ai, jev-1.13): one thing per question, no
+# negation, about the state the caller builds. Numbers, counts and dates are
+# its weak spot, so code works those out and hands Jev the prose.
+#
+# `enabled` is each use's checked-in default. The machine-wide file
+# (`fe_jev.py on|off USE|all`) and FE_JEV / FE_JEV_<USE> override it. A use
+# ships enabled only once its suite has cleared its bar (D161).
+
+model = "jev-latest"
+price_per_mtok = 0.042          # dollars per million input tokens; output is free
+
+# ------------------------------------------------ the turn-end DoD check (S3)
+[dod]
+enabled = false
+timeout_s = 1.5
+threshold = 0.7                 # a claim counts at p >= threshold; below it on
+                                # claims_done nothing is flagged
+
+[dod.questions.claims_done]
+type = "noul"
+instructions = "The final message reports work as finished: a feature, fix or change that is done, committed, pushed, or handed over for review."
+
+[dod.questions.claims_visual]
+type = "noul"
+instructions = "The final message claims something about what the game shows on screen or how its physics moves: a rendering, visual, animation, lighting or physics effect."
+
+[dod.questions.claims_player_path]
+type = "noul"
+instructions = "The final message says the change was checked by driving the game the way a player does: a --drag or --fire run, fire X,Y, a replay of player input, the first-person view, or real mouse and keyboard input."
+
+[dod.questions.quotes_bench]
+type = "noul"
+instructions = "The final message quotes benchmark results: the stage line, the goal line or the memory lines of a --bench run."
+
+[dod.questions.quotes_audits]
+type = "noul"
+instructions = "The final message quotes the shot audits: the copies audit, the cut audit, inverted tets or the NaN count."
+
+[dod.questions.separates_debug]
+type = "noul"
+instructions = "The final message says which of its evidence came from debug scenarios (--slice, --half, --flap, or things placed directly in rest or world space) and which came from the player's path."
+
+[dod.questions.change_kind]
+type = "choice"
+instructions = "What kind of change does the diff make?"
+
+[dod.questions.change_kind.criteria]
+player_visible = "Changes what the player can do or see in the game: engine behaviour, rendering, physics, shaders, controls or bodies."
+pure_refactor = "Restructures engine code without changing what it does or draws."
+tooling = "Changes the development tools, scripts, hooks or tests, not the game."
+docs_only = "Changes only documentation."
+
+# ---------------------------------------- suspected unrecorded reversals (S1)
+[reversals]
+enabled = false
+timeout_s = 20.0                # a batch job, not a hook
+threshold = 0.5                 # a lead at p >= threshold
+max_state_chars = 6000
+instructions = "Which earlier decision does this new decision entry change, replace, reverse or narrow?"
+none = "None of them: the new entry only adds something new and changes no earlier decision."
+
+# ------------------------------------------------------ board routing (S2)
+[board]
+enabled = false
+timeout_s = 1.0
+threshold = 0.6
+
+[board.questions.relevant]
+type = "noul"
+instructions = "This message asks the reader to do something, answers a question the reader asked, hands work to the reader, or concerns the task or the files the reader is working on."
+
+[board.questions.routine]
+type = "noul"
+instructions = "This message only announces that the GPU is busy or free, or that a benchmark is starting or has finished."
+
+[board.questions.kind]
+type = "choice"
+instructions = "What kind of message is this?"
+
+[board.questions.kind.criteria]
+question = "Asks the recipient something and waits for the answer."
+blocker = "Says the sender cannot continue until something is resolved."
+handoff = "Passes work to the recipient to take further."
+review = "Asks the recipient to review finished work."
+fyi = "Informs the recipient; no answer is needed."
+
+[board.questions.recipient]
+type = "choice"
+instructions = "Who is this message for?"
+
+[board.questions.recipient.criteria]
+owner = "Yotam, who directs the work and makes the decisions."
+A1 = "Agent A1, the primary agent."
+A2 = "Agent A2, the second agent."
+A3 = "Agent A3, the third agent."
+all = "Every agent at once."
+
+[board.route]
+assignee = "Which agent should take this task?"
+any = "Any agent: nothing ties it to one of them."
+priority = "How urgent is this task?"
+levels = ["P3: someday, when nothing else is waiting.", "P2: normal work.", "P1: soon, ahead of normal work.", "P0: urgent, before anything else."]
+
+# ------------------------------------------------- the command check (S4)
+[gate]
+enabled = false
+timeout_s = 0.8
+threshold = 0.75                # at p >= threshold the hook asks Yotam to confirm
+
+# Commands that never go to Jev: read-only tools and the sanctioned paths.
+# Python regexes, matched against the whole command with re.search.
+safe = [
+  '^\s*python\s+\S*fe_(index|docs|board|tokens|jev|jev_eval|agents)\.py\b',
+  '^\s*python\s+\S*fe_sync\.py\s+(status|pull|push)\b',
+  '^\s*python\s+\S*fe_build\.py\s+(build|check|test|clippy)\b',
+  '^\s*python\s+\S*fe_artifacts\.py\s+status\b',
+  '^\s*python\s+\S*fe_model\.py\s+status\b',
+  '^\s*git\s+(status|log|diff|show|fetch|branch|rev-parse|ls-files|blame|remote -v)\b',
+  '^\s*(ls|dir|pwd|cat|head|tail|wc|grep|rg|echo|Get-ChildItem|Get-Content|Select-String|Test-Path|Get-Command|Get-Process|Get-Item|Resolve-Path|Measure-Object)\b',
+]
+
+[gate.questions.launches_gpu]
+type = "noul"
+instructions = "The command starts the game (app.exe), a benchmark (--bench), a screenshot run (--shot), or another program that draws with the GPU."
+
+[gate.questions.deletes]
+type = "noul"
+instructions = "The command deletes files or folders, or empties a folder (for example Remove-Item, rm, del, rmdir or git clean). Editing a file in place is not deleting it."
+
+[gate.questions.deletes_outside]
+type = "noul"
+instructions = "The command deletes files or folders somewhere other than the temporary and scratch folders. The scratch folders are TEMP ($env:TEMP, $TEMP, %TEMP%, AppData\\Local\\Temp and everything under them), engine/artifacts and engine/target."
+
+[gate.questions.sends_outside]
+type = "noul"
+instructions = "The command sends something off this machine: it pushes, publishes, posts, uploads or creates something on a remote service."
+
+[gate.questions.rewrites_history]
+type = "noul"
+instructions = "The command rewrites or throws away git history or uncommitted work: reset --hard, rebase, force push, checkout or restore over changes, git clean, or deleting a branch."
+
+# ------------------------------------ the input engine: fe_playtest.py (D166)
+# Jev plays the first-person view one tick (10 frames) at a time through the
+# player's own inputs. Each option says what it does, so a direction in
+# degrees is matched to an option rather than computed. A playtester, a
+# development tool: the game never calls it.
+[input]
+enabled = false
+timeout_s = 30.0                # the game waits, paused, for each decision
+
+[input.questions.keys]
+type = "choice"
+instructions = "Should the player walk for the next twelfth of a second? Walk forward while the state says you are farther than the goal's distance; hold no key once it says you are within it."
+
+[input.questions.keys.criteria]
+none = "Hold no key: stand still."
+w = "Walk forward, toward where the view points."
+s = "Walk backward."
+a = "Step to the left."
+d = "Step to the right."
+wa = "Walk forward and to the left."
+wd = "Walk forward and to the right."
+"w+shift" = "Run forward."
+
+[input.questions.yaw]
+type = "choice"
+instructions = "The state says how many degrees the target is to the left or the right of the crosshair. Turn toward it: right when it is to the right, left when it is to the left, with the option nearest its degrees. When it is on the crosshair sideways, do not turn."
+
+[input.questions.yaw.criteria]
+"-120" = "Turn left about 15 degrees."
+"-40" = "Turn left about 5 degrees."
+"-12" = "Turn left about 1.5 degrees."
+"-4" = "Turn left about half a degree."
+"0" = "Do not turn left or right."
+"4" = "Turn right about half a degree."
+"12" = "Turn right about 1.5 degrees."
+"40" = "Turn right about 5 degrees."
+"120" = "Turn right about 15 degrees."
+
+[input.questions.pitch]
+type = "choice"
+instructions = "The state says how many degrees the target is above or below the crosshair. Look toward it: up when it is above, down when it is below, with the option nearest its degrees. When it is level with the crosshair, do not look up or down."
+
+[input.questions.pitch.criteria]
+"-120" = "Look up about 15 degrees."
+"-40" = "Look up about 5 degrees."
+"-12" = "Look up about 1.5 degrees."
+"-4" = "Look up about half a degree."
+"0" = "Do not look up or down."
+"4" = "Look down about half a degree."
+"12" = "Look down about 1.5 degrees."
+"40" = "Look down about 5 degrees."
+"120" = "Look down about 15 degrees."
+
+[input.questions.action]
+type = "choice"
+instructions = "Should the player click or turn the mouse wheel now? While the state says the cutter's line is off square, turn the wheel the way it says. Fire only when the crosshair is on the target and the line crosses it squarely."
+
+[input.questions.action.criteria]
+none = "Neither click nor turn the wheel."
+fire = "Click: fire the line cutter at the crosshair."
+"wheel up" = "Turn the wheel up: the cutter's line turns anticlockwise 15 degrees."
+"wheel down" = "Turn the wheel down: the cutter's line turns clockwise 15 degrees."

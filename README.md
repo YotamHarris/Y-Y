@@ -1,14 +1,14 @@
 # YYEngine
 
-A small C++20/SDL3 game engine and a Windows-hosted Discord development bot. You and a friend can discuss game ideas, choose Codex or Claude, and explicitly request changes that are checked, reviewed, merged, built on a hosted Mac, and distributed through TestFlight.
+A C++20/SDL3 mobile game engine with Agent Studio's native board and Discord project manager.
+TapDemo runs on Windows for development and iOS for internal testing. Agent Studio plans goals,
+runs isolated Codex/Claude workers, and presents finished commits for owner acceptance.
+YYEngine's mobile coordinator validates and publishes; the existing hosted Mac workflow signs,
+uploads, waits for Apple processing, assigns internal testers and verifies testing readiness.
 
-**Implemented:** TapDemo, engine/game tests, the Discord/Multica manager, persistent coordination, provider adapters, PR/merge integration, and iOS CI/signing/distribution. Hosted Windows and unsigned iOS simulator checks pass. Signed build 10 uploaded and passed Apple processing; internal tester activation still needs confirmation. **Remaining acceptance:** a live game change/merge, verified TestFlight testing readiness, and installation/performance on an iPhone. See [validation evidence](docs/validation.md).
+## Start development
 
-## Try the game on Windows
-
-Install Node.js 24.13+, Python 3.11+, Git, and Visual Studio 2022 with **Desktop development with C++** and a Windows SDK. Codex and Claude Code must be native executables if used by the bot.
-
-From the repository root in PowerShell:
+Install Python 3.11+, Node.js, Git and Visual Studio 2022 with Desktop development with C++.
 
 ```powershell
 ./scripts/setup.ps1
@@ -16,94 +16,74 @@ From the repository root in PowerShell:
 ./build/windows/Release/TapDemo.exe
 ```
 
-The smoke run exits after 120 frames and writes `build/windows/metrics.json` and `smoke.bmp`. CMake and Ninja are installed into the ignored `.tools` environment, not globally. TapDemo contains moving targets, scoring, a 30-second round, sounds, and tap-to-restart. The desktop uses mouse input; iOS uses touch. Game coordinates exclude safe-area insets and letterboxing.
+Gameplay stays deterministic and independent of SDL. SDL3 stays pinned in CMakeLists.txt.
 
-## Connect Discord and enable iOS builds
+## Board and Discord manager
 
-Follow [the setup guide](docs/setup.md) for Discord permissions, GitHub automation credentials, local CLI authentication, Windows signing-certificate generation, and TestFlight configuration. Branch protection is optional. Then:
-
-Double-click **Configure.cmd** in the repository folder to enter credentials in a dedicated PowerShell window. You can also run the script directly:
+Agent Studio is vendored at a fixed upstream commit; see [provenance](studio/UPSTREAM.md).
+Configure native Codex and Claude subscription logins, then:
 
 ```powershell
-./scripts/configure.ps1         # Prompt for credentials; optionally upload Apple secrets
+./scripts/studio.ps1 -Action Setup -Guild YOUR_SERVER_ID -Channel YOUR_CHANNEL_ID -Owner YOUR_USER_ID -Token -Activate
+./scripts/studio.ps1 -Action Open
+```
+
+Existing local Discord credentials and both developer IDs are reused during migration.
+The token moves to Windows Credential Manager; manager IDs and the shared checkout registry
+live under `%LOCALAPPDATA%/YYEngine`. Double-click **MobileStudio.cmd** for the board,
+or open http://127.0.0.1:45320. It is local to this PC. Discord uses an outbound Gateway connection.
+
+Write a goal in the Discord project channel and discuss it in its planning thread.
+**Approve plan** creates tasks; the manager runs up to two isolated workers. **Accept**
+the published result to unlock dependencies, or **Request changes** to resume it.
+The board's Manager tab, tasks, thoughts, threads, transcripts, and Agents view are the
+native Agent Studio views. `/status`, `/models`, `/pause`, `/resume`, `/stop`, and `/ask`
+are registered by the native bot. Quick questions in meatbag-talk stay read-only.
+
+Game workers may edit engine/, the game selected by mobile.game in studio.toml, and tests/.
+They commit and return. The mobile supervisor checks scope, builds and smoke-tests the
+candidate through trusted scripts, rebases and revalidates if main changed, then publishes
+without force. Agent Studio's worker self-review and structured evidence remain in place.
+Acceptance and TestFlight delivery are separate.
+
+## TestFlight
+
+Follow [setup](docs/setup.md) for GitHub and Apple credentials. Signing credentials remain
+in GitHub environments; build numbering, processing, tester assignment and readiness checks
+remain in the existing iOS TestFlight workflow.
+
+Request a build from **Build for TestFlight** in the board's Manager tab, say
+**make a new TestFlight build** in the Discord project channel, or run:
+
+```powershell
+./scripts/studio.ps1 -Action Build
+./scripts/studio.ps1 -Action Status
+```
+
+A normal game push builds affected games automatically. Explicit requests build current main.
+The manager tracks each exact commit and announces ready only after the workflow's
+**Verify TestFlight readiness** step and the selected game job succeed. Ambiguous dispatches
+are reconciled by their persisted request IDs. Failed delivery does not rerun implementation.
+For a retry or reconciliation of an already uploaded binary, use the existing workflow's
+build_number input as described in setup.
+
+## Checks and layout
+
+```powershell
 npm run check
-npm run doctor
-npm run register
-./scripts/start.ps1
+./tests/configure_test.ps1
+./scripts/build.ps1 -Smoke
 ```
 
-The bot runs while this PC is awake and connected. You can run `scripts/start.ps1` through Windows Task Scheduler under the same account that owns your CLI logins. Configure it to run at logon, with the repo as its working directory, and restart on failure. Do not launch a second instance. Cloud builds continue independently while the PC is offline.
+- engine/, games/, tests/: deterministic game code, SDL platform services and tests.
+- studio/: pinned Agent Studio board, manager, providers and process tools.
+- tools/mobile/: trusted mobile landing and TestFlight adapters.
+- studio.toml: selected game, mobile evidence requirements, ports and adapter configuration.
+- platform/ios/, fastlane/, .github/workflows/: iOS packaging, signing and distribution.
 
-## Discord workflow
+To add another app, run python scripts/new-game.py, create its matching Apple app/profile and
+TestFlight environment, and select its ID in studio.toml before assigning manager tasks.
+Give it equivalent game and simulator acceptance coverage. Android and App Store production
+submission remain outside the current pipeline.
 
-Write a goal in the project channel. The manager opens a planning thread on your
-message, reads the code, discusses choices and proposes a few whole tasks. Reply
-naturally, then **Approve plan** once. Keep that conversation for later goals.
-Approved tasks receive separate threads and cards; up to two workers use isolated
-worktrees. Validation and independent review precede automatic commit/push and merge.
-
-Published work asks for **Accept** or **Request changes**. Acceptance unlocks
-dependent tasks; TestFlight delivery continues separately. Describe revisions in
-the task conversation to reopen the same task with its worktree and saved context.
-Questions offer choices and **Answer in my own words**. Routine updates have no
-buttons, and each run has one live progress line that disappears when it finishes.
-
-Ask read-only questions in **meatbag-talk** or the board's **quick questions** card,
-even while workers are busy or paused. Claude resumes its conversation; quick chat
-starts fresh after three quiet hours. Codex uses the saved transcript. Quick chat
-cannot start or control work.
-
-| Global command | Behavior |
-| --- | --- |
-| `/status` | Active workers, waits on GitHub/Apple, decisions, queue, and reported usage. |
-| `/models` | Show configured worker and quick-chat providers/models. |
-| `/pause` | Let active work finish; hold queued workers. |
-| `/resume` | Release queued work and resume stop-interrupted tasks. |
-| `/stop` | Interrupt managed local processes, preserving work and sessions. |
-
-You can also say status, pause, resume or stop in the project channel or manager
-card. Answer a paused task or say continue after fixing a prerequisite. Say cancel
-in that task's conversation to stop it. “Make a new TestFlight build” explicitly
-requests a build of current main.
-
-Game tasks can edit the selected game, engine and tests. Service, workflow and
-configuration changes need normal repository development. Working branches use
-`codex/`; publication is serialized and every independent review uses a fresh
-read-only invocation without the worker's session.
-
-## Layout and checks
-
-- `engine/`: portable game interface, fixed clock, input mapping, SDL renderer/audio/assets, and runtime telemetry.
-- `games/tapdemo/`: SDL-free deterministic gameplay model plus the compiled game and assets.
-- `tools/bot/`: Discord Gateway service, SQLite state/outbox, CLI providers, Git/GitHub coordinator, and tests.
-- `config/games.json`: game IDs, CMake targets, bundle IDs, versions, and internal tester groups.
-- `platform/ios/`, `.github/workflows/`, `fastlane/`: iOS packaging, simulator checks, signing, and TestFlight delivery.
-
-```powershell
-npm run check                   # TypeScript and service behavior tests
-./scripts/build.ps1 -Smoke      # Release build, C++ tests, rendering smoke
-```
-
-On a Mac, `cmake --preset ios-simulator` and `cmake --build build/ios-simulator --config Release -- CODE_SIGNING_ALLOWED=NO` build an unsigned app. CI then launches it in a simulator and checks that 120 frames completed. Pure engine tests can also run without SDL using `cmake --preset headless`, `cmake --build --preset headless`, and `ctest --preset headless` (Ninja and a compiler required).
-
-## Add another game
-
-```powershell
-python scripts/new-game.py puzzle --target Puzzle --bundle-id com.yourteam.puzzle
-./scripts/build.ps1
-npm run register
-```
-
-The script clones TapDemo as a starting project and adds it to the game registry. Replace its model and game behavior. CMake discovers registered projects at configure time, giving each its own app, assets namespace, and iOS bundle ID. Create a matching `testflight-puzzle` GitHub environment and Apple app/profile. Shared engine changes build all registered games; game-only changes distribute only that game. Initial unsigned iOS smoke testing exercises TapDemo; new games need equivalent gameplay/simulator tests before relying on their automated delivery.
-
-See [architecture and recovery](docs/architecture.md) and [acceptance evidence](docs/validation.md). Android, 3D, scripting, a visual editor, and App Store production submission are deferred.
-
-## Multica task board
-
-See [Multica setup and sharing](docs/multica.md) for the local self-hosted task board,
-TapDemo project, shared Discord/board coordinator, and temporary public HTTPS link.
-Double-click **TapDemoBoard.cmd** or the **TapDemo board** desktop shortcut to start
-and open it. Write goals in ordinary comments on the manager card and questions on the quick-questions card.
-Refine a proposed plan in its card and reply **approve** to start it. The board and
-Discord use the same persistent coordinator.
-Use `./scripts/multica.ps1 -Action Stop` to close public access.
+See [architecture](docs/architecture.md) and [validation](docs/validation.md).

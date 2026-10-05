@@ -26,4 +26,4 @@ for path in destination.rglob('*'):
         path.write_text(content)
 games[args.id] = {'target': args.target, 'directory': f'games/{args.id}', 'bundleId': args.bundle_id, 'version': '0.1.0', 'internalGroup': 'YY Internal'}
 config.write_text(json.dumps(games, indent=2) + '\n')
-print(f'Created {args.id}. Reconfigure CMake and register Discord commands. Set up GitHub environment testflight-{args.id}.')
+print(f'Created {args.id}. Reconfigure CMake and set up GitHub environment testflight-{args.id}. Select mobile.game in studio.toml before assigning its manager tasks.')

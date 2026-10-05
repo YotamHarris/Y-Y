@@ -118,43 +118,14 @@ $repoRoot = Split-Path $PSScriptRoot -Parent
 $envPath = Join-Path $repoRoot '.env'
 $saved = Read-EnvSettings $envPath
 $settings = [ordered]@{}
-Write-Host 'YYEngine credential setup. Secret input is hidden. Enter keeps saved values.'
-Write-Host 'Local bot credentials are saved in the Git-ignored .env file.'
-Write-Host 'Discord: https://discord.com/developers/applications (enable Message Content Intent and invite the bot).'
-$settings.DISCORD_TOKEN = Read-Setting 'Discord bot token' $saved.DISCORD_TOKEN -Secret
-$idPattern = '^\d{17,20}$'
-$settings.DISCORD_APPLICATION_ID = Read-Setting 'Discord application ID' $saved.DISCORD_APPLICATION_ID -Pattern $idPattern
-$settings.DISCORD_GUILD_ID = Read-Setting 'Discord server ID' $saved.DISCORD_GUILD_ID -Pattern $idPattern
-$oldUsers = @(([string]$saved.DISCORD_USER_IDS).Split(','))
-$you = Read-Setting 'Your Discord user ID' $oldUsers[0] -Pattern $idPattern
-$friendDefault = if ($oldUsers.Count -gt 1) { $oldUsers[1] } else { '' }
-do {
-  $friend = Read-Setting "Friend's Discord user ID" $friendDefault -Pattern $idPattern
-  if ($friend -eq $you) { Write-Host 'The two user IDs must be different.' }
-} while ($friend -eq $you)
-$settings.DISCORD_USER_IDS = "$you,$friend"
+Write-Host 'YYEngine TestFlight credential setup. Secret input is hidden.'
+Write-Host 'Configure the Discord manager with ./scripts/studio.ps1 -Action Setup.'
 $repositoryDefault = if ($saved.GITHUB_REPOSITORY) { $saved.GITHUB_REPOSITORY } else { 'YotamHarris/Y-Y' }
 $settings.GITHUB_REPOSITORY = Read-Setting 'GitHub repository (owner/name)' $repositoryDefault -Pattern '^[\w.-]+/[\w.-]+$'
-Write-Host 'GitHub: https://github.com/settings/personal-access-tokens/new'
-Write-Host 'Bot token: select this repo; Contents, Pull requests, Actions read/write. Metadata read is included.'
-$settings.GITHUB_TOKEN = Read-Setting 'GitHub bot token' $saved.GITHUB_TOKEN -Secret
-$providerDefault = if ($saved.YY_DEFAULT_PROVIDER) { $saved.YY_DEFAULT_PROVIDER } else { 'codex' }
-$settings.YY_DEFAULT_PROVIDER = Read-Setting 'Default provider (codex/claude)' $providerDefault -Pattern '^(codex|claude)$'
-$removeKeys = @()
-foreach ($provider in @('codex', 'claude')) {
-  $prefix = "YY_$($provider.ToUpperInvariant())"
-  $modeDefault = if ($saved["${prefix}_AUTH"]) { $saved["${prefix}_AUTH"] } else { 'subscription' }
-  $mode = Read-Setting "$provider authentication (subscription/api)" $modeDefault -Pattern '^(subscription|api)$'
-  $settings["${prefix}_AUTH"] = $mode
-  $pathDefault = if ($saved["${prefix}_PATH"]) { $saved["${prefix}_PATH"] } else { $provider }
-  $settings["${prefix}_PATH"] = Read-Setting "$provider native executable name or full .exe path" $pathDefault
-  $apiKey = if ($provider -eq 'codex') { 'OPENAI_API_KEY' } else { 'ANTHROPIC_API_KEY' }
-  if ($mode -eq 'api') { $settings[$apiKey] = Read-Setting "$provider API key (API billing)" $saved[$apiKey] -Secret }
-  else { $removeKeys += $apiKey }
-}
-Write-EnvSettings -Path $envPath -Values $settings -Remove $removeKeys
+Write-Host 'Coordinator token: this repository, Contents and Actions read/write.'
+$settings.GITHUB_TOKEN = Read-Setting 'GitHub coordinator token' $saved.GITHUB_TOKEN -Secret
+Write-EnvSettings -Path $envPath -Values $settings
 Write-Host "Saved $envPath."
-Write-Host 'For subscription mode, sign in locally: codex login / claude auth login.'
 
 $apple = Read-Setting 'Configure Apple/TestFlight credentials in GitHub now? (y/n)' 'n' -Pattern '^[yn]$'
 if ($apple -eq 'y') {
@@ -212,4 +183,4 @@ if ($apple -eq 'y') {
   }
   Write-Host "Apple settings uploaded. Create the internal tester group '$($gameConfig.internalGroup)' in App Store Connect."
 }
-Write-Host 'Next: npm run doctor, npm run register, then ./scripts/start.ps1'
+Write-Host 'Next: ./scripts/studio.ps1 -Action Setup, then ./scripts/start.ps1'

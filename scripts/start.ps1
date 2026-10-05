@@ -1,6 +1,3 @@
+param([switch]$Foreground)
 $ErrorActionPreference = 'Stop'
-Set-Location -LiteralPath (Split-Path $PSScriptRoot -Parent)
-& npm.cmd run build
-if ($LASTEXITCODE -ne 0) { throw 'TypeScript build failed' }
-& npm.cmd run bot
-exit $LASTEXITCODE
+& (Join-Path $PSScriptRoot 'studio.ps1') -Action Start -Foreground:$Foreground

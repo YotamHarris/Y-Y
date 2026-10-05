@@ -1,0 +1,146 @@
+---
+name: triage
+description: Work the project's decision and roadmap cleanup queue with the user, one item at a time — the `unreviewed` entries that nobody has ruled on, and the `**Open:**` gaps of shipping versions. Use when the user asks to triage, to resolve undecided or unreviewed things, to go through the cleanup queue, to work out whether an old decision still holds, or invokes /triage. Each verdict is grounded in the current code or the running game, never in the log.
+---
+
+# Triage — deciding what is still true
+
+The decisions (`docs/decisions/CATEGORY.md`, S4) and `docs/roadmap.md` roll
+forever and contradict themselves on purpose (S3). Two kinds of item are
+waiting for a human:
+
+| queue | the question | answered by |
+|-------|--------------|-------------|
+| `unreviewed` entries | *is this still the rule?* | reading the code that would implement it |
+| `**Open:**` gaps of active versions | *what are we doing about this?* | the user's call on scope |
+
+```bash
+python studio/fe_docs.py queue
+```
+
+That numbers both queues. `fe_docs.py show D31 V58` prints one entry in full
+(the studio's own entries are `S` ids, `show S12`).
+
+## The rule this skill exists to enforce
+
+**A verdict comes from the code or the running game. Never from the log.**
+
+The log is what is being audited; using it as evidence is circular. An entry
+sounds authoritative whether or not it is still true — that is exactly the
+failure the append-only log with a status on every entry was set up to fix
+(S3). So for every item:
+
+- Name the symbol, constant, file, flag or command the entry claims exists.
+  Find it (`fe_index.py find`, or a text search). Say `file:line` in the
+  verdict, or say it is gone.
+- If the claim is about behaviour rather than structure, drive the running
+  game or capture its evidence the way the game's Definition of done (its
+  AGENTS.md) says, and hold it to that definition: the player's path, and
+  every check it names, quoted.
+- If the evidence is not conclusive, **leave it `unreviewed`** and sharpen the
+  note into a specific question. That is a good outcome. Guessing is not.
+
+Two failure modes to refuse outright: reading the entry's own prose and
+calling that research, and inferring "nothing later contradicts it, so it is
+active" — a silent reversal is precisely what the queue is looking for.
+
+**Jev's leads (S10)** — the queue's "does the first entry change the second?"
+section, when the `reversals` use is on — are where to look, not what to
+conclude: a lead is Jev reading two entries' prose, which is the log again.
+Work one like any item: find what each entry claims in the code, and record a
+reversal only when the code shows it (a new decision entry, the old one's
+status set). A lead the code does not bear out is simply dropped.
+
+## The loop
+
+Work **one item at a time**. Do not batch verdicts past the user.
+
+1. **Pick.** The item the user named, else the first unreviewed one. Say which
+   and why.
+2. **Read it.** `fe_docs.py show <ID>`. Note every checkable claim it makes,
+   including any `Update` paragraph edited into the body.
+3. **Go and look.** Search the code for those claims. Where structure is not
+   enough, run the thing. Budget this: a few targeted searches and, when it is
+   really needed, one launch — not an afternoon.
+4. **Report, then ask.** Three short parts, in this order:
+   - *what the entry claimed* — one line
+   - *what the code says now* — with `file:line`, per claim
+   - *recommended status* — one of the six, with the note text you would write
+   Then ask. Use AskUserQuestion when the options are genuinely distinct;
+   otherwise just ask in a sentence. The user decides, not the skill.
+5. **Write the verdict.** See below.
+6. **Rebuild and check.** `python studio/fe_docs.py build` then `check`.
+7. **Offer the next one.** Stop when the user stops, and say what is left.
+
+## Writing each outcome
+
+Edit only the `**Status:**` line under the heading. The vocabulary is
+`active`, `superseded by <id>`, `amended by <id>`, `stopped`, `historical`,
+`unreviewed`, each optionally followed by ` -- note`.
+
+- **Still true** → `active`. Drop the note unless it usefully narrows the
+  scope (`active -- the fallback path only; <id> made the other the default`).
+- **True in part** → `amended by <id>`, never `active`. If the part that
+  changed was never recorded anywhere, that is a new decision entry (below),
+  and this entry points at it.
+- **Replaced whole** → `superseded by <id>`, naming the entry that replaced
+  it. If nothing did — the world moved and no one wrote it down — append the
+  entry that does, then point at it.
+- **Abandoned deliberately** → `stopped`, with why it must not be retried
+  blind.
+- **True once, nothing replaced it** → `historical`.
+- **Still unknown** → `unreviewed`, with a sharper question than it had.
+
+**Never rewrite a history entry's body to make it true.** That is how a
+reversal becomes invisible: edited into the bottom of the entry instead of
+appended, so nothing announces it. Corrections are appended as new entries;
+only the status line and, when it is plainly wrong, a report's own factual
+error are edited in place.
+
+### When the verdict is a new decision
+
+If triage discovers the code changed and nothing recorded it, write the
+entry. `python studio/fe_docs.py new CATEGORY "what is true now"` appends it
+with the next free number to its category's file (`new --studio CATEGORY` for
+a rule of the studio's, in its own log); fill it in:
+
+```markdown
+### <ID> — <what is true now> (<today>)
+
+**Status:** active
+
+**Decision.** ...
+**Why.** ... (including: this was found by triaging <old ID>, which claimed ...)
+**Revisit when.** ...
+```
+
+Then set the old entry's status to point at it, and `fe_docs.py build`.
+
+### When the item is an open gap
+
+An `**Open:**` gap of a shipping version has three honest outcomes. Ask which:
+
+- **Fix it now** — it becomes ordinary work under the game's Definition of
+  done, and the gap leaves the version's `**Open:**` block when it lands.
+- **Decide it** — the gap is a design question (a size, a budget, a fiction
+  call). It becomes a decision entry; the `**Open:**` text is edited to cite
+  it. Fiction questions go where the game keeps its fiction (its AGENTS.md
+  says where) or to the owner, not into the technical docs.
+- **Accept it** — a permanent, understood limitation. Say so in the
+  `**Open:**` text in as many words (`accepted: ...`), so it stops reading as
+  an outstanding task.
+
+A gap that is none of these stays as it is. Editing a version's `**Open:**`
+block is allowed — it is the version's live status, not its history.
+
+## Housekeeping
+
+- `python studio/fe_sync.py pull` before starting, `push` after each
+  commit. Never `git push` directly (S1).
+- Commit per resolved item or per short batch, with the verdict and its
+  evidence in the message. Include the regenerated summaries in the same
+  commit — `check` fails on a stale one.
+- Docs-only triage does not bump the game's version file (`[land.version]`).
+  A fix that changes what the player can do or see does.
+- When the game declares a resource lease (`[adapters] gpu`, S11), a launch
+  goes through it, and never while another agent measures.

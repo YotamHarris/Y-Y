@@ -24,7 +24,7 @@ try {
   New-Item -ItemType Directory -Path (Join-Path $temporary 'scripts') | Out-Null
   Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts/configure.ps1') -Destination (Join-Path $temporary 'scripts/configure.ps1')
   $global:YYSetupTestAnswers = [Collections.Generic.Queue[string]]::new()
-  foreach ($answer in @('', '12345678901234567', '22345678901234567', '32345678901234567', '42345678901234567', '', 'fake-github-secret', '', '', '', 'api', '', 'fake-claude-secret', 'n')) { $global:YYSetupTestAnswers.Enqueue($answer) }
+  foreach ($answer in @('', 'fake-github-secret', 'n')) { $global:YYSetupTestAnswers.Enqueue($answer) }
   function Read-Host {
     param([string]$Prompt, [switch]$AsSecureString)
     if (-not $global:YYSetupTestAnswers.Count) { throw "Unexpected wizard prompt: $Prompt" }
@@ -38,8 +38,8 @@ try {
   $wizard = Read-EnvSettings $path
   Assert-Setup ($global:YYSetupTestAnswers.Count -eq 0) 'Wizard missed expected prompts.'
   Assert-Setup ($wizard.DISCORD_TOKEN -eq 'fake#token with spaces') 'Blank input did not retain secret.'
-  Assert-Setup ($wizard.DISCORD_USER_IDS -eq '32345678901234567,42345678901234567') 'User IDs were not saved.'
-  Assert-Setup ($wizard.YY_CLAUDE_AUTH -eq 'api' -and $wizard.ANTHROPIC_API_KEY -eq 'fake-claude-secret') 'Explicit API mode failed.'
+  Assert-Setup ($wizard.GITHUB_REPOSITORY -eq 'YotamHarris/Y-Y') 'Repository was not saved.'
+  Assert-Setup ($wizard.GITHUB_TOKEN -eq 'fake-github-secret') 'Coordinator token was not saved.'
   Assert-Setup ($global:YYSetupTestOutput -notmatch 'fake-github-secret|fake-claude-secret|fake#token') 'Wizard printed a secret.'
 
   # Existing environments must remain intact; secrets must be sent on stdin.
@@ -61,7 +61,7 @@ try {
   [IO.File]::WriteAllText($certificate, 'fake-certificate'); [IO.File]::WriteAllText($profile, 'fake-profile')
   [IO.File]::WriteAllText($key, "-----BEGIN PRIVATE KEY-----`nfake-key`n-----END PRIVATE KEY-----")
   $global:YYSetupTestGhCalls.Clear()
-  foreach ($answer in @('', '', '', '', '', '', '', '', '', '', '', '', '', 'y', '', 'ABCDE12345', '', 'Dummy profile', $certificate, $profile, $key, 'fake-password', 'ABCDE12345', '11111111-2222-3333-4444-555555555555', 'fake-setup-token')) { $global:YYSetupTestAnswers.Enqueue($answer) }
+  foreach ($answer in @('', '', 'y', '', 'ABCDE12345', '', 'Dummy profile', $certificate, $profile, $key, 'fake-password', 'ABCDE12345', '11111111-2222-3333-4444-555555555555', 'fake-setup-token')) { $global:YYSetupTestAnswers.Enqueue($answer) }
   $oldGhToken = $env:GH_TOKEN
   try {
     $env:GH_TOKEN = 'fake-original-token'
@@ -99,7 +99,7 @@ try {
     if ($args -contains 'PUT') { $global:LASTEXITCODE = 1; return 'fake-password failure (HTTP 403)' }
     $global:LASTEXITCODE = 0
   }
-  foreach ($answer in @('', '', '', '', '', '', '', '', '', '', '', '', '', 'y', '', 'ABCDE12345', '', 'Dummy profile', $certificate, $profile, $key, 'fake-password', 'ABCDE12345', '11111111-2222-3333-4444-555555555555', 'fake-setup-token', 'y', 'fake-replacement-token')) { $global:YYSetupTestAnswers.Enqueue($answer) }
+  foreach ($answer in @('', '', 'y', '', 'ABCDE12345', '', 'Dummy profile', $certificate, $profile, $key, 'fake-password', 'ABCDE12345', '11111111-2222-3333-4444-555555555555', 'fake-setup-token', 'y', 'fake-replacement-token')) { $global:YYSetupTestAnswers.Enqueue($answer) }
   & (Join-Path $temporary 'scripts/configure.ps1')
   Assert-Setup ($global:YYSetupTestAnswers.Count -eq 0 -and $global:YYSetupTestGhCalls.Count -eq 10) 'Permission repair restarted or omitted credential prompts.'
   Assert-Setup ($global:YYSetupTestGhCalls[1].token -eq 'fake-replacement-token') 'Retry ignored replacement token.'

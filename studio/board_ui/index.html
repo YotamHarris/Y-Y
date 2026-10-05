@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{project}} Board</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">{{project}} <span>Board</span></div>
+  <nav class="tabs" id="tabs">
+    <a href="#inbox" data-view="inbox">Inbox <b class="badge" id="badge-inbox"></b></a>
+    <a href="#board" data-view="board">Tasks <b class="badge" id="badge-board"></b></a>
+    <a href="#thoughts" data-view="thoughts">Thoughts</a>
+    <a href="#threads" data-view="threads">Threads <b class="badge" id="badge-threads"></b></a>
+    <a href="#agents" data-view="agents">Agents <b class="dots" id="badge-agents"></b></a>
+    <a href="#manager" data-view="manager">Manager <b class="dots" id="badge-manager"></b></a>
+    <a href="#nightly" data-view="nightly">Nightly</a>
+  </nav>
+  <form class="capture" id="capture">
+    <input id="capture-input" data-draft="quick" placeholder="Capture a thought…  (n)" autocomplete="off">
+  </form>
+</header>
+<main id="view"></main>
+<aside class="drawer" id="drawer" hidden></aside>
+<div class="scrim" id="scrim" hidden></div>
+<div class="toast" id="toast" hidden></div>
+<div class="lightbox" id="lightbox" hidden></div>
+<script src="/app.js"></script>
+</body>
+</html>

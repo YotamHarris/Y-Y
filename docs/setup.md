@@ -1,71 +1,59 @@
-# Account and machine setup
+# Mobile development setup
 
-Double-click **Configure.cmd** in the repository folder, or run `./scripts/configure.ps1` from PowerShell, for guided, one-at-a-time entry of Discord tokens/IDs, the GitHub token, and provider settings. The launcher uses the repository directory and keeps its window open when the script finishes. Secret prompts are hidden. It updates the ignored `.env`, retains saved values when you press Enter, and preserves unrelated settings. Subscription mode uses native CLI logins; API mode prompts for the provider key explicitly.
+YYEngine uses Agent Studio's native Python board and Discord manager. The coordinator token
+stays in ignored .env, the Discord token lives in Windows Credential Manager, and Apple
+signing settings stay in the existing GitHub testflight-<game> environments.
 
-The optional Apple section accepts paths to your `.p12`, `.mobileprovision`, and `.p8` files, plus their password/IDs and app settings. It uploads variables and encrypted secrets directly to the game's GitHub environment using GitHub CLI, without saving extra copies locally. Install the CLI if needed with `winget install --id GitHub.cli --exact --source winget` and rerun Configure.cmd. The script also checks standard installation directories, so a fresh terminal is not needed after a standard install. [GitHub secret CLI](https://cli.github.com/manual/gh_secret_set)
+## Agent Studio and provider logins
 
-Use a setup token restricted to this repository with **Actions read** and **Environments read/write**, or temporarily add Environments read/write to the bot token (which already has Actions access). If the environment does not exist, create `testflight-tapdemo` under repository **Settings → Environments → New environment** first. Automatic environment creation instead needs **Administration read/write** on the setup token. The script preserves existing environment rules and reports the failing step/HTTP status without printing secret values. After fixing permissions you can retry within the same wizard, keeping entered Apple settings in memory. The setup token is not saved; normal bot operation does not need these extra permissions. [GitHub environment creation permissions](https://docs.github.com/en/rest/deployments/environments#create-or-update-an-environment)
+Install Python 3.11+, Git, Node.js and Visual Studio 2022 with Desktop development with C++.
+Run scripts/setup.ps1 for pinned CMake/Ninja. Install native Codex and Claude executables and
+sign in with codex login and claude auth login. The native manager requires subscription
+logins; it does not inherit provider API keys.
 
-Create the accounts, Discord bot invitation/intents, Apple app/profile, and internal tester group using the steps below. The script collects credentials for those existing accounts; it does not enroll accounts or start a build.
-
-## 1. Publish the baseline
-
-The supplied repo started with no commits. Review the files, set your Git identity, and publish the baseline before running agent tasks:
-
-```powershell
-git add .
-git commit -m "Add YYEngine, TapDemo, and Discord development pipeline"
-git push -u origin main
-```
-
-Git ignores `.env`, `.yy`, `.tools`, signing materials, and build outputs. No credentials belong in a commit. The unsigned checks can run immediately. The signing workflow initially fails with a named missing setting until Apple configuration is complete.
-
-In GitHub Settings → Actions, enable Actions if disabled. Allow squash merging in the repository's general settings. Branch protection is optional: the bot waits for its checks and review before merging without requiring protection settings or Administration permission.
-
-Open the repository's **Actions → Checks** workflow. The names **automation**, **windows**, and **ios** are its three jobs, defined in [checks.yml](../.github/workflows/checks.yml). They run service tests on Linux, compile and smoke-test the game on Windows, and compile and launch an unsigned iOS simulator app on a hosted Mac. No Apple signing credentials are needed for these checks. The separate **iOS TestFlight** workflow in [ios-testflight.yml](../.github/workflows/ios-testflight.yml) needs the Apple settings below.
-
-Create a fine-grained GitHub token for this repository with Contents read/write, Pull requests read/write, and Actions read/write. Metadata read is included automatically. The bot reads CI results through the Actions API; no Checks token permission is needed. Set `GITHUB_TOKEN` in your local `.env`. The token is used by the coordinator only and is excluded from provider subprocess environments. Existing repository rules still apply if you choose to configure them later.
-
-## 2. Create the Discord bot
-
-In the [Discord Developer Portal](https://discord.com/developers/applications), create an application and bot. Copy the application ID, bot token, server ID, and your two user IDs into `.env` (enable Developer Mode to copy IDs). Set exactly two distinct users in `DISCORD_USER_IDS`.
-
-Enable the **Message Content Intent** on the Bot page, because the bot reads messages in its task threads. Invite it with `bot` and `applications.commands` scopes and these channel permissions: View Channels, Send Messages, Send Messages in Threads, Create Public Threads, Read Message History, Embed Links and Attach Files. Choose a private server/channel shared by the two of you. The bot additionally enforces the server/user allowlist for every command and message.
-
-Ordinary project-channel messages open planning conversations on the original
-message. For a fresh setup, set `YY_DISCORD_CHANNEL_ID`. Reply naturally and
-**Approve plan** once; approved tasks get separate threads. Published results
-show **Accept** / **Request changes**, and questions show choices plus a free-text
-form. Routine updates and live progress have no buttons.
-
-Use a `meatbag-talk` channel, or set `YY_DISCORD_TALK_CHANNEL_ID` to a channel
-or persistent public thread, for read-only quick questions. Set
-`YY_QUICK_PROVIDER=claude` and `YY_QUICK_MODEL=sonnet` to match BodySimulation's
-quick lane after authenticating Claude. Workers keep `YY_DEFAULT_PROVIDER`.
-`YY_WORKER_SLOTS` permits one or two isolated workers (default two). Publication
-is serialized. Planning and quick chat run independently while workers are paused.
-
-Run `npm run register` for the five global guild commands: `/status`, `/models`,
-`/pause`, `/resume`, `/stop`. Say those controls in the project channel as well.
-A paused task accepts a normal answer or continue; cancel in a task conversation
-stops that task. Agent text is sent with mentions disabled.
-
-## 3. Configure Codex and Claude
-
-Use a native installed CLI executable, not an npm `.cmd` shim. You can set absolute `YY_CODEX_PATH` and `YY_CLAUDE_PATH` in `.env`; this is helpful when Task Scheduler has a different PATH. Sign in manually under the account that will run the bot:
+Create or reuse the Discord application. Enable Message Content Intent and invite it with
+bot and applications.commands scopes. Grant View Channels, Send Messages, Send Messages in
+Threads, Create Public Threads, Read Message History, Embed Links and Attach Files in the
+private project channel. The configured owner and additional developer IDs are allowlisted.
 
 ```powershell
-codex login
-codex login status
-claude auth login
-claude auth status
+./scripts/studio.ps1 -Action Setup -Guild SERVER_ID -Channel CHANNEL_ID -Owner USER_ID -Token -Activate
+./scripts/studio.ps1 -Action Open
+npm run doctor
 ```
 
-Default authentication is `subscription` for both. The bot removes API keys and other provider overrides from those subprocess environments, checks the selected login method, and never falls back to API billing. Claude subscription runs use normal print mode, because bare mode does not use the subscription login. An expired login, usage limit, or unresolved tool permission pauses the task for local attention.
+-Token prompts locally with hidden input. Never put a token in a command argument or chat.
+During migration Setup reuses Discord IDs, both developer IDs, native executable paths and
+the token from the existing ignored .env. Later edits to the developer allowlist or executable
+paths use %LOCALAPPDATA%/YYEngine/board/manager/config.json. Rerunning Setup preserves those
+settings. Registry paths are generated locally; no machine-specific paths are committed.
 
-For explicit API billing, set the relevant `YY_CODEX_AUTH=api` / `YY_CLAUDE_AUTH=api`, set its API key locally, and configure the CLI's matching API login. Keep it in `.env` or an OS credential mechanism. Codex uses the supported `codex exec --json` interface; Claude uses `claude -p --output-format stream-json`. No browser automation or extracted subscription tokens are used. [Codex authentication](https://learn.chatgpt.com/docs/auth), [Claude authentication](https://code.claude.com/docs/en/authentication)
+Setup registers A1 as your primary checkout and creates detached worktrees for A2 and A3.
+The native manager reserves A1 for your sessions and uses the other two for approved tasks.
+It runs a release of published code and follows new published versions. Activate installs
+the YYEngine Project Manager sign-in task. Keep the PC awake and signed in.
 
-The initial tool rules allow game-file edits and selected validation commands. They do not bypass provider permission enforcement. If a necessary command is denied, refine the task or deliberately adjust the local adapter rules and rerun tests. Worktrees separate Git changes; they are not a separate OS account or VM. Both Discord users have authority to request code execution on this PC through the configured providers.
+The board is http://127.0.0.1:45320 and is bound to loopback. Double-click MobileStudio.cmd
+to open it. Discord works independently of browser access and needs no incoming public port.
+The board's native unauthenticated local server is not configured for public sharing.
+
+## GitHub coordinator credentials
+
+Double-click Configure.cmd or run scripts/configure.ps1. It preserves unrelated ignored .env
+settings and optionally uploads Apple variables/secrets using hidden local prompts.
+Set GITHUB_TOKEN with Contents and Actions read/write for YotamHarris/Y-Y. Git publication
+also uses your Windows Git credential helper. Providers do not receive the service token.
+The repository must permit main publication by the coordinator's Git account; if repository
+rules require PRs, publication stops and keeps the candidate checkout.
+
+The hosted Checks workflow validates Python services, the Windows game and the unsigned iOS
+simulator. The existing iOS TestFlight workflow continues to wait for the checks at the exact
+commit. Main game pushes select affected games; an explicit build can be requested from the
+board's Manager tab, Discord's project channel, or scripts/studio.ps1 -Action Build.
+
+The optional Apple wizard needs a setup token with Actions read and Environments read/write;
+creating an environment additionally requires Administration read/write. The temporary setup
+token is not saved. Existing environment settings and approval rules are preserved.
 
 ## 4. Prepare Apple without owning a Mac
 
@@ -135,4 +123,4 @@ archive, or upload another binary. Leave `build_number` empty for normal builds.
 
 First dispatch **iOS TestFlight** manually with `game=tapdemo`, a published 40-character main SHA, and a unique task ID such as `initial-setup`. Confirm `Verify TestFlight readiness` succeeds and install the build from your internal TestFlight invitation. Hosted macOS minutes/storage and any explicitly configured API usage use their respective billing accounts.
 
-Then start the bot and describe “Award two points for each successful tap and update the scoring test” in the project channel, refine the plan and approve it. Watch the PR/checks/merge/build messages, install the new TestFlight version, and confirm the scoring change. Check touch alignment, pause/resume, audio, safe areas, 60 FPS behavior, memory, battery/thermal behavior, and installation size on your actual iPhone. Desktop/simulator measurements do not establish iPhone performance.
+Then start the bot and describe “Award two points for each successful tap and update the scoring test” in the project channel, refine the plan and approve it. Watch the publication/checks/build messages, install the new TestFlight version, and confirm the scoring change. Check touch alignment, pause/resume, audio, safe areas, 60 FPS behavior, memory, battery/thermal behavior, and installation size on your actual iPhone. Desktop/simulator measurements do not establish iPhone performance.
