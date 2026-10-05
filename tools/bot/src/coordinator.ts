@@ -18,7 +18,9 @@ export class Coordinator {
   constructor(private config:Config,public store:Store,private git:Git,private github:GitHub,private providers:Providers) {}
   private stage(id:string,status:Task['status'],detail?:string) {
     if(this.store.get(id)?.cancelRequested) throw new Error('Cancelled');
-    const task=this.store.update(id,{status}); this.store.notify(id,`${status}${detail ? ` — ${detail}` : ''}`); return task;
+    const task=this.store.update(id,{status});
+    const label=status==='implementing' && task.kind==='ask' ? 'Answering your question (read-only)' : status==='implementing' && task.kind==='plan' ? 'Preparing a plan with you (read-only)' : status;
+    this.store.notify(id,`${label}${detail && task.kind!=='ask' && task.kind!=='plan' ? ` — ${detail}` : ''}`); return task;
   }
   async tick(readonly=false) {
     if((readonly ? this.reading : this.busy) || this.stopping) return;

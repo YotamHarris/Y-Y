@@ -42,7 +42,10 @@ requests, and a read-only answer while an implementation is still running.
 A real Codex read-only question through the coordinator answered in 11.45 seconds,
 describing TapDemo's moving targets, one-point hits, 30-second round, and restart,
 and confirmed the question started no edits or build. The running service was
-restarted and the manager guide updated. Live Multica receipt/reply acceptance
-is recorded on YYEN-10. Discord button clicks and a complete approved live
+restarted and the manager guide updated. On YYEN-10, an ordinary owner question
+was picked up by the running Multica bridge and received the real provider's
+answer in comments. Its task stayed read-only, gained no worktree, commit, PR,
+or build, and the acceptance card stayed in progress until the coordinator
+explicitly recorded the successful check. Discord button clicks and a complete approved live
 game-change path still need human acceptance; unit coverage does not establish
 those external interactions.
