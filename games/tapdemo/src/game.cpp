@@ -18,6 +18,7 @@ public:
     const Color targetRed{235,70,70};
     r.text({24,30}, "YY / TAP DEMO", teal, 2);
     r.text({24,74}, "CATCH THE MOMENT", white, 2);
+    r.text({24,98}, "VERSION " YY_GAME_VERSION, muted, 1.5f);
     r.rectangle({24,118,342,2}, {40,61,80});
     r.text({24,140}, "SCORE " + std::to_string(model.score), white);
     r.text({218,140}, "TIME " + std::to_string(static_cast<int>(std::ceil(model.remaining))), muted);
