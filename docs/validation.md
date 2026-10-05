@@ -21,6 +21,28 @@ The [initial hosted Checks run](https://github.com/YotamHarris/Y-Y/actions/runs/
 
 ## Remaining account/device acceptance
 
-The repository is published, but a live Discord command, automated PR merge, signed upload, and iPhone install remain unverified. Complete docs/setup.md, run the signed CI workflow, then request a scoring change through Discord and verify it in TestFlight. Apple account enrollment, app/profile/API-key creation, tester invitations, GitHub credentials, and Discord setup require your accounts. Branch protection is optional.
+Signed TapDemo build 10 [uploaded successfully](https://github.com/YotamHarris/Y-Y/actions/runs/37276849496) and passed Apple processing after the unused camera/Bluetooth backends were excluded. Assignment to YY Internal succeeded. The [latest readiness diagnostics](https://github.com/YotamHarris/Y-Y/actions/runs/37280295605) reported `READY_FOR_BETA_TESTING`, so testing/installation readiness is still unconfirmed. The diagnostic polling run was deliberately cancelled after capturing that state. Owner sign-in to App Store Connect is pending to inspect the tester setup. A complete live game change/PR/merge and real iPhone installation/performance remain acceptance work. Branch protection is optional.
 
 Keep the first live workflow logs and iPhone results as acceptance evidence. Diagnose missing configuration/signing separately from code failures; use `/status resume:true` after fixing prerequisites so the existing build is reconciled rather than manually starting duplicate uploads.
+
+## Conversational manager (2026-10-05)
+
+The comparison used BodySimulation's `manager_talk.py`, `manager_discord.py`,
+and decisions D226/D317: planning in conversation, one approval, stale proposal
+rejection, replies buffered during turns, separate task threads, live progress,
+and read-only questions during other work. YYEngine retains its own scope,
+independent review, and delivery checks.
+
+`npm run check` passed 48 service/Git tests. New cases exercise owner prose,
+refinement/approval, generated-reply exclusion, persisted migration cursors,
+questions that leave task/card state intact, replies during planning, stale
+approval rejection, approved task clarification/retry, explicit natural build
+requests, and a read-only answer while an implementation is still running.
+
+A real Codex read-only question through the coordinator answered in 11.45 seconds,
+describing TapDemo's moving targets, one-point hits, 30-second round, and restart,
+and confirmed the question started no edits or build. The running service was
+restarted and the manager guide updated. Live Multica receipt/reply acceptance
+is recorded on YYEN-10. Discord button clicks and a complete approved live
+game-change path still need human acceptance; unit coverage does not establish
+those external interactions.

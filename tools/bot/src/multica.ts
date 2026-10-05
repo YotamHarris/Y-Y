@@ -6,6 +6,7 @@ import { Store } from './store.js';
 import type { Coordinator } from './coordinator.js';
 import { redact, run, withoutSecrets } from './process.js';
 import type { Kind, Task } from './types.js';
+import { buildRequest, control, question, reply, statusText } from './conversation.js';
 
 export interface BoardConfig {
   executable:string; profile:string; projectId:string; game:string;
@@ -73,11 +74,18 @@ function digest(value:unknown) { return createHash('sha256').update(JSON.stringi
 export class BoardBridge {
   private busy=false;
   private stopping=false;
-  constructor(private config:Config,private board:BoardConfig,private store:Store,private coordinator:Coordinator,private api:BoardAPI) {}
+  constructor(private config:Config,private board:BoardConfig,private store:Store,private coordinator:Coordinator,private api:BoardAPI) {
+    // Enabling conversation must never reinterpret the existing comment history.
+    const key=`conversation-enabled:${board.projectId}`;
+    if(!store.state(key)) store.setState(key,new Date().toISOString());
+  }
   async tick() {
     if(this.busy || this.stopping) return;this.busy=true;
     try {
       const issues=await this.api.issues();
+      this.store.setState(`manager-board-context:${this.board.game}`,redact(JSON.stringify(issues.map(i=>({
+        card:i.identifier,title:i.title,status:i.status,description:i.description?.slice(0,2000)
+      })))).slice(-20000));
       for(const task of this.store.list().filter(t=>t.game===this.board.game)) {
         // Recover a create whose response was lost, using an immutable task marker.
         const marker=`YYEngine task: ${task.id}`;
@@ -85,23 +93,33 @@ export class BoardBridge {
         if(task.boardIssueId && !issue) continue; // An owner may remove/archive a card; do not recreate it.
         if(!issue) {
           issue=await this.api.create(`${task.kind}: ${redact(task.prompt.split(/\r?\n/)[0] || '').slice(0,100)}`,
-            `${redact(task.prompt).slice(0,20000)}\n\n${marker}\nProvider: ${task.provider}${task.model ? ' / '+task.model : ''}\n${task.threadId ? `Discord: https://discord.com/channels/${this.config.guildId}/${task.threadId}\n` : ''}Updates appear in comments. Owner commands: /yy resume, /yy cancel, /yy approve (plans).`);
+            `${redact(task.prompt).slice(0,20000)}\n\n${marker}\nProvider: ${task.provider}${task.model ? ' / '+task.model : ''}\n${task.threadId ? `Discord: https://discord.com/channels/${this.config.guildId}/${task.threadId}\n` : ''}Talk in comments. Reply approve to start a proposed plan, continue to retry paused work, or cancel to stop.`);
           issues.push(issue);
         }
         if(task.boardIssueId!==issue.id) this.store.update(task.id,{boardIssueId:issue.id});
+        if(task.originBoardIssueId && !this.store.state(`origin-notified:${task.id}`)) {
+          const receipt=`YY conversation ${task.id}`;
+          const comments=await this.api.comments(task.originBoardIssueId);
+          if(!comments.some(c=>c.content.includes(receipt))) await this.api.comment(task.originBoardIssueId,`YYEngine manager: I opened ${issue.identifier} for this ${task.kind==='build' ? 'build. Upload, processing and testing readiness will be reported there.' : 'goal. Refine the plan in its comments, then reply approve.'}\n\n${receipt}`);
+          this.store.setState(`origin-notified:${task.id}`,'yes');
+        }
       }
-      // Only explicit owner commands can start work. Card creation, status changes,
-      // provider prose and comments by invited observers never authorize execution.
+      // Fresh owner prose starts read-only conversation. Card creation, status
+      // changes, generated replies and observer comments cannot authorize work.
       for(const issue of issues) {
         const comments=await this.api.comments(issue.id);
         for(const comment of [...comments].sort((a,b)=>a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))) {
-          if(comment.deleted_at || comment.author_type!=='member' || !this.board.owners[comment.author_id] || !/^\/yy\s/i.test(comment.content.trim())) continue;
+          if(comment.deleted_at || comment.author_type!=='member' || !this.board.owners[comment.author_id]) continue;
+          const explicit=/^\/yy\s/i.test(comment.content.trim());
+          if(!explicit && (comment.created_at<this.store.state(`conversation-enabled:${this.board.projectId}`)! ||
+            /^YYEngine manager:|\bYY update [\w-]+\/\d+|\bYY conversation [\w-]+/.test(comment.content))) continue;
           if(!this.store.command(comment.id)) continue;
-          try { await this.command(issue,comment,issues); }
-          catch(err) { await this.api.comment(issue.id,`YYEngine manager: ${redact(err instanceof Error ? err.message : String(err))}\nCorrect the request and post a new command.`); }
+          try { if(explicit) await this.command(issue,comment,issues);else await this.conversation(issue,comment,issues); }
+          catch(err) { await this.api.comment(issue.id,`YYEngine manager: ${redact(err instanceof Error ? err.message : String(err))}\nReply here with your correction.`); }
         }
       }
       for(const task of this.store.list().filter(t=>t.game===this.board.game && t.boardIssueId)) {
+        if(task.kind==='ask' || task.conversationParentId || task.boardIssueId===this.board.managerIssueId) continue;
         const status=boardStatus(task),waiting=redact(waitingOn(task,this.store)).slice(0,1500);
         const snapshot={status,waiting,progress:task.progress,summary:task.summary,question:task.question,pr:task.prUrl,build:task.runUrl};
         const key=`snapshot:${task.id}`,hash=digest(snapshot);
@@ -124,7 +142,7 @@ export class BoardBridge {
         const task=this.store.get(item.taskId);if(task?.game!==this.board.game || !task.boardIssueId || !issues.some(i=>i.id===task.boardIssueId)) continue;
         const receipt=`YY update ${task.id}/${item.id}`;
         const comments=await this.api.comments(task.boardIssueId);
-        if(!comments.some(c=>c.content.includes(receipt))) await this.api.comment(task.boardIssueId,`${redact(item.content)}\n\n${receipt}`);
+        if(!comments.some(c=>c.content.includes(receipt))) await this.api.comment(task.boardIssueId,`YYEngine manager: ${redact(item.content)}\n\n${receipt}`);
         this.store.boardSent(item.id);
       }
       if(this.board.managerIssueId && Date.now()-Number(this.store.state('heartbeat') || 0)>60_000) {
@@ -135,24 +153,48 @@ export class BoardBridge {
     } finally {this.busy=false;}
   }
   async shutdown() { this.stopping=true;while(this.busy) await new Promise(resolve=>setTimeout(resolve,25)); }
+  private async conversation(issue:BoardIssue,comment:BoardComment,issues:BoardIssue[]) {
+    if(issue.assignee_type==='agent' || issue.assignee_type==='squad') throw new Error('Remove the native agent assignment first; this card is managed by the YYEngine coordinator');
+    const text=comment.content.trim();if(!text) return;
+    const userId=this.board.owners[comment.author_id]!;
+    const hub=issue.id===this.board.managerIssueId;
+    const current=hub ? undefined : this.store.conversationByBoard(issue.id);
+    const action=control(text);
+    if(action==='status' && !current) {
+      await this.api.comment(issue.id,'YYEngine manager: Current board:\n'+issues.filter(i=>i.id!==this.board.managerIssueId).map(i=>`${i.identifier} · ${i.title} · ${i.status}\n${redact(i.description || '').slice(0,1500)}`).join('\n\n')+'\n\nCoordinator:\n'+(this.store.list().filter(t=>t.game===this.board.game && !t.conversationParentId).slice(-10).map(t=>statusText(t,this.store)).join('\n\n') || 'No coordinator tasks yet.'));return;
+    }
+    if(action && !current) throw new Error('Open the relevant task card to approve, continue or cancel it. You can describe a new goal here.');
+    if(current && (action || current.kind==='ask' || !buildRequest(text) && (current.kind==='plan' && !current.approvedBy || !question(text) && ['waiting_input','interrupted','failed'].includes(current.status)))) {
+      await reply(this.store,this.coordinator,current,text,comment.id,userId);return;
+    }
+    const kind=buildRequest(text) ? 'build' : question(text) ? 'ask' : 'plan';
+    const task=this.store.create({eventId:`multica:${comment.id}`,kind,game:this.board.game,provider:current?.provider || this.config.defaultProvider,
+      userId,channelId:'multica',prompt:text});
+    this.store.update(task.id,{source:'multica',boardIssueId:(hub || current) && kind!=='ask' ? undefined : issue.id,
+      originBoardIssueId:(hub || current) && kind!=='ask' ? issue.id : undefined,
+      conversationParentId:kind==='ask' && (current || hub) ? current?.id || 'manager' : undefined});
+    if(current) this.store.message(task.id,'context',this.store.context(current.id));
+    if(kind==='ask') for(const previous of this.store.list().filter(t=>t.id!==task.id && t.kind==='ask' && t.boardIssueId===issue.id).slice(-3)) {
+      this.store.message(task.id,'context',this.store.context(previous.id));
+    }
+    this.store.message(task.id,'context',`Current TapDemo board observations:\n${redact(JSON.stringify(issues.map(i=>({card:i.identifier,title:i.title,status:i.status,description:i.description?.slice(0,2000)})))).slice(-20000)}`);
+    if(!hub) this.store.message(task.id,'context',`${issue.title}\n${issue.description || ''}`);
+    this.store.message(task.id,'user',text,comment.id);
+    this.store.notify(task.id,kind==='ask' ? 'I’m checking. This conversation is read-only.' : kind==='build' ? 'Queued a TestFlight build of current main. I’ll report upload, processing and testing readiness separately.' : 'I’m looking into this and will propose a plan. Reply naturally to refine it; approve starts the proposed tasks.');
+  }
   private async command(issue:BoardIssue,comment:BoardComment,issues:BoardIssue[]) {
     if(issue.assignee_type==='agent' || issue.assignee_type==='squad') throw new Error('Remove the native agent assignment first; this card is managed by the YYEngine coordinator');
     const match=/^\/yy\s+(ask|plan|change|build|approve|resume|cancel)\b\s*([\s\S]*)$/i.exec(comment.content.trim());
     if(!match) throw new Error('Commands: /yy ask, /yy plan, /yy change, /yy build, /yy approve, /yy resume, /yy cancel');
     const action=match[1]!.toLowerCase();let body=match[2]!.trim();
     const userId=this.board.owners[comment.author_id]!;
-    const current=this.store.list().filter(t=>t.boardIssueId===issue.id).at(-1);
+    const current=this.store.conversationByBoard(issue.id);
     if(['approve','resume','cancel'].includes(action)) {
       if(!current) throw new Error('This card has no coordinator task');
       if(action==='approve') this.store.approvePlan(current.id,userId);
       else if(action==='cancel') await this.coordinator.cancel(current.id);
       else {
-        if(body) this.store.message(current.id,'user',body,comment.id);
-        if(current.kind==='plan' && current.approvedBy) throw new Error('This plan is already approved; create another card for a new plan');
-        if(current.kind==='plan' && !['waiting_input','interrupted','failed'].includes(current.status)) throw new Error('The planner is still working');
-        if(current.kind==='plan') {this.store.update(current.id,{proposal:undefined,question:undefined});await this.coordinator.resume(current.id);}
-        else if(current.kind==='ask' && current.status==='completed') this.store.update(current.id,{status:'queued',question:undefined});
-        else await this.coordinator.resume(current.id);
+        await reply(this.store,this.coordinator,current,body || 'continue',comment.id,userId);
       }
       return;
     }
@@ -175,6 +217,6 @@ export class BoardBridge {
     const task=this.store.create({eventId:`multica:${comment.id}`,kind:action as Kind,game:this.board.game,provider,userId,channelId:'multica',prompt});
     this.store.update(task.id,{source:'multica',boardIssueId:issue.id,dependencies});
     this.store.message(task.id,'user',prompt,comment.id);
-    this.store.notify(task.id,`YYEngine accepted ${action} using ${provider}. ${action==='ask' || action==='plan' ? 'Read-only; a plan requires /yy approve before implementation.' : 'Uses the existing checks, independent review, CI and distribution pipeline.'}`);
+    this.store.notify(task.id,`YYEngine accepted ${action} using ${provider}. ${action==='ask' || action==='plan' ? 'Read-only; reply approve to a proposed plan to start implementation.' : 'Uses the existing checks, independent review, CI and distribution pipeline.'}`);
   }
 }

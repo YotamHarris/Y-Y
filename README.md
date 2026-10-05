@@ -2,7 +2,7 @@
 
 A small C++20/SDL3 game engine and a Windows-hosted Discord development bot. You and a friend can discuss game ideas, choose Codex or Claude, and explicitly request changes that are checked, reviewed, merged, built on a hosted Mac, and distributed through TestFlight.
 
-**Implemented locally:** TapDemo, engine/game tests, a runnable Discord service, persistent coordination, provider adapters, PR/merge integration, and iOS CI/signing/distribution scripts. The initial hosted unsigned iOS simulator build and launch passed. **Remaining acceptance:** a live Discord change/merge, the first signed TestFlight build, and installation on an iPhone. See [validation evidence](docs/validation.md).
+**Implemented:** TapDemo, engine/game tests, the Discord/Multica manager, persistent coordination, provider adapters, PR/merge integration, and iOS CI/signing/distribution. Hosted Windows and unsigned iOS simulator checks pass. Signed build 10 uploaded and passed Apple processing; internal tester activation still needs confirmation. **Remaining acceptance:** a live game change/merge, verified TestFlight testing readiness, and installation/performance on an iPhone. See [validation evidence](docs/validation.md).
 
 ## Try the game on Windows
 
@@ -35,6 +35,13 @@ npm run register
 The bot runs while this PC is awake and connected. You can run `scripts/start.ps1` through Windows Task Scheduler under the same account that owns your CLI logins. Configure it to run at logon, with the repo as its working directory, and restart on failure. Do not launch a second instance. Cloud builds continue independently while the PC is offline.
 
 ## Discord workflow
+
+Write a goal in the existing project channel to open a planning conversation.
+Reply naturally to refine it, then click **Approve plan** to queue implementation.
+Approved tasks get their own threads. Questions are read-only and can be answered
+while implementation or builds run. Reply **continue** or **try again** on a
+paused task; status and cancellation also have buttons. A `meatbag-talk` channel,
+if present, is always for read-only questions. Optional commands remain available:
 
 | Command | Behavior |
 | --- | --- |
@@ -81,6 +88,7 @@ See [architecture and recovery](docs/architecture.md) and [acceptance evidence](
 See [Multica setup and sharing](docs/multica.md) for the local self-hosted task board,
 TapDemo project, shared Discord/board coordinator, and temporary public HTTPS link.
 Double-click **TapDemoBoard.cmd** or the **TapDemo board** desktop shortcut to start
-and open it. Owner comments `/yy plan`, `/yy approve`, `/yy change`, `/yy ask`,
-`/yy build`, `/yy resume` and `/yy cancel` use the same persistent bot queue.
+and open it. Write goals and questions in ordinary comments on the manager card.
+Refine a proposed plan in its card and reply **approve** to start it. The board and
+Discord use the same persistent coordinator; `/yy` commands remain optional.
 Use `./scripts/multica.ps1 -Action Stop` to close public access.

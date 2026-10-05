@@ -13,6 +13,8 @@ export interface Task {
   source?: 'discord' | 'multica'; boardIssueId?:string; dependencies?:string[];
   proposal?:PlannedTask[]; proposalAt?:number; approvedBy?:string; parentTaskId?:string;
   progress?:string; question?:string;
+  conversationParentId?:string; replyVersion?:number;
+  originBoardIssueId?:string;
 }
 export interface AgentResult { outcome: 'completed' | 'needs_input'; summary: string; question: string; review: 'approve' | 'request_changes' | 'none'; sessionId?: string }
 export interface AgentEvent { type: 'progress' | 'session' | 'error'; text?: string; sessionId?: string }

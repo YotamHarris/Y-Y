@@ -12,6 +12,7 @@ import { Coordinator } from '../src/coordinator.js';
 import { GitHub } from '../src/github.js';
 import type { Task } from '../src/types.js';
 import type { Git } from '../src/git.js';
+import { reply } from '../src/conversation.js';
 
 const input=(eventId='event',kind:Task['kind']='change')=>({eventId,kind,game:'tapdemo',provider:'codex' as const,userId:'developer',channelId:'channel',prompt:'Add a point'});
 const config={root:process.cwd(),data:mkdtempSync(resolve(tmpdir(),'yy-test-')),games:{tapdemo:{directory:'games/tapdemo'}},githubToken:'private-token'} as unknown as Config;
@@ -83,6 +84,56 @@ test('board plans are read-only and dependencies wait for approved successful wo
   await manager.tick();assert.equal(changes,1);assert.equal(f.store.get(tasks[1]!.id)?.status,'queued');assert.equal(f.calls.merge,0);
   f.store.update(tasks[0]!.id,{status:'failed'});await manager.tick();assert.equal(changes,1,'failed prerequisite must not unblock its dependent');
   f.store.update(tasks[0]!.id,{status:'ready'});await manager.tick();assert.equal(changes,2);f.store.close();
+});
+
+test('read-only conversation can answer during an in-flight worker, without taking another mutation slot',async()=>{
+  let finish!:(result:any)=>void;let writes=0,reads=0;
+  const f=fixture({agent:undefined});
+  const providers={execute:async(_provider:unknown,options:any)=>{
+    if(options.readonly) {reads++;return {outcome:'completed',summary:'The round lasts 30 seconds.',question:'',review:'approve'};}
+    writes++;return new Promise(resolve=>{finish=resolve;});
+  }} as unknown as Providers;
+  const manager=new Coordinator(config,f.store,f.git,f.github,providers);
+  const working=manager.tick();await new Promise(resolve=>setImmediate(resolve));
+  const ask=f.store.create({...input('question','ask'),prompt:'How long is a round?'});f.store.update(ask.id,{source:'multica'});f.store.message(ask.id,'user',ask.prompt);
+  await manager.tick(true);assert.equal(f.store.get(ask.id)?.status,'completed');assert.equal(f.store.get(f.task.id)?.status,'implementing');
+  await manager.tick();assert.equal(writes,1);assert.equal(reads,1);
+  finish({outcome:'completed',summary:'Changed',question:'',review:'none'});await working;assert.equal(writes,1);f.store.close();
+});
+
+test('new words arriving during planning invalidate the old proposal and are read next',async()=>{
+  const f=fixture();const plan=f.store.update(f.task.id,{kind:'plan'});f.store.message(plan.id,'user','Bigger targets');
+  let finish!:(result:any)=>void;let prompt='';
+  const providers={execute:async(_provider:unknown,options:any)=>{prompt=options.prompt;return new Promise(resolve=>{finish=resolve;});}} as unknown as Providers;
+  const manager=new Coordinator(config,f.store,f.git,f.github,providers);
+  const first=manager.tick(true);await new Promise(resolve=>setImmediate(resolve));
+  await reply(f.store,manager,f.store.get(plan.id)!,'Actually keep targets small; change the colors','reply','developer');
+  finish({outcome:'completed',summary:'Bigger targets',question:'',review:'none',tasks:[{title:'Bigger',prompt:'Increase target size',depends:[]}]});await first;
+  assert.equal(f.store.get(plan.id)?.status,'queued');assert.equal(f.store.get(plan.id)?.proposal,undefined);
+  assert.throws(()=>f.store.approvePlan(plan.id,'developer'),/No proposed/);
+  const next=manager.tick(true);await new Promise(resolve=>setImmediate(resolve));assert.match(prompt,/keep targets small; change the colors/);
+  finish({outcome:'completed',summary:'Change colors',question:'',review:'none',tasks:[{title:'Colors',prompt:'Update colors only',depends:[]}]});await next;
+  assert.equal(f.store.get(plan.id)?.proposal?.[0]?.title,'Colors');f.store.close();
+});
+
+test('stale approval buttons and qualified approval prose cannot start an obsolete plan',async()=>{
+  const f=fixture();const proposal=[{title:'Colors',prompt:'Update colors',depends:[]}];
+  const plan=f.store.update(f.task.id,{kind:'plan',status:'waiting_input',proposalAt:2,proposal});
+  await assert.rejects(()=>reply(f.store,f.coordinator,plan,'approve','stale','developer',1),/replaced/);
+  assert.equal(f.store.list().length,1);
+  await reply(f.store,f.coordinator,plan,'yes, but keep the current colors','qualified','developer');
+  assert.equal(f.store.get(plan.id)?.proposal,undefined);assert.equal(f.store.list().length,1);assert.equal(f.store.get(plan.id)?.status,'queued');
+  const updated=f.store.update(plan.id,{status:'waiting_input',proposalAt:3,proposal});
+  await reply(f.store,f.coordinator,updated,'go ahead','approved','developer',3);assert.equal(f.store.list().length,2);f.store.close();
+});
+
+test('ask follow-ups stay read-only and task-thread selection preserves the planning conversation',async()=>{
+  const f=fixture();const plan=f.store.update(f.task.id,{kind:'plan'});
+  const child=f.store.create(input('child'));f.store.update(child.id,{threadId:'thread',parentTaskId:plan.id});
+  const ask=f.store.create(input('ask','ask'));f.store.update(ask.id,{threadId:'thread',conversationParentId:plan.id,status:'completed'});
+  assert.equal(f.store.conversationByThread('thread')?.id,plan.id);
+  await reply(f.store,f.coordinator,f.store.get(ask.id)!,'Make the targets blue','follow-up','developer');
+  assert.equal(f.store.get(ask.id)?.kind,'ask');assert.equal(f.store.get(ask.id)?.status,'queued');assert.equal(f.store.list().length,3);f.store.close();
 });
 test('stale base returns to queue without merging',async()=>{
   const f=fixture({main:'new-base'});f.store.update(f.task.id,{status:'awaiting_checks',pr:1,headSha:'head',baseSha:'base'});await f.coordinator.tick();assert.equal(f.store.get(f.task.id)?.status,'queued');assert.equal(f.calls.merge,0);f.store.close();

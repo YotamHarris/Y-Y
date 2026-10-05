@@ -32,6 +32,14 @@ In the [Discord Developer Portal](https://discord.com/developers/applications), 
 
 Enable the **Message Content Intent** on the Bot page, because the bot reads messages in its task threads. Invite it with `bot` and `applications.commands` scopes and these channel permissions: View Channels, Send Messages, Send Messages in Threads, Create Public Threads, and Read Message History. Choose a private server/channel shared by the two of you. The bot additionally enforces the server/user allowlist for every command and message.
 
+Ordinary messages in the channel already used by your tasks open planning
+conversations or read-only questions. For a fresh setup, set the optional
+`YY_DISCORD_CHANNEL_ID` to that project channel. Reply in a planning thread and
+click **Approve plan** to start its tasks. **Continue**, **Status** and **Cancel**
+buttons avoid routine commands. A channel named `meatbag-talk`, or the optional
+`YY_DISCORD_TALK_CHANNEL_ID`, is always read-only. Conversations run separately
+from the serial implementation/build queue so a build does not prevent answers.
+
 Run `npm run register` to register the five guild commands. All command requests are acknowledged before work begins; ongoing messages go into ordinary Discord threads. Agent text is sent with mentions disabled.
 
 ## 3. Configure Codex and Claude

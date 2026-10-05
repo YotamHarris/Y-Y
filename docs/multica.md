@@ -62,7 +62,32 @@ native Multica runtime that could execute the same request separately.
 
 ## Request work and follow progress
 
-Create an issue in TapDemo and post one of these commands as a mapped owner:
+Open **YYEngine manager — how to request work** and write a goal or a question
+in ordinary comments. You can also create a TapDemo issue and describe the goal
+in a comment. Leave it unassigned to native agents.
+
+- “Make the targets easier to hit” opens read-only planning. Goals posted on the
+  manager card get their own cards, so the manager stays available for other questions.
+- Reply naturally on the planning card to refine it. A new reply invalidates the
+  previous proposal, including an answer sent while the planner was running.
+- “Approve” or “go ahead” queues the latest proposed tasks once, with dependencies.
+  Each implementation task gets its own card and, for Discord plans, its own thread.
+- “What is happening?” shows the board and coordinator state. Other questions are
+  read-only and run in a separate conversation lane while implementation/builds run.
+  Asking about a task does not reopen it or mark its acceptance complete.
+- Answer a paused task's question directly, or say “continue” / “try again.”
+  Say “cancel” on the task to stop it; cancelling an approved plan also cancels its tasks.
+- “Make a new TestFlight build” explicitly requests a build of current main.
+  A read-only question conversation stays read-only even if a follow-up mentions a build.
+
+In Discord, write in the channel already used by your tasks. With no existing
+tasks, configure `YY_DISCORD_CHANNEL_ID` locally. `YY_DISCORD_TALK_CHANNEL_ID`
+selects an optional read-only channel; a channel named `meatbag-talk` is also
+recognized. Plans have **Approve plan** buttons; paused work has **Continue**,
+and task threads have **Status** / **Cancel** buttons and a live progress line.
+Buttons are checked against the current proposal and authorized users after restarts.
+
+These commands remain optional, including explicit provider/dependency selection:
 
 | Comment | Behavior |
 | --- | --- |
@@ -75,8 +100,12 @@ Create an issue in TapDemo and post one of these commands as a mapped owner:
 | `/yy resume Your answer` | Continue a paused task with your answer, or retry after fixing prerequisites. |
 | `/yy cancel` | Cancel remaining work and preserve the branch. |
 
-Use a new card for a new task. Card creation, dragging statuses and ordinary
-comments do not authorize code execution. Invited observers cannot run commands;
+Card creation and dragging statuses do not start work. Fresh owner comments open
+read-only conversations; implementation starts only after approving a proposal
+or explicitly requesting a change/build. Comments older than the first deployment
+of conversation support are not reinterpreted on restart. Generated manager replies
+are excluded from input, even though the CLI posts with the owner's account.
+Invited observers cannot request work;
 to enable your second developer, add their Multica member UUID and existing
 authorized Discord user ID to the `owners` mapping in local `board.json`, then
 restart the bot. Commands do not silently switch your chosen provider.
@@ -92,8 +121,8 @@ preserved work, persistent transcripts and explicit owner questions. Approval
 atomically creates tasks with stable event IDs, preventing duplicate execution
 after restart. Dependencies wait for `completed` or verified `ready`, including
 TestFlight acceptance for change tasks. A failed prerequisite does not count as
-success. Revisions to an unapproved plan use `/yy resume` with steering; an already
-approved plan needs a new card for a new goal. YYEngine retains its own review and
+success. Revisions to an unapproved plan are ordinary replies; describe further
+goals on the manager card or in the project channel. YYEngine retains its own review and
 deployment gates; BodySimulation's GPU and landing tools are not required.
 
 The initial project records the completed baseline, the signing failure, live

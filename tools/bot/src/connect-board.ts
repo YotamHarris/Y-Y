@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { loadConfig } from './config.js';
 import { MulticaCLI, type BoardConfig } from './multica.js';
 import { run, withoutSecrets } from './process.js';
+import { managerGuide } from './conversation.js';
 
 const config=loadConfig();
 const executable=resolve(config.data,'multica/bin/multica.exe');
@@ -13,7 +14,7 @@ const projects=await cli(['project','list']);
 let project=projects.find((p:any)=>p.title==='TapDemo');
 if(!project) project=await cli(['project','create','--title','TapDemo','--icon','🎯','--repo',`https://github.com/${config.repository}`]);
 await cli(['project','update',project.id,'--status','in_progress','--description',
-  'TapDemo is our C++20/SDL3 tap game: moving targets, scoring, 30-second rounds, sounds and tap-to-restart on Windows/iOS. Local implementation, gameplay tests and rendering smoke are complete; hosted unsigned iOS simulator launch passed. Latest signed TestFlight attempt failed at Configure signing, before upload. Live change/merge and real iPhone installation/performance remain acceptance work. The YYEngine coordinator mirrors Discord tasks here and accepts owner commands in comments; start with the manager guide card.']);
+  project.description || 'TapDemo is our C++20/SDL3 tap game: moving targets, scoring, 30-second rounds, sounds and tap-to-restart on Windows/iOS. The YYEngine coordinator mirrors Discord tasks here. Describe goals or ask questions in ordinary comments on the manager guide card; plans are approved once before implementation. Task cards hold the latest validation and delivery evidence.']);
 const members=await cli(['workspace','member','list']);
 const email=process.env.YY_MULTICA_OWNER_EMAIL || 'yotam.harris@gmail.com';
 const member=members.find((m:any)=>m.email===email);
@@ -27,7 +28,7 @@ const api=new MulticaCLI(board,config.root);
 const issues=await api.issues();
 const cards=[
   {title:'YYEngine manager — how to request work',status:'done',body:
-    'The existing Discord bot is the manager for this project. One coordinator owns the queue, worktrees, checks, independent review, PRs, merges and TestFlight delivery. Status updates, progress, questions, PRs and build links appear on the matching cards. A last_seen heartbeat in this card metadata confirms the board connection.\n\nCreate a TapDemo issue, leave it unassigned to native agents, and post an owner command:\n\n/yy ask Explain or investigate the game (read-only)\n/yy plan Describe the goal (proposes tasks; edits nothing)\n/yy approve (on a proposed plan; queues implementation once)\n/yy change provider=codex Describe the change\n/yy change provider=claude depends=YYEN-3 Describe dependent work\n/yy build (build and distribute main)\n/yy resume Your answer (on a blocked card)\n/yy cancel\n\nCard creation, dragging statuses and ordinary comments do not start implementation. Only mapped owners can command the bot; invited observers cannot execute code. Discord requests automatically appear here. Use a new card for a new task. Provider choice is preserved; no silent fallback or extra approval after an approved plan.\n\nManager behavior adapted from BodySimulation: explicit approval, few whole tasks, dependency ordering, durable queue/transcript, restart recovery, preserved branches, owner questions and separate infrastructure waits. The YYEngine coordinator retains this repository\'s independent review and deployment gates. Native Multica agents must not be assigned these cards: they would create a second executor.'},
+    managerGuide},
   {title:'Repair signing and verify the first TestFlight build',status:'blocked',body:
     'Latest signed build failed at Configure signing before upload: https://github.com/YotamHarris/Y-Y/actions/runs/37199715524 . Check the failed step and repository docs/setup.md; correct certificate/profile/Apple environment prerequisites. Resume the existing mirrored build card with /yy resume after the fix so the bot reruns failed jobs in the same workflow. This acceptance item itself is tracking information and does not start a build. Done requires upload, Apple processing, internal tester assignment and readiness all verified.'},
   {title:'Verify a live game change through Discord and the board',status:'todo',body:
@@ -38,7 +39,11 @@ const cards=[
 for(const card of cards) {
   let issue=issues.find(i=>i.title===card.title);
   if(!issue) {issue=await api.create(card.title,card.body);await api.update(issue.id,card.status);issues.push(issue);}
-  if(card.title.startsWith('YYEngine manager')) board.managerIssueId=issue.id;
+  if(card.title.startsWith('YYEngine manager')) {
+    board.managerIssueId=issue.id;
+    await run(executable,['--profile',board.profile,'issue','update',issue.id,'--description-stdin','--no-start','--output','json'],
+      {cwd:config.root,env:withoutSecrets(),input:managerGuide,timeout:30_000,stdoutOnly:true});
+  }
 }
 mkdirSync(resolve(config.data,'multica'),{recursive:true});
 writeFileSync(path,JSON.stringify(board,null,2));

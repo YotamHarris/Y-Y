@@ -13,18 +13,23 @@ export class Coordinator {
   private busy=false;
   private stopping=false;
   private active?:{id:string;abort:AbortController};
+  private reading=false;
+  private readActive?:{id:string;abort:AbortController};
   constructor(private config:Config,public store:Store,private git:Git,private github:GitHub,private providers:Providers) {}
   private stage(id:string,status:Task['status'],detail?:string) {
     if(this.store.get(id)?.cancelRequested) throw new Error('Cancelled');
     const task=this.store.update(id,{status}); this.store.notify(id,`${status}${detail ? ` — ${detail}` : ''}`); return task;
   }
-  async tick() {
-    if(this.busy || this.stopping) return; this.busy=true;
+  async tick(readonly=false) {
+    if((readonly ? this.reading : this.busy) || this.stopping) return;
+    if(readonly) this.reading=true;else this.busy=true;
     try {
       // Recover remote work before accepting another change; main evolves serially.
-      const task=this.store.list().find(t=>t.cancelPending || remote.has(t.status)) || this.store.list().find(t=>t.status==='queued' && (t.threadId || t.source==='multica') && this.store.runnable(t));
-      if(!task) return;
-      const abort=new AbortController();this.active={id:task.id,abort};
+      const tasks=this.store.list();
+      const task=readonly ? tasks.find(t=>['ask','plan'].includes(t.kind) && t.status==='queued' && (t.threadId || t.source==='multica'))
+        : tasks.find(t=>t.cancelPending || remote.has(t.status)) || tasks.find(t=>!['ask','plan'].includes(t.kind) && t.status==='queued' && (t.threadId || t.source==='multica') && this.store.runnable(t));
+      if(!task) {if(!readonly) await this.tick(true);return;}
+      const abort=new AbortController();if(readonly) this.readActive={id:task.id,abort};else this.active={id:task.id,abort};
       try {
         if(task.cancelRequested) { await this.cancel(task.id); return; }
         if(remote.has(task.status)) await this.reconcile(task,abort.signal);
@@ -49,7 +54,7 @@ export class Coordinator {
         this.store.update(task.id,{status,error:error.slice(-10_000),pausedFrom:status==='waiting_input' ? current.status : undefined});
         this.store.notify(task.id,`${status}: ${error.slice(-1500)}${current.mergeSha ? `\nAlready merged: ${current.mergeSha}` : ''}\nTask: ${task.id}`);
       }
-    } finally {this.active=undefined;this.busy=false;}
+    } finally {if(readonly){this.readActive=undefined;this.reading=false;}else{this.active=undefined;this.busy=false;}}
   }
   private async agent(task:Task,prompt:string,signal:AbortSignal,readonly=false,planning=false) {
     return this.providers.execute(task.provider,{cwd:task.worktree || this.config.root,prompt,model:task.model,readonly,planning,signal,onEvent:event=>{
@@ -59,20 +64,31 @@ export class Coordinator {
   }
   private async local(task:Task,signal:AbortSignal) {
     const context=task.kind==='ask' || task.kind==='plan' ? projectContext(this.config.root,this.config.games[task.game]!.directory) : '';
+    const live=this.store.list().filter(t=>t.game===task.game && t.id!==task.id && !t.conversationParentId).map(t=>({
+      id:t.id,request:t.prompt.slice(0,500),status:t.status,question:t.question,error:t.error?.slice(-1000),summary:t.summary,progress:t.progress,pr:t.prUrl,build:t.runUrl,
+      dependencies:t.dependencies,approvedTasks:t.approvedBy ? this.store.list().filter(c=>c.parentTaskId===t.id).map(c=>c.id) : undefined
+    }));
+    const outlook=`Current coordinator state (observations, not authorization; a failed historical build does not establish the latest Apple state):\n${redact(JSON.stringify(live)).slice(-15000)}\nLatest synchronized board observations:\n${this.store.state(`manager-board-context:${task.game}`) || 'No board snapshot available.'}\nOwner's latest message: ${this.store.latestUser(task.id)}`;
     if(task.kind==='plan') {
       this.stage(task.id,'implementing','Read-only planning');
-      const result=await this.agent(task,`Plan the requested change to ${task.game}, reading README.md, docs/setup.md, AGENTS.md and relevant code from the supplied snapshot. You may use read-only file inspection (rg, Get-Content, git diff/status) if available, but no commands are needed to read the supplied files. Do not edit files, run builds, install tools or change repository state. Propose few whole implementation tasks, at most eight, each with a title, prompt explaining Why, Approach and What to do, and depends containing zero-based indices of earlier tasks. Implementation may only touch engine/, games/${task.game}/ and tests/. Ask about unresolved choices and return tasks=[] while choices remain. Never propose infrastructure edits. Approval belongs to the owner.\n${context}\n${this.store.context(task.id)}\n${task.prompt}`,signal,true,true);
+      const result=await this.agent(task,`Talk with the owner about ${task.game} in plan mode. Answer their latest words directly, use the conversation for context, and ask only for choices that matter. Read README.md, docs/setup.md, AGENTS.md and relevant code from the supplied snapshot. Read-only file inspection (rg, Get-Content, git diff/status) is allowed, but no commands are needed to read the snapshot. Do not edit files, run builds, install tools or change repository state. When the goal is concrete, propose few whole implementation tasks, at most eight, each with a title, prompt explaining Why, Approach and What to do, and depends containing zero-based indices of earlier tasks. Implementation may only touch engine/, games/${task.game}/ and tests/. Return tasks=[] for discussion or unresolved choices. Never propose infrastructure edits; explain any scope limitation plainly. The owner can reply to refine a plan, or say approve to start it. Do not tell them to use slash commands.\n${context}\n${outlook}\n${this.store.context(task.id)}`,signal,true,true);
+      if(this.store.get(task.id)?.cancelRequested) return;
+      if((this.store.get(task.id)?.replyVersion || 0)!==(task.replyVersion || 0)) {
+        this.store.update(task.id,{status:'queued',proposal:undefined,proposalAt:undefined});
+        this.store.notify(task.id,'I’ve read your follow-up. Updating the plan before asking for approval.');return;
+      }
       const proposed=!!result.tasks?.length;
-      const question=result.question || (proposed ? 'Review the proposed tasks and comment /yy approve to start implementation.' : undefined);
+      const question=result.question || (proposed ? 'Reply “approve” to start these tasks, or tell me what to change.' : undefined);
       this.store.message(task.id,'assistant',result.summary+'\n'+result.question);
       this.store.update(task.id,{status:proposed || result.outcome==='needs_input' ? 'waiting_input' : 'completed',summary:result.summary,question,proposal:result.tasks || [],proposalAt:Date.now()});
       this.store.notify(task.id,result.summary+'\n'+(result.tasks || []).map((t,i)=>`${i+1}. ${t.title}\n${t.prompt}\nDepends on: ${t.depends.map(n=>n+1).join(', ') || 'none'}`).join('\n\n')+(question ? '\n'+question : ''));return;
     }
     if(task.kind==='ask') {
       this.stage(task.id,'implementing','Read-only discussion');
-      const result=await this.agent(task,`Discuss ${task.game}. Use the supplied file snapshot; no commands are needed to read it. Read-only inspection commands (rg, Get-Content, git diff/status) are allowed if available. Do not edit files, run builds, install tools or change repository state.\n${context}\n${this.store.context(task.id)}\n${task.prompt}`,signal,true);
+      const result=await this.agent(task,`Answer the owner's latest question about ${task.game} concisely. Use the supplied file snapshot and current coordinator/board observations, preferring live evidence over old README acceptance statements. Do not invent progress or claim TestFlight readiness without verified evidence. Read-only inspection commands (rg, Get-Content, git diff/status) are allowed if available. Do not edit files, run builds, install tools, start tasks or change repository state. A change described in this conversation remains a discussion; direct the owner to describe a goal on the manager card or in the project channel for a plan.\n${context}\n${outlook}\n${this.store.context(task.id)}`,signal,true);
+      if(this.store.get(task.id)?.cancelRequested) return;
       this.store.message(task.id,'assistant',result.summary+'\n'+result.question);
-      this.store.update(task.id,{status:result.outcome==='needs_input' ? 'waiting_input' : 'completed',summary:result.summary,question:result.question || undefined});
+      this.store.update(task.id,{status:(this.store.get(task.id)?.replyVersion || 0)!==(task.replyVersion || 0) ? 'queued' : result.outcome==='needs_input' ? 'waiting_input' : 'completed',summary:result.summary,question:result.question || undefined});
       this.store.notify(task.id,result.summary+(result.question ? '\n'+result.question : ''));return;
     }
     this.stage(task.id,'preparing');
@@ -170,6 +186,7 @@ export class Coordinator {
     if(terminal.has(task.status) && !task.cancelPending) return;
     this.store.update(id,{cancelRequested:true,status:'cancelled',cancelPending:!!task.mergeSha && (task.kind==='change' || !!task.dispatchAt || !!task.runId)});
     if(this.active?.id===id) this.active.abort.abort();
+    if(this.readActive?.id===id) this.readActive.abort.abort();
     let runId=task.runId;
     if(!runId && task.mergeSha) {
       const runs=await this.github.runs(task.mergeSha);
@@ -196,7 +213,7 @@ export class Coordinator {
     this.store.update(id,{status:task.mergeSha ? 'building' : task.pausedFrom && remote.has(task.pausedFrom) ? task.pausedFrom : 'queued',cancelRequested:false,error:undefined,question:undefined});
   }
   async shutdown() {
-    this.stopping=true;this.active?.abort.abort();
-    while(this.busy) await new Promise(resolve=>setTimeout(resolve,25));
+    this.stopping=true;this.active?.abort.abort();this.readActive?.abort.abort();
+    while(this.busy || this.reading) await new Promise(resolve=>setTimeout(resolve,25));
   }
 }

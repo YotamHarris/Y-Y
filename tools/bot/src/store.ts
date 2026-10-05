@@ -23,6 +23,14 @@ export class Store {
   get(id:string):Task | undefined { const row=this.db.prepare('SELECT data FROM tasks WHERE id=?').get(id); return row ? JSON.parse(row.data as string) : undefined; }
   byEvent(id:string):Task | undefined { const row=this.db.prepare('SELECT data FROM tasks WHERE event_id=?').get(id); return row ? JSON.parse(row.data as string) : undefined; }
   byThread(id:string):Task | undefined { const row=this.db.prepare("SELECT data FROM tasks WHERE json_extract(data,'$.threadId')=? ORDER BY created DESC LIMIT 1").get(id); return row ? JSON.parse(row.data as string) : undefined; }
+  conversationByThread(id:string):Task|undefined {
+    const tasks=this.list().filter(t=>t.threadId===id && !t.conversationParentId);
+    return tasks.filter(t=>!t.parentTaskId).at(-1) || tasks.at(-1);
+  }
+  conversationByBoard(id:string):Task|undefined {
+    const tasks=this.list().filter(t=>t.boardIssueId===id && !t.conversationParentId);
+    return tasks.filter(t=>!t.parentTaskId).at(-1) || tasks.at(-1);
+  }
   list():Task[] { return this.db.prepare('SELECT data FROM tasks ORDER BY created').all().map(r=>JSON.parse(r.data as string)); }
   update(id:string,patch:Partial<Task>):Task {
     const current=this.get(id); if(!current) throw new Error(`Unknown task ${id}`);
@@ -36,6 +44,7 @@ export class Store {
     return this.db.prepare('SELECT role,content FROM (SELECT * FROM messages WHERE task_id=? ORDER BY id DESC LIMIT 30) ORDER BY id').all(taskId)
       .map(r=>`${r.role}: ${r.content}`).join('\n').slice(-50_000);
   }
+  latestUser(taskId:string):string { return this.db.prepare("SELECT content FROM messages WHERE task_id=? AND role='user' ORDER BY id DESC LIMIT 1").get(taskId)?.content as string || this.get(taskId)?.prompt || ''; }
   notify(id:string,text:string) { this.db.prepare('INSERT INTO outbox(task_id,content) VALUES(?,?)').run(id,text); }
   pending():{id:number;taskId:string;content:string}[] { return this.db.prepare('SELECT id,task_id,content FROM outbox WHERE sent=0 ORDER BY id').all().map(r=>({id:Number(r.id),taskId:r.task_id as string,content:r.content as string})); }
   sent(id:number) { this.db.prepare('UPDATE outbox SET sent=1 WHERE id=?').run(id); }
@@ -68,8 +77,8 @@ export class Store {
   recover() {
     for(const task of this.list()) {
       if(!terminal.has(task.status) && !remote.has(task.status) && !['queued','waiting_input','interrupted'].includes(task.status)) {
-        this.update(task.id,{status:'interrupted',error:'Service stopped during local work. Use /status task:<id> resume:true to validate and resume.'});
-        this.notify(task.id,'Local work was interrupted. The branch is preserved; use /status with resume:true.');
+        this.update(task.id,{status:'interrupted',error:'Service stopped during local work. Reply “continue” to validate and resume.'});
+        this.notify(task.id,'Local work was interrupted. The branch is preserved; reply “continue” to resume.');
       }
     }
   }
