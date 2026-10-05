@@ -1,9 +1,12 @@
 #include <tapdemo/model.hpp>
 #include <tapdemo/touch.hpp>
 #include <yy/runtime.hpp>
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
 
 namespace tapdemo {
 namespace {
@@ -14,6 +17,15 @@ constexpr yy::Rect ballsMinus{185,320,44,40}, ballsPlus{301,320,44,40};
 constexpr yy::Rect bouncesMinus{185,390,44,40}, bouncesPlus{301,390,44,40};
 constexpr yy::Rect restartButton{55,470,135,46}, closeButton{200,470,135,46};
 constexpr yy::Rect overlay{24,340,342,156};
+constexpr yy::Color glowColors[]{{0,0,0},{255,112,48},{255,232,64},{64,214,255},{214,160,255},{96,255,128}};
+constexpr const char* powerNames[]{"","BOMB!","ELECTRICITY!","PING!","GHOST!","SPEED UP!"};
+// Each power-up's sound: pitch and length.
+constexpr float powerTones[][2]{{0,0},{110,0.2f},{1320,0.12f},{1760,0.1f},{392,0.18f},{880,0.1f}};
+yy::Color glow(tapdemo::Power p) { return glowColors[static_cast<int>(p)]; }
+yy::Color mix(yy::Color a, yy::Color b, float t) {
+  const auto c=[&](unsigned char x, unsigned char y) { return static_cast<unsigned char>(x+(y-x)*t); };
+  return {c(a.r,b.r),c(a.g,b.g),c(a.b,b.b)};
+}
 }
 
 class TapGame final: public yy::Game {
@@ -24,8 +36,11 @@ class TapGame final: public yy::Game {
   bool debugOpen{};
   int debugBalls{Model::defaultBalls}, debugBounces{Model::defaultBounces};
   int uiFinger{-1}; // a finger the HUD took, kept from the board
+  struct Burst { Fired fired; float age; };
+  std::vector<Burst> bursts; // power-ups that just fired, while their rings grow
+  float clock{};             // seconds, for glow pulses and sparks
 
-  void restart(int balls, int bounces) { touch.cancel(); model.restart(balls,bounces); touch.camera.fit(); }
+  void restart(int balls, int bounces) { touch.cancel(); model.restart(balls,bounces); bursts.clear(); touch.camera.fit(); }
   void openDebug() { touch.cancel(); debugBalls=model.ballCount; debugBounces=model.bouncesPerBall; debugOpen=true; }
   void pressDebug(yy::Vec2 p) {
     if(inside(ballsMinus,p)) debugBalls=std::max(1,debugBalls-1);
@@ -35,13 +50,35 @@ class TapGame final: public yy::Game {
     else if(inside(restartButton,p)) { restart(debugBalls,debugBounces); debugOpen=false; }
     else if(inside(closeButton,p) || !inside(panel,p)) debugOpen=false;
   }
-  // YY_TAPDEMO_SCENE stages a moment for smoke screenshots: aim, debug, play or zoom.
+  void sling(yy::Vec2 at, yy::Vec2 pull) { pointerDown(0,at); pointerMove(0,{at.x+pull.x,at.y+pull.y}); pointerUp(0,{at.x+pull.x,at.y+pull.y}); }
+  // YY_TAPDEMO_SCENE stages a moment for smoke screenshots: aim, debug, play, zoom, glow (one of
+  // each power-up beside the pocket), breaks (four launches), ping or electric (a launch straight
+  // up into that power-up's brick).
   void stage(const char* scene) {
     if(!scene || model.pockets.empty()) return;
     const auto& pocket=model.pockets.front();
     const yy::Vec2 centre{(pocket.column+pocket.columns/2.0f)*Model::cell, (pocket.row+pocket.rows/2.0f)*Model::cell};
+    const auto set=[&](int column, int row, Power power) { model.bricks[row*Model::columns+column]=1; model.powers[row*Model::columns+column]=power; model.refreshFog(); };
     if(std::strcmp(scene,"debug")==0) { openDebug(); return; }
     if(std::strcmp(scene,"zoom")==0) { touch.camera.hold(centre,{195,480},2.0f); return; }
+    if(std::strcmp(scene,"glow")==0) {
+      set(pocket.column,pocket.row-1,Power::Bomb); set(pocket.column+1,pocket.row-1,Power::Electricity); set(pocket.column+2,pocket.row-1,Power::Ping);
+      set(pocket.column-1,pocket.row,Power::Ghost); set(pocket.column+pocket.columns,pocket.row,Power::Speed);
+      touch.camera.hold(centre,{195,480},2.0f); return;
+    }
+    if(std::strcmp(scene,"breaks")==0) {
+      touch.camera.fit(); const yy::Vec2 at=touch.camera.toScreen(centre);
+      for(yy::Vec2 pull: {yy::Vec2{20,40},{-40,15},{5,-40},{40,-10}}) sling(at,pull);
+      return;
+    }
+    const bool ping=std::strcmp(scene,"ping")==0, electric=std::strcmp(scene,"electric")==0;
+    if(ping || electric) {
+      const int column=static_cast<int>(centre.x/Model::cell);
+      for(int c: {column-1,column}) set(c,pocket.row-1,ping ? Power::Ping : Power::Electricity);
+      if(ping) touch.camera.fit(); else touch.camera.hold(centre,{195,480},1.6f);
+      sling(touch.camera.toScreen(centre),{0,40});
+      return;
+    }
     touch.camera.hold(centre,{195,480},1.4f);
     const yy::Vec2 at=touch.camera.toScreen(centre);
     pointerDown(0,at);
@@ -55,7 +92,16 @@ public:
   }
   void update(float seconds) override {
     model.update(seconds); touch.update(seconds);
-    if(model.hits.bricksBroken>0) {
+    clock+=seconds;
+    for(auto& b: bursts) b.age+=seconds;
+    bursts.erase(std::remove_if(bursts.begin(),bursts.end(),[](const Burst& b){ return b.age>1.2f; }),bursts.end());
+    // A power-up's thump and tone stand in for the plain break's tap that frame.
+    if(!model.hits.fired.empty()) {
+      for(const auto& f: model.hits.fired) bursts.push_back({f,0});
+      const auto& tone=powerTones[static_cast<int>(model.hits.fired.front().power)];
+      if(haptics) haptics->thump();
+      if(audio) audio->tone(tone[0],tone[1]);
+    } else if(model.hits.bricksBroken>0) {
       if(haptics) haptics->impact(std::min(1.0f,0.55f+0.15f*(model.hits.bricksBroken-1)));
       if(audio) audio->tone(660.0f,0.05f);
     }
@@ -92,16 +138,68 @@ public:
     const int c0=std::max(0,static_cast<int>(first.x/Model::cell)), c1=std::min(Model::columns-1,static_cast<int>(last.x/Model::cell));
     const int r0=std::max(0,static_cast<int>(first.y/Model::cell)), r1=std::min(Model::rows-1,static_cast<int>(last.y/Model::cell));
     const float gap=std::max(1.0f,cellSize*0.06f), digit=std::clamp(cellSize/22,0.75f,2.5f);
+    // Fogged cells hide their hit points and glow, except glowing bricks while Ping lasts.
+    const Color fogColors[]{{30,42,56},{27,38,51}};
+    const float pulse=0.5f+0.5f*std::sin(clock*6), rim=std::max(1.5f,cellSize*0.16f);
     for(int row=r0; row<=r1; ++row) for(int column=c0; column<=c1; ++column) {
       const int hp=model.brick(column,row);
-      if(hp<=0) continue;
+      const Power power=model.power(column,row);
       const auto p=cam.toScreen({column*Model::cell,row*Model::cell});
-      r.rectangle({p.x+gap/2,p.y+gap/2,cellSize-gap,cellSize-gap},brickColors[std::min(hp,3)-1]);
+      if(!model.visible(column,row)) {
+        const Color fog=fogColors[(column+row)%2];
+        r.rectangle({p.x,p.y,cellSize,cellSize},fog);
+        if(model.pingTime>0 && power!=Power::None) {
+          r.rectangle({p.x+gap/2,p.y+gap/2,cellSize-gap,cellSize-gap},mix(glow(power),white,pulse*0.4f));
+          r.rectangle({p.x+rim,p.y+rim,cellSize-2*rim,cellSize-2*rim},fog);
+        }
+        continue;
+      }
+      if(hp<=0) continue;
+      const Color body=brickColors[std::min(hp,3)-1];
+      if(power!=Power::None) {
+        r.rectangle({p.x,p.y,cellSize,cellSize},mix(glow(power),white,pulse*0.35f));
+        r.rectangle({p.x+rim,p.y+rim,cellSize-2*rim,cellSize-2*rim},mix(body,glow(power),0.35f));
+      } else r.rectangle({p.x+gap/2,p.y+gap/2,cellSize-gap,cellSize-gap},body);
       if(cellSize>=12) r.text({p.x+cellSize/2-4*digit,p.y+cellSize/2-4*digit},std::to_string(hp),dark,digit);
     }
+    // Power-up bursts: a growing ring on the brick that fired, and on a ghost's arrival.
+    for(const auto& b: bursts) {
+      const float t=b.age/1.2f, reach=(b.fired.power==Power::Bomb ? 1.6f : 0.9f)*Model::cell*z*(0.4f+t);
+      const Color c=mix(glow(b.fired.power),field,t);
+      for(int index: {b.fired.cell,b.fired.to}) {
+        if(index<0) continue;
+        const auto at=cam.toScreen({(index%Model::columns+0.5f)*Model::cell,(index/Model::columns+0.5f)*Model::cell});
+        for(int i=0; i<20; ++i) {
+          const float a=i*6.2831853f/20;
+          r.circle({at.x+std::cos(a)*reach,at.y+std::sin(a)*reach},std::max(1.5f,2.5f*z),c);
+        }
+      }
+    }
     const float ballSize=Model::ballRadius*z;
+    const Color spark=glow(Power::Electricity), streak=glow(Power::Speed);
     for(const auto& b: model.balls) {
       const auto p=cam.toScreen(b.position);
+      if(b.fast) for(int i=3; i>=1; --i)
+        r.circle(cam.toScreen({b.position.x-b.velocity.x*0.012f*i,b.position.y-b.velocity.y*0.012f*i}),ballSize*(1-0.2f*i),mix(streak,field,0.25f*i));
+      if(b.electric>0) {
+        // An aura at the zap radius and flickering arcs to every brick it reaches.
+        const float reach=Model::electricRadius*Model::cell;
+        for(int i=0; i<24; ++i) {
+          const float a=i*6.2831853f/24+clock*2, wobble=1+0.06f*std::sin(clock*37+i*5.0f);
+          r.circle({p.x+std::cos(a)*reach*z*wobble,p.y+std::sin(a)*reach*z*wobble},std::max(1.2f,1.6f*z),spark);
+        }
+        const int bc=static_cast<int>(b.position.x/Model::cell), br=static_cast<int>(b.position.y/Model::cell);
+        for(int row=br-2; row<=br+2; ++row) for(int column=bc-2; column<=bc+2; ++column) {
+          const float dx=(column+0.5f)*Model::cell-b.position.x, dy=(row+0.5f)*Model::cell-b.position.y;
+          if(model.brick(column,row)<=0 || dx*dx+dy*dy>reach*reach) continue;
+          const float length=std::max(1.0f,std::hypot(dx,dy)), nx=-dy/length, ny=dx/length;
+          for(int k=1; k<=7; ++k) {
+            const float t=k/8.0f, jag=std::sin(clock*53+k*2.7f+column*1.3f+row*0.7f)*5;
+            r.circle(cam.toScreen({b.position.x+dx*t+nx*jag,b.position.y+dy*t+ny*jag}),std::max(1.0f,1.4f*z),mix(spark,white,0.4f));
+          }
+        }
+        r.circle(p,ballSize+2*z,spark);
+      }
       r.circle(p,ballSize,ballRed);
       r.text({p.x+ballSize+3,p.y-ballSize-6},std::to_string(b.bounces),white,1.25f);
     }
@@ -144,7 +242,11 @@ public:
     r.text({debugButton.x+12,debugButton.y+9},"DEBUG",white,1.5f);
     r.text({24,72}, "BALLS " + std::to_string(model.ballsLeft), white);
     r.text({190,72}, "BRICKS " + std::to_string(model.bricksLeft()), muted);
-    r.text({24,96}, "HOLD IN A GAP, PULL, LET GO", muted, 1.5f);
+    if(!bursts.empty() && bursts.back().age<1.0f) {
+      const Power power=bursts.back().fired.power;
+      r.text({24,96}, powerNames[static_cast<int>(power)], glow(power), 1.5f);
+    } else if(model.pingTime>0) r.text({24,96}, "PING SHOWS THE GLOWING BRICKS", glow(Power::Ping), 1.5f);
+    else r.text({24,96}, "HOLD IN A GAP, PULL, LET GO", muted, 1.5f);
 
     if(model.over()) {
       r.rectangle(overlay,{15,29,45});

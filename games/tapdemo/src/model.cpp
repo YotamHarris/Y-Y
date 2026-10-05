@@ -1,6 +1,7 @@
 #include <tapdemo/model.hpp>
 #include <algorithm>
 #include <cmath>
+#include <deque>
 
 namespace tapdemo {
 float Model::random() {
@@ -26,15 +27,45 @@ void Model::generate() {
     pockets.push_back(p);
     for(int r=p.row; r<p.row+p.rows; ++r) for(int c=p.column; c<p.column+p.columns; ++c) bricks[r*columns+c]=0;
   }
+  // Glowing bricks, each power-up equally likely.
+  powers.assign(columns*rows, Power::None);
+  for(std::size_t i=0; i<bricks.size(); ++i)
+    if(bricks[i]>0 && random()<glowChance) powers[i]=static_cast<Power>(1+std::min(powerKinds-1,static_cast<int>(random()*powerKinds)));
+  refreshFog();
 }
 void Model::restart(int balls_, int bounces) {
   ballCount=std::clamp(balls_,1,maxSetting); bouncesPerBall=std::clamp(bounces,1,maxSetting);
-  ballsLeft=ballCount; balls.clear(); hits={}; paused_=false;
+  ballsLeft=ballCount; balls.clear(); hits={}; pending.clear(); pingTime=0; paused_=false;
   generate();
 }
 int Model::brick(int column, int row) const {
   if(column<0 || row<0 || column>=columns || row>=rows) return 0;
   return bricks[row*columns+column];
+}
+Power Model::power(int column, int row) const {
+  if(column<0 || row<0 || column>=columns || row>=rows) return Power::None;
+  return powers[row*columns+column];
+}
+int Model::fogDistance(int column, int row) const {
+  if(column<0 || row<0 || column>=columns || row>=rows) return 0;
+  return fog_[row*columns+column];
+}
+// A breadth-first walk out from every empty cell, in straight steps inside the grid.
+void Model::refreshFog() {
+  const int far=columns+rows;
+  fog_.assign(columns*rows, far);
+  std::deque<int> queue;
+  for(int i=0; i<columns*rows; ++i) if(bricks[i]<=0) { fog_[i]=0; queue.push_back(i); }
+  while(!queue.empty()) {
+    const int i=queue.front(); queue.pop_front();
+    const int c=i%columns, r=i/columns;
+    const int next[4][2]{{c-1,r},{c+1,r},{c,r-1},{c,r+1}};
+    for(const auto& n: next) {
+      const int j=n[1]*columns+n[0];
+      if(n[0]<0 || n[1]<0 || n[0]>=columns || n[1]>=rows || fog_[j]<=fog_[i]+1) continue;
+      fog_[j]=fog_[i]+1; queue.push_back(j);
+    }
+  }
 }
 int Model::bricksLeft() const {
   return static_cast<int>(std::count_if(bricks.begin(),bricks.end(),[](int b){ return b>0; }));
@@ -53,20 +84,78 @@ int Model::brickIndexHit(yy::Vec2 p) const {
   }
   return best;
 }
-bool Model::open(yy::Vec2 p, bool checkBalls) const {
+bool Model::open(yy::Vec2 p) const {
   if(!std::isfinite(p.x) || !std::isfinite(p.y)) return false;
   if(p.x<ballRadius || p.y<ballRadius || p.x>width()-ballRadius || p.y>height()-ballRadius) return false;
-  if(brickIndexHit(p)>=0) return false;
-  if(checkBalls) for(const auto& b: balls) {
-    const float dx=p.x-b.position.x, dy=p.y-b.position.y;
-    if(dx*dx+dy*dy<4*ballRadius*ballRadius) return false;
+  return brickIndexHit(p)<0;
+}
+// Takes hit points off a brick; a glowing brick that breaks queues its power-up for fire().
+void Model::damage(int index, int points) {
+  if(bricks[index]<=0) return;
+  bricks[index]=std::max(0,bricks[index]-points);
+  if(bricks[index]>0) return;
+  ++hits.bricksBroken;
+  if(powers[index]!=Power::None) { pending.push_back({powers[index],index}); powers[index]=Power::None; }
+}
+// Fires every queued power-up for the ball whose hit broke its brick, including the ones
+// those power-ups break in turn. Each brick breaks once, so a chain ends.
+void Model::fire(Ball& ball) {
+  for(std::size_t i=0; i<pending.size(); ++i) {
+    Fired f=pending[i];
+    const int column=f.cell%columns, row=f.cell/columns;
+    switch(f.power) {
+    case Power::Bomb:
+      for(int r=row-bombSize/2; r<=row+bombSize/2; ++r) for(int c=column-bombSize/2; c<=column+bombSize/2; ++c)
+        if(brick(c,r)>0) damage(r*columns+c,bricks[r*columns+c]);
+      break;
+    case Power::Electricity:
+      if(ball.electric<=0) ball.zapTimer=electricTick;
+      ball.electric=electricSeconds;
+      break;
+    case Power::Ping: pingTime=pingSeconds; break;
+    case Power::Ghost: ghost(ball,f); break;
+    case Power::Speed:
+      if(!ball.fast) { ball.velocity={ball.velocity.x*speedUp,ball.velocity.y*speedUp}; ball.fast=true; }
+      break;
+    case Power::None: break;
+    }
+    hits.fired.push_back(f);
   }
-  return true;
+  pending.clear();
+}
+// Moves the ball, velocity and bounces kept, to the centre of a random brick deep in the
+// field (under fog when any is) and clears the ghostSize square there into a new cavity.
+void Model::ghost(Ball& ball, Fired& fired) {
+  refreshFog();
+  constexpr int half=ghostSize/2;
+  std::vector<int> hidden, any;
+  for(int r=half; r<rows-half; ++r) for(int c=half; c<columns-half; ++c) {
+    if(bricks[r*columns+c]<=0) continue;
+    any.push_back(r*columns+c);
+    if(!visible(c,r)) hidden.push_back(r*columns+c);
+  }
+  const auto& from=hidden.empty() ? any : hidden;
+  if(from.empty()) return;
+  const int target=from[std::min(from.size()-1,static_cast<std::size_t>(random()*from.size()))];
+  const int column=target%columns, row=target/columns;
+  for(int r=row-half; r<=row+half; ++r) for(int c=column-half; c<=column+half; ++c) damage(r*columns+c,bricks[r*columns+c]);
+  ball.position={(column+0.5f)*cell,(row+0.5f)*cell};
+  fired.to=target;
+}
+// One electric pulse: a hit point off every brick whose centre is within electricRadius cells.
+void Model::zap(const Ball& ball) {
+  const float reach=electricRadius*cell;
+  const int c0=std::max(0,static_cast<int>(std::floor((ball.position.x-reach)/cell))), c1=std::min(columns-1,static_cast<int>(std::floor((ball.position.x+reach)/cell)));
+  const int r0=std::max(0,static_cast<int>(std::floor((ball.position.y-reach)/cell))), r1=std::min(rows-1,static_cast<int>(std::floor((ball.position.y+reach)/cell)));
+  for(int r=r0; r<=r1; ++r) for(int c=c0; c<=c1; ++c) {
+    const float dx=ball.position.x-(c+0.5f)*cell, dy=ball.position.y-(r+0.5f)*cell;
+    if(bricks[r*columns+c]<=0 || dx*dx+dy*dy>reach*reach) continue;
+    ++hits.bricksHit; damage(r*columns+c,1);
+  }
 }
 bool Model::launch(yy::Vec2 at, yy::Vec2 pull) {
   const float length=std::hypot(pull.x,pull.y);
-  // Flying balls may have crossed the spot since it was chosen; balls pass through each other.
-  if(paused_ || over() || ballsLeft<=0 || !(length>=minPull) || !open(at,false)) return false;
+  if(paused_ || over() || ballsLeft<=0 || !(length>=minPull) || !open(at)) return false;
   balls.push_back({at,{-pull.x/length*speed,-pull.y/length*speed},bouncesPerBall});
   --ballsLeft;
   return true;
@@ -74,8 +163,9 @@ bool Model::launch(yy::Vec2 at, yy::Vec2 pull) {
 void Model::update(float dt) {
   hits={};
   if(paused_ || over() || !std::isfinite(dt) || dt<=0) return;
-  // Sub-steps of at most a few units keep a ball from passing a cell corner.
-  const int steps=std::max(1,static_cast<int>(std::ceil(speed*dt/4)));
+  pingTime=std::max(0.0f,pingTime-dt);
+  // Sub-steps of at most a few units for a sped-up ball keep any ball from passing a cell corner.
+  const int steps=std::max(1,static_cast<int>(std::ceil(speed*speedUp*dt/4)));
   const float h=dt/steps;
   for(std::size_t i=0; i<balls.size(); ) {
     Ball& b=balls[i]; bool spent=false;
@@ -90,14 +180,22 @@ void Model::update(float dt) {
       if(b.position.y<ballRadius || b.position.y>height()-ballRadius || (struck[1]=brickIndexHit(b.position))>=0) {
         b.position.y-=b.velocity.y*h; b.velocity.y=-b.velocity.y; bounced=true;
       }
+      // Electric zaps cost no bounces.
+      if(b.electric>0) {
+        b.zapTimer-=h;
+        if(b.zapTimer<=1e-5f) { b.zapTimer+=electricTick; zap(b); fire(b); }
+        b.electric=std::max(0.0f,b.electric-h);
+      }
       if(!bounced) continue;
       if(struck[1]==struck[0]) struck[1]=-1;
-      for(int index: struck) if(index>=0) { ++hits.bricksHit; if(--bricks[index]==0) ++hits.bricksBroken; }
+      for(int index: struck) if(index>=0) { ++hits.bricksHit; damage(index,1); }
+      fire(b);
       ++hits.bounces;
       spent=--b.bounces<=0;
     }
     if(spent) { ++hits.ballsSpent; balls.erase(balls.begin()+static_cast<std::ptrdiff_t>(i)); }
     else ++i;
   }
+  if(hits.bricksBroken>0) refreshFog();
 }
 }

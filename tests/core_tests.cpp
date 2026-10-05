@@ -14,6 +14,7 @@ static void check(bool condition, const char* label) { if(!condition) { std::cer
 
 using tapdemo::Hits;
 using tapdemo::Model;
+using tapdemo::Power;
 static bool near(float a, float b, float within=0.01f) { return std::abs(a-b)<=within; }
 static yy::Vec2 pocketCentre(const Model& m, std::size_t i=0) {
   const auto& p=m.pockets[i];
@@ -23,17 +24,33 @@ static int hitPoints(const Model& m) { return std::accumulate(m.bricks.begin(),m
 // An empty field but for the given bricks, so a ball's path is known.
 static void only(Model& m, const std::vector<std::pair<int,int>>& cells, int hp) {
   std::fill(m.bricks.begin(),m.bricks.end(),0);
+  std::fill(m.powers.begin(),m.powers.end(),Power::None);
   for(auto [c,r]: cells) m.bricks[r*Model::columns+c]=hp;
+  m.refreshFog();
+}
+static void set(Model& m, int c, int r, int hp, Power power=Power::None) {
+  m.bricks[r*Model::columns+c]=hp; m.powers[r*Model::columns+c]=power; m.refreshFog();
+}
+static void collect(Hits& total, const Hits& h) {
+  total.bricksHit+=h.bricksHit; total.bricksBroken+=h.bricksBroken; total.bounces+=h.bounces; total.ballsSpent+=h.ballsSpent;
+  total.fired.insert(total.fired.end(),h.fired.begin(),h.fired.end());
 }
 static Hits run(Model& m, float seconds) {
   Hits total;
-  for(int i=0; i<static_cast<int>(seconds*60); ++i) {
-    m.update(1.0f/60);
-    total.bricksHit+=m.hits.bricksHit; total.bricksBroken+=m.hits.bricksBroken;
-    total.bounces+=m.hits.bounces; total.ballsSpent+=m.hits.ballsSpent;
-  }
+  for(int i=0; i<static_cast<int>(seconds*60); ++i) { m.update(1.0f/60); collect(total,m.hits); }
   return total;
 }
+// Updates until a power-up fires (at most `seconds`), returning everything that happened.
+static Hits untilFired(Model& m, float seconds=3) {
+  Hits total;
+  for(int i=0; i<static_cast<int>(seconds*60) && total.fired.empty(); ++i) { m.update(1.0f/60); collect(total,m.hits); }
+  return total;
+}
+static int firedCount(const Hits& h, Power p) {
+  return static_cast<int>(std::count_if(h.fired.begin(),h.fired.end(),[&](const tapdemo::Fired& f){ return f.power==p; }));
+}
+// A ball fired straight up the middle of column 12 from row 20.
+static bool launchUp(Model& m) { return m.launch({12.5f*Model::cell,20.5f*Model::cell},{0,30}); }
 struct Recorder final: yy::Haptics {
   std::vector<std::string> calls;
   void impact(float) override { calls.push_back("impact"); }
@@ -41,6 +58,145 @@ struct Recorder final: yy::Haptics {
   void humStop() override { calls.push_back("stop"); }
   void thump() override { calls.push_back("thump"); }
 };
+
+static void powerChecks() {
+  constexpr int cells=Model::columns*Model::rows;
+  std::vector<std::pair<int,int>> all;
+  for(int r=0; r<Model::rows; ++r) for(int c=0; c<Model::columns; ++c) all.push_back({c,r});
+  {
+    // About one brick in fifty glows, every kind appears, only bricks glow, and a new grid rerolls them.
+    int glowing=0, bricks=0; int kinds[tapdemo::powerKinds+1]{};
+    for(std::uint32_t seed=1; seed<=60; ++seed) {
+      Model m(seed);
+      for(int i=0; i<cells; ++i) {
+        if(m.bricks[i]>0) ++bricks;
+        if(m.powers[i]==Power::None) continue;
+        check(m.bricks[i]>0,"only bricks glow");
+        ++glowing; ++kinds[static_cast<int>(m.powers[i])];
+      }
+    }
+    const float share=static_cast<float>(glowing)/bricks;
+    check(share>0.014f && share<0.028f,"about one brick in fifty glows");
+    for(int k=1; k<=tapdemo::powerKinds; ++k) check(kinds[k]>glowing/tapdemo::powerKinds/2,"each power-up is picked about equally");
+    Model a(31), b(31);
+    check(a.powers==b.powers,"glowing bricks are deterministic per seed");
+    const auto before=a.powers; a.restart();
+    check(a.powers!=before,"a new grid rerolls the glowing bricks");
+  }
+  {
+    // Fog: visible within two straight steps of an empty cell, a diamond; walls are no cavity.
+    Model m(32); only(m,all,1); set(m,10,10,0);
+    check(m.fogDistance(10,10)==0 && m.visible(10,10),"an empty cell is clear");
+    check(m.visible(12,10) && m.visible(10,8) && m.visible(11,11) && m.visible(9,9),"two straight steps are visible");
+    check(!m.visible(13,10) && !m.visible(12,11) && !m.visible(12,12) && m.fogDistance(12,11)==3,"three steps, or two diagonal, are fogged");
+    check(!m.visible(0,0) && m.fogDistance(0,0)==20,"a brick by the wall is fogged: walls are not cavities");
+    // Hidden bricks still collide, and fog lifts as bricks break.
+    set(m,13,10,3);
+    check(m.launch({10.5f*Model::cell,10.5f*Model::cell},{-30,0}),"launch right from the cavity");
+    Hits total;
+    for(int i=0; i<120 && m.brick(11,10)>0; ++i) { m.update(1.0f/60); collect(total,m.hits); }
+    check(m.brick(11,10)==0 && total.bricksBroken==1,"the brick beside the cavity breaks");
+    check(m.visible(13,10) && m.fogDistance(13,10)==2 && !m.visible(14,10),"fog lifts two steps past the break");
+    Model g(33);
+    check(std::all_of(g.pockets.begin(),g.pockets.end(),[&](const tapdemo::Pocket& p){ return g.visible(p.column-1,p.row) && g.visible(p.column-2,p.row+1); })
+      ,"a new grid shows the bricks around its pockets");
+    int hidden=0;
+    for(int r=0; r<Model::rows; ++r) for(int c=0; c<Model::columns; ++c) hidden+=!g.visible(c,r);
+    check(hidden>cells/2,"and most of the grid is under fog");
+  }
+  {
+    // Bomb: breaks the 3x3 around it outright; a glowing brick it breaks fires too, and chains end.
+    Model m(34); m.restart(5,99);
+    only(m,{{0,0},{11,4},{12,4},{13,4},{11,5},{13,5},{11,6},{13,6},{14,5},{15,5}},3);
+    set(m,12,5,1,Power::Bomb); set(m,13,4,3,Power::Bomb); set(m,11,4,3,Power::Ping);
+    check(launchUp(m),"launch at a bomb");
+    const Hits h=untilFired(m);
+    check(firedCount(h,Power::Bomb)==2 && firedCount(h,Power::Ping)==1,"the bomb fires, and fires the glowing bricks it breaks");
+    for(auto [c,r]: std::vector<std::pair<int,int>>{{11,4},{12,4},{13,4},{11,5},{12,5},{13,5},{11,6},{13,6},{14,5}})
+      check(m.brick(c,r)==0,"the bombs break their 3x3 outright");
+    check(m.brick(15,5)==3 && m.brick(0,0)==3,"bricks outside the blasts are untouched");
+    check(m.pingTime>0 && m.powers[4*Model::columns+11]==Power::None,"a power-up fires once");
+  }
+  {
+    // Electricity: the ball zaps every brick within 1.5 cells each 0.25 s for 3 s, at no bounce.
+    Model m(35); m.restart(5,99);
+    only(m,{{0,0}},3); set(m,12,5,1,Power::Electricity);
+    check(launchUp(m) && firedCount(untilFired(m),Power::Electricity)==1,"breaking an electric brick fires it");
+    check(m.balls[0].electric>Model::electricSeconds-0.1f,"the ball is electric");
+    // Hold the ball still among bricks to count the zaps.
+    Model z(36); z.restart(5,99);
+    only(z,{{9,9},{10,9},{11,9},{9,10},{11,10},{9,11},{10,11},{11,11},{12,10},{0,0}},3);
+    check(z.launch({10.5f*Model::cell,10.5f*Model::cell},{0,30}),"a ball among bricks");
+    auto& b=z.balls[0]; b.velocity={0,0}; b.electric=Model::electricSeconds; b.zapTimer=Model::electricTick;
+    run(z,0.2f);
+    check(z.brick(10,9)==3,"no zap before the first tick");
+    run(z,0.1f);
+    check(z.brick(10,9)==2 && z.brick(11,11)==2 && z.brick(12,10)==3,"a zap takes a point off each brick within 1.5 cells");
+    check(z.balls[0].bounces==99,"zaps cost no bounces");
+    const Hits h=run(z,4);
+    check(z.brick(10,9)==0 && z.brick(9,11)==0 && z.brick(12,10)==3 && h.bricksBroken==8,"zaps keep coming while it lasts");
+    check(z.balls[0].electric==0,"electricity runs out");
+  }
+  {
+    // Ping: every glowing brick shows through the fog for a while.
+    Model m(37); m.restart(5,99);
+    only(m,{{0,0}},3); set(m,12,5,1,Power::Ping);
+    check(m.pingTime==0,"no ping at the start");
+    check(launchUp(m) && firedCount(untilFired(m),Power::Ping)==1,"breaking a ping brick fires it");
+    check(m.pingTime>Model::pingSeconds-0.1f,"ping lasts its time");
+    run(m,Model::pingSeconds+0.1f);
+    check(m.pingTime==0,"ping wears off");
+  }
+  {
+    // Ghost: the ball reappears deep under the fog, velocity and bounces kept, in a new 3x3 cavity.
+    Model m(38); m.restart(5,99);
+    only(m,all,2);
+    for(int r=6; r<=21; ++r) set(m,12,r,0);
+    set(m,12,5,1,Power::Ghost);
+    check(launchUp(m),"launch up the corridor at a ghost");
+    const Hits h=untilFired(m);
+    check(firedCount(h,Power::Ghost)==1,"breaking a ghost brick fires it");
+    const auto& f=h.fired.front(); const int c=f.to%Model::columns, r=f.to/Model::columns;
+    const auto& ball=m.balls[0];
+    // The rest of that frame's sub-steps move it on a few units.
+    check(f.to>=0 && near(ball.position.x,(c+0.5f)*Model::cell,Model::cell/2) && near(ball.position.y,(r+0.5f)*Model::cell,Model::cell/2),"the ball reappears at the new cavity's centre");
+    check(std::abs(c-12)>Model::fogReach+1 || r<3 || r>23,"it lands far from where it was, under the fog");
+    for(int dr=-1; dr<=1; ++dr) for(int dc=-1; dc<=1; ++dc) check(m.brick(c+dc,r+dr)==0,"the ghost clears its 3x3");
+    check(near(std::hypot(ball.velocity.x,ball.velocity.y),Model::speed) && ball.bounces==98,"velocity and bounces are kept");
+    check(m.bricksLeft()==cells-16-9-1,"only the ghost brick and the new cavity break");
+  }
+  {
+    // Speed up: the ball goes twice as fast and still never tunnels through a brick or a corner.
+    Model m(39); m.restart(5,99);
+    only(m,{{0,0}},3); set(m,12,5,1,Power::Speed);
+    check(launchUp(m) && firedCount(untilFired(m),Power::Speed)==1,"breaking a speed brick fires it");
+    check(m.balls[0].fast && near(std::hypot(m.balls[0].velocity.x,m.balls[0].velocity.y),Model::speed*Model::speedUp,0.1f),"the ball moves twice as fast");
+    for(yy::Vec2 pull: {yy::Vec2{0,30},{17,30},{30,17},{-23,29},{29,-3}}) {
+      Model t(40); t.restart(5,99);
+      std::vector<std::pair<int,int>> wall;
+      for(int c=0; c<Model::columns; ++c) wall.push_back({c,10});
+      for(int c=0; c<Model::columns; c+=2) wall.push_back({c,11});
+      only(t,wall,99);
+      check(t.launch({12.5f*Model::cell,30.5f*Model::cell},pull),"launch at the wall");
+      auto& b=t.balls[0]; b.velocity={b.velocity.x*Model::speedUp,b.velocity.y*Model::speedUp}; b.fast=true;
+      bool through=false;
+      for(int i=0; i<600; ++i) { t.update(1.0f/60); through|=!t.balls.empty() && t.balls[0].position.y<11*Model::cell+Model::ballRadius-0.01f; }
+      check(!through,"a fast ball never passes a brick wall or a corner");
+    }
+  }
+  {
+    // The player's path: a slingshot launch that breaks a glowing brick fires its power-up.
+    Model m(21); tapdemo::Touch t(m);
+    const auto at=pocketCentre(m); const auto& p=m.pockets[0];
+    const int column=static_cast<int>(at.x/Model::cell);
+    for(int c: {column-1,column}) set(m,c,p.row-1,1,Power::Bomb);
+    const auto press=t.camera.toScreen(at);
+    t.down(0,press); t.move(0,{press.x,press.y+40});
+    check(t.up(0,{press.x,press.y+40}),"the slingshot launches up at the glowing brick");
+    const Hits h=untilFired(m);
+    check(firedCount(h,Power::Bomb)>=1 && m.brick(column,p.row-2)==0,"its bomb fires and breaks the bricks behind it");
+  }
+}
 
 static void tapdemoChecks() {
   {
@@ -72,8 +228,10 @@ static void tapdemoChecks() {
     check(!m.canPlace({p.column*Model::cell+Model::ballRadius*0.5f,centre.y}),"a ball overlapping the pocket edge is not open");
     check(!m.canPlace({-50,-50}) && !m.canPlace({Model::width()+5,10}),"outside the grid is not open");
     check(m.launch(centre,{0,40}),"launch from the pocket");
-    check(!m.canPlace(centre),"a flying ball's spot is not open");
+    check(m.canPlace(centre),"a flying ball does not block its spot");
+    check(m.launch(centre,{0,40}) && m.balls.size()==2,"a ball launches from on top of a flying ball");
   }
+  powerChecks();
   {
     Model m(9); const auto at=pocketCentre(m);
     check(!m.launch(at,{Model::minPull*0.5f,0}) && m.ballsLeft==Model::defaultBalls && m.balls.empty(),"short pull cancels");
