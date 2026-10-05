@@ -9,7 +9,7 @@
 namespace tapdemo {
 // Shows the grid in the play area: screen = world * zoom + offset.
 struct Camera {
-  yy::Rect view{0,118,390,726};
+  yy::Rect view{0,80,390,764}; // below the header
   float zoom{1};
   yy::Vec2 offset{};
   static constexpr float maxZoom=2.5f;
@@ -37,8 +37,9 @@ struct Camera {
 };
 
 // Turns pointer events into slingshot aims, pinch zoom and pans, with the aim's haptics.
-// One finger on open space holds a ball there; pulling aims it and letting go launches it
-// opposite the pull. One finger elsewhere pans; a second finger cancels any aim and pinches.
+// While the instructions show, the first press only dismisses them. Then one finger on open
+// space holds a ball there; pulling aims it and letting go launches it opposite the pull.
+// One finger elsewhere pans; a second finger cancels any aim and pinches.
 class Touch {
   struct Finger { int id; yy::Vec2 position; };
   struct Pinch { yy::Vec2 world; float distance, zoom; };
@@ -61,6 +62,7 @@ public:
   yy::Haptics* haptics{};
   Camera camera;
   std::optional<Aim> aim;
+  bool instructions{true}; // shown when the game opens and after each restart
   yy::Vec2 rejected{}; float rejectTime{}; // where a press could not hold a ball, while the ring shows
   explicit Touch(Model& m): model(m) { camera.fit(); }
   float humLevel() const { return aim ? 0.25f+0.5f*std::min(1.0f, std::hypot(aim->pull.x,aim->pull.y)/fullPull) : 0; }
@@ -69,6 +71,7 @@ public:
     aim.reset();
   }
   void down(int id, yy::Vec2 p) {
+    if(instructions) { instructions=false; return; } // that finger's moves and release find nothing
     if(find(id) || fingers.size()>=2 || (fingers.empty() && !camera.contains(p))) return;
     fingers.push_back({id,p});
     if(fingers.size()==2) { cancel(); startPinch(); return; }

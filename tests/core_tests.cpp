@@ -21,10 +21,11 @@ static yy::Vec2 pocketCentre(const Model& m, std::size_t i=0) {
   return {(p.column+p.columns/2.0f)*Model::cell, (p.row+p.rows/2.0f)*Model::cell};
 }
 static int hitPoints(const Model& m) { return std::accumulate(m.bricks.begin(),m.bricks.end(),0); }
-// An empty field but for the given bricks, so a ball's path is known.
+// An empty field but for the given bricks, so a ball's path is known; no goal unless a test sets one.
 static void only(Model& m, const std::vector<std::pair<int,int>>& cells, int hp) {
   std::fill(m.bricks.begin(),m.bricks.end(),0);
   std::fill(m.powers.begin(),m.powers.end(),Power::None);
+  m.goal=-1;
   for(auto [c,r]: cells) m.bricks[r*Model::columns+c]=hp;
   m.refreshFog();
 }
@@ -34,6 +35,7 @@ static void set(Model& m, int c, int r, int hp, Power power=Power::None) {
 static void collect(Hits& total, const Hits& h) {
   total.bricksHit+=h.bricksHit; total.bricksBroken+=h.bricksBroken; total.bounces+=h.bounces; total.ballsSpent+=h.ballsSpent;
   total.fired.insert(total.fired.end(),h.fired.begin(),h.fired.end());
+  total.goalBroken|=h.goalBroken;
 }
 static Hits run(Model& m, float seconds) {
   Hits total;
@@ -186,7 +188,7 @@ static void powerChecks() {
   }
   {
     // The player's path: a slingshot launch that breaks a glowing brick fires its power-up.
-    Model m(21); tapdemo::Touch t(m);
+    Model m(21); tapdemo::Touch t(m); t.instructions=false;
     const auto at=pocketCentre(m); const auto& p=m.pockets[0];
     const int column=static_cast<int>(at.x/Model::cell);
     for(int c: {column-1,column}) set(m,c,p.row-1,1,Power::Bomb);
@@ -195,6 +197,92 @@ static void powerChecks() {
     check(t.up(0,{press.x,press.y+40}),"the slingshot launches up at the glowing brick");
     const Hits h=untilFired(m);
     check(firedCount(h,Power::Bomb)>=1 && m.brick(column,p.row-2)==0,"its bomb fires and breaks the bricks behind it");
+  }
+}
+
+static void goalChecks() {
+  constexpr int cells=Model::columns*Model::rows;
+  std::vector<std::pair<int,int>> all;
+  for(int r=0; r<Model::rows; ++r) for(int c=0; c<Model::columns; ++c) all.push_back({c,r});
+  const auto goalAt=[](Model& m, int c, int r, int hp) { set(m,c,r,hp); m.goal=r*Model::columns+c; };
+  {
+    // One goal per grid: a plain brick under the fog, set by the seed and rerolled with each grid.
+    int moved=0;
+    for(std::uint32_t seed=1; seed<=60; ++seed) {
+      Model m(seed);
+      check(m.goal>=0 && m.goal<cells,"every grid has a goal");
+      const int c=m.goal%Model::columns, r=m.goal/Model::columns;
+      int goals=0;
+      for(int rr=0; rr<Model::rows; ++rr) for(int cc=0; cc<Model::columns; ++cc) goals+=m.isGoal(cc,rr);
+      check(goals==1,"exactly one goal");
+      check(m.brick(c,r)>0 && m.power(c,r)==Power::None,"the goal is a brick and not a power-up");
+      check(!m.visible(c,r),"the goal starts under the fog");
+      check(!m.won() && !m.over(),"a new grid is not won");
+      const int before=m.goal; m.restart(); moved+=m.goal!=before;
+      check(m.goal>=0 && !m.visible(m.goal%Model::columns,m.goal/Model::columns),"a new grid hides a new goal");
+    }
+    check(moved>50,"each grid rerolls the goal");
+    check(Model(77).goal==Model(77).goal,"the goal is deterministic per seed");
+  }
+  {
+    // Breaking the goal with a ball hit wins and is reported; the round freezes.
+    Model m(41); m.restart(5,99); only(m,{{0,0}},3); goalAt(m,12,5,1);
+    check(launchUp(m),"launch at the goal");
+    Hits h;
+    for(int i=0; i<180 && !m.over(); ++i) { m.update(1.0f/60); collect(h,m.hits); }
+    check(m.won() && m.over() && !m.lost() && h.goalBroken,"breaking the goal with a hit wins, and Hits reports it");
+    check(m.bricksLeft()==1,"other bricks are left");
+    const auto position=m.balls[0].position; m.update(1.0f/60);
+    check(position.y==m.balls[0].position.y && !m.launch({100,100},{0,30}),"a won round is frozen");
+  }
+  {
+    // A Bomb that breaks the goal wins.
+    Model m(42); m.restart(5,99); only(m,{{0,0}},3); goalAt(m,13,4,3); set(m,12,5,1,Power::Bomb);
+    check(launchUp(m),"launch at a bomb beside the goal");
+    const Hits h=untilFired(m);
+    check(firedCount(h,Power::Bomb)==1 && h.goalBroken && m.won(),"a bomb that breaks the goal wins");
+  }
+  {
+    // An electric zap that breaks the goal wins.
+    Model z(43); z.restart(5,99); only(z,{{0,0}},3); goalAt(z,10,9,1);
+    check(z.launch({10.5f*Model::cell,10.5f*Model::cell},{0,30}),"a ball beside the goal");
+    auto& b=z.balls[0]; b.velocity={0,0}; b.electric=Model::electricSeconds; b.zapTimer=Model::electricTick;
+    const Hits h=run(z,0.3f);
+    check(z.brick(10,9)==0 && h.goalBroken && z.won(),"a zap that breaks the goal wins");
+  }
+  {
+    // Breaking every other brick does not win.
+    Model m(44); m.restart(5,99); only(m,{{12,5}},1); goalAt(m,0,39,3);
+    check(launchUp(m),"launch at the only other brick");
+    const Hits h=run(m,2);
+    check(m.brick(12,5)==0 && m.bricksLeft()==1 && !h.goalBroken && !m.won() && !m.over(),"clearing the other bricks does not win");
+  }
+  {
+    // Out of balls with the goal standing loses.
+    Model m(45); m.restart(1,2);
+    check(m.launch(pocketCentre(m),{0,30}),"the only ball");
+    run(m,5);
+    check(m.lost() && !m.won() && m.brick(m.goal%Model::columns,m.goal/Model::columns)>0,"no balls left and the goal standing: lost");
+  }
+  {
+    // Ping shows the cells within its radius of the pinged brick: a goal inside it, not one outside.
+    Model m(46); m.restart(5,99); only(m,all,2);
+    for(int r=6; r<=21; ++r) set(m,12,r,0);
+    set(m,12,5,1,Power::Ping); goalAt(m,12,0,2);
+    check(m.pingRadius==Model::defaultPingRadius && Model::defaultPingRadius==6,"the ping radius starts at 6 cells");
+    check(!m.pinged(12,0),"nothing is pinged before a ping");
+    check(launchUp(m) && firedCount(untilFired(m),Power::Ping)==1,"breaking a ping brick fires it");
+    check(!m.visible(12,0) && m.pinged(12,0),"a fogged goal 5 cells away is inside the ping");
+    check(!m.visible(5,5) && !m.pinged(5,5) && !m.pinged(12,12),"7 cells away is outside it");
+    check(m.pinged(18,5) && !m.pinged(17,9),"the radius is measured centre to centre in cells");
+    m.setPingRadius(8);
+    check(m.pinged(5,5),"a larger radius reaches further");
+    run(m,Model::pingSeconds+0.1f);
+    check(!m.pinged(12,0) && m.pingCells().empty(),"the ping wears off");
+    m.setPingRadius(0); check(m.pingRadius==Model::minPingRadius,"the radius clamps up to its minimum");
+    m.setPingRadius(1000); check(m.pingRadius==Model::maxPingRadius,"the radius clamps down to its maximum");
+    m.setPingRadius(9); m.restart(3,7);
+    check(m.pingRadius==9 && m.pingTime==0 && m.pingCells().empty(),"restart keeps the radius and ends the ping");
   }
 }
 
@@ -262,19 +350,12 @@ static void tapdemoChecks() {
     check(total.bounces==5 && m.balls.size()==1,"walls and bricks both count bounces");
     check(!m.won(),"a brick left: not won");
   }
-  {
-    Model m(13); only(m,{{12,5}},1);
-    check(m.launch({12.5f*Model::cell,20*Model::cell},{0,30}),"launch at the last brick");
-    run(m,3);
-    check(m.won() && m.over() && !m.lost() && m.bricksLeft()==0,"breaking the last brick wins");
-    const auto position=m.balls[0].position; m.update(1.0f/60);
-    check(position.y==m.balls[0].position.y && !m.launch({100,100},{0,30}),"a won round is frozen");
-  }
+  goalChecks();
   {
     Model m(14); m.restart(1,1);
     check(m.launch(pocketCentre(m),{0,30}) && !m.lost(),"last ball in flight: not lost");
     run(m,5);
-    check(m.balls.empty() && m.ballsLeft==0 && m.lost() && !m.won(),"no balls left with bricks: lost");
+    check(m.balls.empty() && m.ballsLeft==0 && m.lost() && !m.won(),"no balls left with the goal standing: lost");
     check(!m.launch(pocketCentre(m),{0,30}),"no launch after losing");
   }
   {
@@ -291,8 +372,13 @@ static void tapdemoChecks() {
     const auto& cam=t.camera;
     check(near(cam.zoom,cam.minZoom()) && Model::width()*cam.zoom<=cam.view.w+0.01f && Model::height()*cam.zoom<=cam.view.h+0.01f,"opens on the whole grid");
     const auto press=cam.toScreen(pocketCentre(m));
+    check(t.instructions,"the instructions show when the game opens");
     t.down(0,press);
-    check(t.aim && haptics.calls==std::vector<std::string>{"hum"},"press in a pocket holds a ball and hums");
+    check(!t.instructions && !t.aim && haptics.calls.empty(),"the first press only dismisses the instructions");
+    t.move(0,{press.x,press.y+40});
+    check(!t.up(0,{press.x,press.y+40}) && m.ballsLeft==Model::defaultBalls && m.balls.empty(),"and its pull and release place no ball");
+    t.down(0,press);
+    check(t.aim && haptics.calls==std::vector<std::string>{"hum"},"then a press in a pocket holds a ball and hums");
     t.move(0,{press.x,press.y+40});
     check(t.aim && t.aim->pull.y>0 && haptics.calls.back()=="hum","pulling keeps the hum and aims");
     const int points=hitPoints(m);

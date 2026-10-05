@@ -32,10 +32,16 @@ void Model::generate() {
   for(std::size_t i=0; i<bricks.size(); ++i)
     if(bricks[i]>0 && random()<glowChance) powers[i]=static_cast<Power>(1+std::min(powerKinds-1,static_cast<int>(random()*powerKinds)));
   refreshFog();
+  // The goal: a plain brick under the fog (any plain brick if none is fogged).
+  std::vector<int> hidden, plain;
+  for(int i=0; i<columns*rows; ++i) if(bricks[i]>0 && powers[i]==Power::None) { plain.push_back(i); if(fog_[i]>fogReach) hidden.push_back(i); }
+  if(hidden.empty()) hidden=plain;
+  goal=hidden.empty() ? -1 : hidden[std::min(hidden.size()-1,static_cast<std::size_t>(random()*hidden.size()))];
+  goalBroken_=false;
 }
 void Model::restart(int balls_, int bounces) {
   ballCount=std::clamp(balls_,1,maxSetting); bouncesPerBall=std::clamp(bounces,1,maxSetting);
-  ballsLeft=ballCount; balls.clear(); hits={}; pending.clear(); pingTime=0; paused_=false;
+  ballsLeft=ballCount; balls.clear(); hits={}; pending.clear(); pingCells_.clear(); pingTime=0; paused_=false;
   generate();
 }
 int Model::brick(int column, int row) const {
@@ -45,6 +51,13 @@ int Model::brick(int column, int row) const {
 Power Model::power(int column, int row) const {
   if(column<0 || row<0 || column>=columns || row>=rows) return Power::None;
   return powers[row*columns+column];
+}
+bool Model::pinged(int column, int row) const {
+  if(pingTime<=0) return false;
+  return std::any_of(pingCells_.begin(),pingCells_.end(),[&](int cell) {
+    const int dc=cell%columns-column, dr=cell/columns-row;
+    return dc*dc+dr*dr<=pingRadius*pingRadius;
+  });
 }
 int Model::fogDistance(int column, int row) const {
   if(column<0 || row<0 || column>=columns || row>=rows) return 0;
@@ -95,6 +108,7 @@ void Model::damage(int index, int points) {
   bricks[index]=std::max(0,bricks[index]-points);
   if(bricks[index]>0) return;
   ++hits.bricksBroken;
+  if(index==goal) { goalBroken_=true; hits.goalBroken=true; }
   if(powers[index]!=Power::None) { pending.push_back({powers[index],index}); powers[index]=Power::None; }
 }
 // Fires every queued power-up for the ball whose hit broke its brick, including the ones
@@ -112,7 +126,7 @@ void Model::fire(Ball& ball) {
       if(ball.electric<=0) ball.zapTimer=electricTick;
       ball.electric=electricSeconds;
       break;
-    case Power::Ping: pingTime=pingSeconds; break;
+    case Power::Ping: pingTime=pingSeconds; pingCells_.push_back(f.cell); break;
     case Power::Ghost: ghost(ball,f); break;
     case Power::Speed:
       if(!ball.fast) { ball.velocity={ball.velocity.x*speedUp,ball.velocity.y*speedUp}; ball.fast=true; }
@@ -164,6 +178,7 @@ void Model::update(float dt) {
   hits={};
   if(paused_ || over() || !std::isfinite(dt) || dt<=0) return;
   pingTime=std::max(0.0f,pingTime-dt);
+  if(pingTime<=0) pingCells_.clear();
   // Sub-steps of at most a few units for a sped-up ball keep any ball from passing a cell corner.
   const int steps=std::max(1,static_cast<int>(std::ceil(speed*speedUp*dt/4)));
   const float h=dt/steps;
