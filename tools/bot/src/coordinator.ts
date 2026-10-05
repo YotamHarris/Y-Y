@@ -19,7 +19,8 @@ export class Coordinator {
   constructor(private config:Config,public store:Store,private git:Git,private github:GitHub,private providers:Providers) {}
   private stage(id:string,status:Task['status'],detail?:string) {
     if(this.store.get(id)?.cancelRequested) throw new Error('Cancelled');
-    const task=this.store.update(id,{status});
+    const progress=status==='checking' ? 'Running coordinator tests, Release compilation and rendering smoke.' : status==='reviewing' ? 'Coordinator validations passed; obtaining independent review.' : status==='awaiting_checks' ? 'Local validations and review passed; waiting for required CI.' : undefined;
+    const task=this.store.update(id,{status,...(progress ? {progress} : {})});
     if(status==='ready') this.store.notify(id,`TestFlight upload, Apple processing, tester assignment and internal testing readiness verified.\n${task.runUrl || detail || ''}`);
     if(status==='completed') this.store.notify(id,detail || 'No changes were needed.');
     return task;
@@ -143,7 +144,7 @@ export class Coordinator {
       this.store.update(task.id,{attempt});
       if(!task.headSha || feedback) {
         this.stage(task.id,'implementing',attempt ? `Repair ${attempt}/2` : undefined);
-        const result=await this.agent(task,`Implement this game change: ${task.prompt}\nConversation:\n${this.store.context(task.id)}\nOnly edit engine/, ${this.config.games[task.game]!.directory}/, and tests/. Do not change automation, workflows, config, dependencies, or git metadata.\n${feedback}`,signal);
+        const result=await this.agent(task,`Implement this game change: ${task.prompt}\nConversation:\n${this.store.context(task.id)}\nOnly edit engine/, ${this.config.games[task.game]!.directory}/, and tests/. Do not change automation, workflows, config, dependencies, or git metadata. The coordinator runs required validation, including scripts/build.ps1 -Smoke, outside your provider sandbox after you finish; it then obtains independent review before publication. You do not need to run builds yourself. If your sandbox cannot access a compiler or validation tool, report that limitation in summary and return completed once the requested edits are ready for the coordinator's checks. Completed means candidate implementation finished, not validated or published. Use needs_input only for an unresolved owner choice or a permission needed to make the actual edits, not to ask the owner to run the coordinator's validations.\n${feedback}`,signal);
         if((this.store.get(task.id)?.replyVersion || 0)!==turnVersion) {this.store.update(task.id,{status:'queued',headSha:undefined});return;}
         if(result.outcome==='needs_input') {this.store.message(task.id,'assistant',result.summary+'\n'+result.question);this.store.update(task.id,{status:'waiting_input',summary:result.summary,question:result.question || result.summary,
           questions:result.asks?.length ? result.asks : [{question:result.question || result.summary,options:[]}],questionVersion:Date.now(),answers:undefined});this.store.notify(task.id,result.summary+(result.question ? '\n'+result.question : ''));return;}
@@ -155,7 +156,7 @@ export class Coordinator {
         this.stage(task.id,'checking');await this.git.validate(task,signal);
         this.stage(task.id,'reviewing');
         const diff=await this.git.diff(task,signal);
-        const result=await this.agent(task,`Independently review the candidate against request: ${task.prompt}\nOwner conversation and revisions:\n${this.store.context(task.id)}\nDo not edit files. Inspect correctness, tests, mobile lifecycle, and unintended changes. Return review=approve only if acceptable, otherwise request_changes.\nDiff:\n${diff.slice(0,120_000)}`,signal,true);
+        const result=await this.agent(task,`Independently review the candidate against request: ${task.prompt}\nOwner conversation and revisions:\n${this.store.context(task.id)}\nThe coordinator's local tests, Release compilation and rendering smoke passed for candidate ${task.headSha}. Do not rerun builds or edit files. Inspect correctness, tests, mobile lifecycle, and unintended changes; read the generated smoke metrics/image if relevant. Return review=approve only if acceptable, otherwise request_changes.\nDiff:\n${diff.slice(0,120_000)}`,signal,true);
         if(result.outcome==='needs_input') throw new AgentPaused(result.question || result.summary);
         if(result.review!=='approve') throw new Error(`Review requested changes: ${result.summary}`);
         await this.git.assertClean(task,signal);
@@ -226,7 +227,7 @@ export class Coordinator {
   private published(task:Task,sha:string) {
     const latest=this.store.get(task.id)!;
     task=this.store.update(task.id,{mergeSha:sha,reviewSha:sha,acceptance:latest.acceptedSha===sha ? 'accepted' : 'pending'});
-    if(latest.reviewSha!==sha) this.store.notify(task.id,`Published and ready for your review.\n${task.summary || task.prompt}\nCommit: ${sha}\nTry the result, then Accept or Request changes. Dependent tasks wait for your acceptance; the build continues separately.\n${task.prUrl || ''}`);
+    if(latest.reviewSha!==sha) this.store.notify(task.id,`Published and ready for your review.\n${task.summary || task.prompt}\nCoordinator tests, Release compilation, rendering smoke, independent review and required CI passed.\nCommit: ${sha}\nTry the result, then Accept or Request changes. Dependent tasks wait for your acceptance; the build continues separately.\n${task.prUrl || ''}`);
     return task;
   }
   async requestChanges(id:string,feedback:string,sha?:string) {
