@@ -75,6 +75,15 @@ class DistributionTest < Minitest::Test
     client = apple_client('/betaGroups/group-1/builds?limit=200' => { 'data' => [], 'links' => {} })
     refute client.assigned?('build-1', 'group-1')
   end
+  def test_readiness_reports_apple_state_and_requires_testing
+    detail = {'data' => {'attributes' => {'internalBuildState' => 'READY_FOR_BETA_TESTING'}}}
+    client = apple_client('/builds/build-1/buildBetaDetail' => detail)
+    output, = capture_io { refute client.ready?('build-1') }
+    assert_includes output, 'READY_FOR_BETA_TESTING'
+    detail['data']['attributes']['internalBuildState'] = 'IN_BETA_TESTING'
+    output, = capture_io { assert client.ready?('build-1') }
+    assert_includes output, 'IN_BETA_TESTING'
+  end
   def test_assignment_rejects_other_host_pagination
     client = apple_client('/betaGroups/group-1/builds?limit=200' => {
       'data' => [], 'links' => {'next' => 'https://example.com/v1/betaGroups/group-1/builds?cursor=next'} })

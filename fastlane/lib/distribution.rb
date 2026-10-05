@@ -77,7 +77,12 @@ module YY
     end
     def ready?(build_id)
       detail = request('GET', "/builds/#{build_id}/buildBetaDetail").fetch('data')
-      detail.dig('attributes', 'internalBuildState') == 'IN_BETA_TESTING'
+      internal_state = detail.dig('attributes', 'internalBuildState')
+      if @last_internal_state != internal_state
+        puts "Apple internal testing state: #{internal_state || 'UNKNOWN'}"
+        @last_internal_state = internal_state
+      end
+      internal_state == 'IN_BETA_TESTING'
     end
     def notes(build_id, text)
       localizations = query('/betaBuildLocalizations', {'filter[build]' => build_id})
