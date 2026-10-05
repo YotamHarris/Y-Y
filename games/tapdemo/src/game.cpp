@@ -15,19 +15,28 @@ namespace {
 bool inside(yy::Rect r, yy::Vec2 p) { return p.x>=r.x && p.y>=r.y && p.x<r.x+r.w && p.y<r.y+r.h; }
 // The header holds only DEBUG and the ball counter; the board starts below it (Camera::view).
 constexpr yy::Rect debugButton{286,22,88,36};
-constexpr yy::Rect panel{20,210,350,510};
-constexpr yy::Rect ballsMinus{200,270,44,40}, ballsPlus{316,270,44,40};
-constexpr yy::Rect bouncesMinus{200,335,44,40}, bouncesPlus{316,335,44,40};
-constexpr yy::Rect radiusMinus{200,400,44,40}, radiusPlus{316,400,44,40};
-constexpr yy::Rect colorsButton{40,465,310,48};
-constexpr yy::Rect restartButton{40,540,150,46}, closeButton{200,540,150,46};
+// The debug panel: ten stepper rows (a label, -, value, +), COLORS, RESTART and CLOSE.
+constexpr yy::Rect panel{20,96,350,736};
+enum Stepper { Balls, Bounces, PingRadius, GridSize, GlowRate, Weight0, steppers=Weight0+powerKinds };
+constexpr float stepperTops[steppers]{136,186,236,286,336,412,462,512,562,612}; // the weights below a heading
+constexpr yy::Rect minusButton(int row) { return {180,stepperTops[row],44,40}; }
+constexpr yy::Rect plusButton(int row) { return {320,stepperTops[row],44,40}; }
+constexpr yy::Rect colorsButton{40,664,310,44};
+constexpr yy::Rect restartButton{40,718,150,46}, closeButton{200,718,150,46};
 constexpr yy::Rect overlay{24,340,342,156};
 // Drawing code lets Power::None stand for the goal: its colour, name and flag icon.
 constexpr const char* powerNames[]{"GOAL","BOMB","ELECTRICITY","PING","GHOST","SPEED UP"};
+constexpr const char* weightNames[]{"","BOMB","ELECTRIC","PING","GHOST","SPEED"};
 constexpr const char* powerLines[]{"","BREAKS THE 3X3 AROUND IT","THE BALL ZAPS BRICKS NEAR IT","SHOWS NEARBY POWER-UPS + GOAL",
   "THE BALL JUMPS DEEP INTO FOG","THE BALL FLIES TWICE AS FAST"};
 // Each power-up's sound: pitch and length.
 constexpr float powerTones[][2]{{0,0},{110,0.2f},{1320,0.12f},{1760,0.1f},{392,0.18f},{880,0.1f}};
+// The glow rate steps by half a percent up to 5%, then by whole percents.
+int stepGlow(int halfPercents, int by) {
+  const bool whole=by>0 ? halfPercents>=10 : halfPercents>10;
+  return std::clamp(halfPercents+by*(whole ? 2 : 1),0,Settings::maxGlow);
+}
+std::string percent(int halfPercents) { return std::to_string(halfPercents/2)+(halfPercents%2 ? ".5%" : "%"); }
 yy::Color glow(const Palette& palette, Power p) { return palette.glows[static_cast<int>(p)]; }
 yy::Color mix(yy::Color a, yy::Color b, float t) {
   const auto c=[&](unsigned char x, unsigned char y) { return static_cast<unsigned char>(x+(y-x)*t); };
@@ -98,22 +107,33 @@ class TapGame final: public yy::Game {
   bool debugOpen{};
   std::size_t scheme{}; // session preference: restarting a round keeps it
   int debugBalls{Model::defaultBalls}, debugBounces{Model::defaultBounces};
+  Settings debugGrid; // pending until RESTART, like balls and bounces
   int uiFinger{-1}; // a finger the HUD took, kept from the board
   struct Burst { Fired fired; float age; };
   std::vector<Burst> bursts; // power-ups that just fired, while their rings grow
   float clock{};             // seconds, for glow pulses and sparks
 
-  void restart(int balls, int bounces) { touch.cancel(); model.restart(balls,bounces); bursts.clear(); touch.camera.fit(); touch.instructions=true; }
-  void openDebug() { touch.cancel(); debugBalls=model.ballCount; debugBounces=model.bouncesPerBall; debugOpen=true; }
+  void restart(int balls, int bounces, const Settings& grid) {
+    touch.cancel(); model.restart(balls,bounces,grid); bursts.clear(); touch.refit(); touch.instructions=true;
+  }
+  void openDebug() { touch.cancel(); debugBalls=model.ballCount; debugBounces=model.bouncesPerBall; debugGrid=model.settings; debugOpen=true; }
+  void step(int row, int by) {
+    switch(row) {
+    case Balls: debugBalls=std::clamp(debugBalls+by,1,Model::maxSetting); break;
+    case Bounces: debugBounces=std::clamp(debugBounces+by,1,Model::maxSetting); break;
+    case PingRadius: model.setPingRadius(model.pingRadius+by); break;
+    case GridSize: debugGrid.gridScale=std::clamp(debugGrid.gridScale+by,Settings::minScale,Settings::maxScale); break;
+    case GlowRate: debugGrid.glow=stepGlow(debugGrid.glow,by); break;
+    default: { int& w=debugGrid.weights[row-Weight0]; w=std::clamp(w+by,0,Settings::maxWeight); }
+    }
+  }
   void pressDebug(yy::Vec2 p) {
-    if(inside(ballsMinus,p)) debugBalls=std::max(1,debugBalls-1);
-    else if(inside(ballsPlus,p)) debugBalls=std::min(Model::maxSetting,debugBalls+1);
-    else if(inside(bouncesMinus,p)) debugBounces=std::max(1,debugBounces-1);
-    else if(inside(bouncesPlus,p)) debugBounces=std::min(Model::maxSetting,debugBounces+1);
-    else if(inside(radiusMinus,p)) model.setPingRadius(model.pingRadius-1);
-    else if(inside(radiusPlus,p)) model.setPingRadius(model.pingRadius+1);
-    else if(inside(colorsButton,p)) scheme=(scheme+1)%palettes.size();
-    else if(inside(restartButton,p)) { restart(debugBalls,debugBounces); debugOpen=false; }
+    for(int row=0; row<steppers; ++row) {
+      if(inside(minusButton(row),p)) { step(row,-1); return; }
+      if(inside(plusButton(row),p)) { step(row,1); return; }
+    }
+    if(inside(colorsButton,p)) scheme=(scheme+1)%palettes.size();
+    else if(inside(restartButton,p)) { restart(debugBalls,debugBounces,debugGrid); debugOpen=false; }
     else if(inside(closeButton,p) || !inside(panel,p)) debugOpen=false;
   }
   void sling(yy::Vec2 at, yy::Vec2 pull) { pointerDown(0,at); pointerMove(0,{at.x+pull.x,at.y+pull.y}); pointerUp(0,{at.x+pull.x,at.y+pull.y}); }
@@ -122,16 +142,26 @@ class TapGame final: public yy::Game {
   // beside the pocket) or glow (the same close up), breaks (four launches), electric (a launch
   // into that power-up), pingin or pingout (a launch into a Ping brick with the goal inside or
   // outside the ping radius), won (a launch into the goal), palette / palette-fit /
-  // palette-max (all icons, a real Ping revealing fogged bricks, frozen at activation).
+  // palette-max (all icons, a real Ping revealing fogged bricks, frozen at activation),
+  // grid-min or grid-max (the debug steppers set the smallest or largest grid, then RESTART).
   void stage(const char* scene) {
     if(!scene || model.pockets.empty() || std::strcmp(scene,"instructions")==0) return;
+    if(std::strncmp(scene,"grid-",5)==0) {
+      const auto press=[&](yy::Rect b) { const yy::Vec2 p{b.x+b.w/2,b.y+b.h/2}; pointerDown(0,p); pointerUp(0,p); };
+      press(debugButton);
+      const yy::Rect button=std::strcmp(scene,"grid-min")==0 ? minusButton(GridSize) : plusButton(GridSize);
+      for(int i=0; i<Settings::maxScale; ++i) press(button);
+      press(restartButton);
+      touch.instructions=false;
+      return;
+    }
     touch.instructions=false;
     const auto& pocket=model.pockets.front();
     const yy::Vec2 centre{(pocket.column+pocket.columns/2.0f)*Model::cell, (pocket.row+pocket.rows/2.0f)*Model::cell};
     const int column=pocket.column+pocket.columns/2;
     const yy::Vec2 below{(column+0.5f)*Model::cell,centre.y}; // in the pocket, under the brick at (column, pocket.row-1)
-    const auto set=[&](int c, int r, Power power) { model.bricks[r*Model::columns+c]=1; model.powers[r*Model::columns+c]=power; model.refreshFog(); };
-    const auto setGoal=[&](int c, int r) { set(c,r,Power::None); model.goal=r*Model::columns+c; };
+    const auto set=[&](int c, int r, Power power) { model.bricks[r*model.columns+c]=1; model.powers[r*model.columns+c]=power; model.refreshFog(); };
+    const auto setGoal=[&](int c, int r) { set(c,r,Power::None); model.goal=r*model.columns+c; };
     if(std::strcmp(scene,"debug")==0) { openDebug(); return; }
     if(std::strcmp(scene,"zoom")==0) { touch.camera.hold(centre,{195,480},2.0f); return; }
     if(std::strcmp(scene,"header")==0) { sling(touch.camera.toScreen(below),{20,40}); return; }
@@ -145,7 +175,7 @@ class TapGame final: public yy::Game {
         setGoal(pocket.column+1,pocket.row-4);
         set(pocket.column-1,pocket.row+1,Power::Ping);
         const int fogBomb=pocket.column+pocket.columns+3;
-        if(fogBomb<Model::columns) set(fogBomb,pocket.row,Power::Bomb);
+        if(fogBomb<model.columns) set(fogBomb,pocket.row,Power::Bomb);
         const yy::Vec2 at{(pocket.column+2.5f)*Model::cell,centre.y};
         sling(touch.camera.toScreen(at),{0,40});
         for(int i=0; i<180 && model.pingTime<=0; ++i) model.update(1.0f/60);
@@ -172,7 +202,7 @@ class TapGame final: public yy::Game {
           for(auto [dc,dr]: {std::pair{0,-1},{1,0},{-1,0},{0,1},{1,-1},{-1,-1},{1,1},{-1,1}}) {
             const float scale=distance/std::hypot(static_cast<float>(dc),static_cast<float>(dr));
             const int c=column+static_cast<int>(std::lround(dc*scale)), r=row+static_cast<int>(std::lround(dr*scale));
-            if(c<0 || r<0 || c>=Model::columns || r>=Model::rows || model.fogDistance(c,r)<=Model::fogReach+1 || model.isGoal(c,r)) continue;
+            if(c<0 || r<0 || c>=model.columns || r>=model.rows || model.fogDistance(c,r)<=Model::fogReach+1 || model.isGoal(c,r)) continue;
             if(power==Power::None) setGoal(c,r); else set(c,r,power);
             return;
           }
@@ -223,7 +253,7 @@ public: void initialize(yy::Services& services) override {
   void pointerDown(int id, yy::Vec2 p) override {
     if(debugOpen) { uiFinger=id; pressDebug(p); return; }
     if(inside(debugButton,p)) { uiFinger=id; openDebug(); return; }
-    if(model.over() && inside(overlay,p)) { uiFinger=id; restart(model.ballCount,model.bouncesPerBall); return; }
+    if(model.over() && inside(overlay,p)) { uiFinger=id; restart(model.ballCount,model.bouncesPerBall,model.settings); return; }
     touch.down(id,p);
   }
   void pointerMove(int id, yy::Vec2 p) override { if(id!=uiFinger) touch.move(id,p); }
@@ -245,12 +275,12 @@ public: void initialize(yy::Services& services) override {
     const auto origin=cam.toScreen({0,0});
     // At fit zoom the grid leaves margins; give those the scheme's backdrop too.
     r.rectangle({0,0,cam.view.w,cam.view.y+cam.view.h},dark);
-    r.rectangle({origin.x,origin.y,Model::width()*z,Model::height()*z},field);
+    r.rectangle({origin.x,origin.y,model.width()*z,model.height()*z},field);
 
     // Bricks in view, with their hit points once the cells are big enough to read.
     const auto first=cam.toWorld({cam.view.x,cam.view.y}), last=cam.toWorld({cam.view.x+cam.view.w,cam.view.y+cam.view.h});
-    const int c0=std::max(0,static_cast<int>(first.x/Model::cell)), c1=std::min(Model::columns-1,static_cast<int>(last.x/Model::cell));
-    const int r0=std::max(0,static_cast<int>(first.y/Model::cell)), r1=std::min(Model::rows-1,static_cast<int>(last.y/Model::cell));
+    const int c0=std::max(0,static_cast<int>(first.x/Model::cell)), c1=std::min(model.columns-1,static_cast<int>(last.x/Model::cell));
+    const int r0=std::max(0,static_cast<int>(first.y/Model::cell)), r1=std::min(model.rows-1,static_cast<int>(last.y/Model::cell));
     const float gap=std::max(1.0f,cellSize*0.06f), digit=std::clamp(cellSize/22,0.75f,2.5f);
     // Fogged cells hide their hit points and icons, except glowing bricks and the goal within a ping.
     // Icon bricks hide their hit points so no digit is read as part of the icon.
@@ -279,7 +309,7 @@ public: void initialize(yy::Services& services) override {
     }
     // Each ping's reach, fading as it wears off.
     for(int index: model.pingCells()) {
-      const auto at=cam.toScreen({(index%Model::columns+0.5f)*Model::cell,(index/Model::columns+0.5f)*Model::cell});
+      const auto at=cam.toScreen({(index%model.columns+0.5f)*Model::cell,(index/model.columns+0.5f)*Model::cell});
       const float reach=model.pingRadius*Model::cell*z;
       const Color c=mix(field,glow(palette,Power::Ping),std::min(1.0f,model.pingTime/Model::pingSeconds*1.5f));
       for(int i=0; i<64; ++i) {
@@ -293,7 +323,7 @@ public: void initialize(yy::Services& services) override {
       const Color c=mix(glow(palette,b.fired.power),field,t);
       for(int index: {b.fired.cell,b.fired.to}) {
         if(index<0) continue;
-        const auto at=cam.toScreen({(index%Model::columns+0.5f)*Model::cell,(index/Model::columns+0.5f)*Model::cell});
+        const auto at=cam.toScreen({(index%model.columns+0.5f)*Model::cell,(index/model.columns+0.5f)*Model::cell});
         for(int i=0; i<20; ++i) {
           const float a=i*6.2831853f/20;
           r.circle({at.x+std::cos(a)*reach,at.y+std::sin(a)*reach},std::max(1.5f,2.5f*z),c);
@@ -402,25 +432,31 @@ public: void initialize(yy::Services& services) override {
       r.rectangle(panel,palette.card);
       r.rectangle({panel.x,panel.y,panel.w,2},teal);
       r.text({panel.x+20,panel.y+22},"DEBUG",teal);
-      const auto row=[&](const char* label, int value, yy::Rect minus, yy::Rect plus) {
-        r.text({panel.x+20,minus.y+14},label,white,1.5f);
+      r.text({panel.x+150,panel.y+24},"VERSION " YY_GAME_VERSION,muted,1.25f);
+      const auto row=[&](int index, const std::string& label, Color labelColor, const std::string& value) {
+        const yy::Rect minus=minusButton(index), plus=plusButton(index);
+        r.text({panel.x+20,minus.y+14},label,labelColor,1.5f);
         r.rectangle(minus,palette.button); r.rectangle(plus,palette.button);
         r.text({minus.x+14,minus.y+12},"-",white); r.text({plus.x+14,plus.y+12},"+",white);
-        r.text({minus.x+minus.w+18,minus.y+12},std::to_string(value),teal);
+        const float centre=(minus.x+minus.w+plus.x)/2, scale=value.size()>5 ? 1.75f : 2; // 60X100 fits between
+        r.text({centre-4*scale*value.size(),minus.y+12},value,teal,scale);
       };
-      row("BALLS",debugBalls,ballsMinus,ballsPlus);
-      row("BOUNCES",debugBounces,bouncesMinus,bouncesPlus);
-      row("PING RADIUS",model.pingRadius,radiusMinus,radiusPlus);
+      row(Balls,"BALLS",white,std::to_string(debugBalls));
+      row(Bounces,"BOUNCES",white,std::to_string(debugBounces));
+      row(PingRadius,"PING RADIUS",white,std::to_string(model.pingRadius));
+      row(GridSize,"GRID SIZE",white,std::to_string(Settings::shapeColumns*debugGrid.gridScale)+"X"+std::to_string(Settings::shapeRows*debugGrid.gridScale));
+      row(GlowRate,"GLOWING",white,percent(debugGrid.glow));
+      r.text({panel.x+20,stepperTops[GlowRate]+56},"POWER-UP WEIGHTS",teal,1.5f);
+      for(int k=1; k<=powerKinds; ++k) row(Weight0+k-1,weightNames[k],glow(palette,static_cast<Power>(k)),std::to_string(debugGrid.weights[k-1]));
       r.rectangle(colorsButton,palette.button);
-      r.text({colorsButton.x+16,colorsButton.y+16},"COLORS",white);
-      r.text({colorsButton.x+132,colorsButton.y+16},palette.name,teal);
-      r.text({colorsButton.x+278,colorsButton.y+16},">",white);
+      r.text({colorsButton.x+16,colorsButton.y+14},"COLORS",white);
+      r.text({colorsButton.x+132,colorsButton.y+14},palette.name,teal);
+      r.text({colorsButton.x+278,colorsButton.y+14},">",white);
       r.rectangle(restartButton,palette.teal); r.text({restartButton.x+19,restartButton.y+15},"RESTART",dark);
       r.rectangle(closeButton,palette.button); r.text({closeButton.x+35,closeButton.y+15},"CLOSE",white);
-      r.text({panel.x+20,panel.y+395},"RESTART APPLIES BALLS+BOUNCES",muted,1.25f);
-      r.text({panel.x+20,panel.y+415},"PING RADIUS APPLIES NOW",muted,1.25f);
-      r.text({panel.x+20,panel.y+435},"COLORS APPLY NOW + KEEP ON RESTART",muted,1.125f);
-      r.text({panel.x+20,panel.y+475},"VERSION " YY_GAME_VERSION,muted,1.5f);
+      r.text({panel.x+20,panel.y+680},"RESTART APPLIES BALLS, BOUNCES,",muted,1.25f);
+      r.text({panel.x+20,panel.y+696},"GRID SIZE, GLOWING + WEIGHTS",muted,1.25f);
+      r.text({panel.x+20,panel.y+712},"PING RADIUS + COLORS APPLY NOW",muted,1.25f);
     }
   }
 };

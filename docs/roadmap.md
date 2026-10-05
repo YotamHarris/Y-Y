@@ -61,3 +61,33 @@ Normal play does not pause or place these fixtures.
 **Open:** Yotam's phone review and preferred default are pending; NAVY remains
 the default. Device performance is not applicable to this rendering task.
 Desktop smoke metrics do not establish iPhone performance.
+
+### V2 Debug grid size, glow rate and power-up weights (D3)
+
+**Status:** active
+
+T7 adds GRID SIZE, GLOWING and five POWER-UP WEIGHTS steppers to DEBUG, which
+now spans 96 to 832 of the 844 logical height with ten 44 by 40 stepper pairs.
+RESTART applies them with balls and bounces and refits the camera; the footer
+says so.
+
+**Tests.** `scripts/build.ps1` runs `yy_tests`. `settingsChecks` restarts 30
+seeds at 12 by 20, 42 by 70 and 60 by 100 and checks the size, pockets a cell
+in from the walls and clear of fog, a plain fogged goal, the camera fit and pan
+limits. A glow rate of 0 and all weights 0 give no glowing bricks; 25% gives
+23 to 27%; weights 0:1:2:3:4 over 200 seeds never pick Bomb and keep each kind
+within 2 points of its share (37,629 glowing bricks: 0, 3790, 7506, 11411,
+14922). A hash of 100 default seeds equals the one the previous code produced,
+so the defaults play as before. The palette test drives the real Game pointer
+handlers: the steppers change the shown values, 24 by 40 stays until RESTART,
+which builds 12 by 20, then 60 by 100, each fitted.
+
+**Visual evidence.** `YY_TAPDEMO_SCENE=debug`, `grid-min` and `grid-max` with
+the smoke command. The grid scenes press DEBUG, the size stepper and RESTART.
+Inspected 390 by 844 captures: the panel's rows, values (60X100 drawn at 1.75
+scale to fit between the buttons) and footer are legible and unclipped; 12 by
+20 and 60 by 100 both fill the play-area width at minimum zoom with fog,
+pockets and glowing bricks.
+
+**Open:** Yotam's phone review. At 60 by 100 a cell is about 6.5 points at
+minimum zoom, so play needs zooming in. Device performance is not applicable.

@@ -2,6 +2,7 @@
 #include <tapdemo/model.hpp>
 #include <yy/runtime.hpp>
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -17,10 +18,15 @@ struct Canvas final: yy::Renderer {
   std::vector<yy::Color> fills;
   std::vector<Text> texts;
   yy::Color field;
+  float fieldWidth{}, cellWidth{}; bool afterField{};
   void rectangle(yy::Rect r, yy::Color c) override {
     fills.push_back(c);
-    if(r.w>0 && std::abs(r.h/r.w-tapdemo::Model::height()/tapdemo::Model::width())<0.0001f) field=c;
+    // The first cell drawn after the field is the fogged top-left corner, one whole cell.
+    if(afterField) { cellWidth=r.w; afterField=false; }
+    constexpr float shape=static_cast<float>(tapdemo::Settings::shapeRows)/tapdemo::Settings::shapeColumns;
+    if(r.w>0 && std::abs(r.h/r.w-shape)<0.0001f) { field=c; fieldWidth=r.w; afterField=true; }
   }
+  int columns() const { return static_cast<int>(std::lround(fieldWidth/cellWidth)); }
   void circle(yy::Vec2, float, yy::Color) override {}
   void text(yy::Vec2 p, std::string_view v, yy::Color, float) override { texts.push_back({p,std::string(v)}); }
   bool sprite(std::string_view, yy::Rect) override { return false; }
@@ -29,7 +35,7 @@ struct Canvas final: yy::Renderer {
     return std::any_of(texts.begin(),texts.end(),[&](const Text& t){ return t.value==value; });
   }
   bool valueAt(float y, std::string_view value) const {
-    return std::any_of(texts.begin(),texts.end(),[&](const Text& t){ return t.at.x>260 && t.at.y==y && t.value==value; });
+    return std::any_of(texts.begin(),texts.end(),[&](const Text& t){ return t.at.x>224 && t.at.x<320 && t.at.y==y && t.value==value; });
   }
 };
 }
@@ -52,25 +58,47 @@ void paletteChecks() {
   tap({330,40}); // DEBUG works even over the initial instructions.
   check(canvas.has("COLORS") && canvas.has("NAVY"),"debug opens with the default named palette");
   check(canvas.has("BALLS") && canvas.has("BOUNCES") && canvas.has("PING RADIUS"),"existing controls remain beside COLORS");
-  tap({335,420}); // Existing ping control still applies immediately.
-  check(canvas.valueAt(412,std::to_string(Model::defaultPingRadius+1)),"ping radius plus still works");
-  tap({335,290}); tap({335,355}); // Pending ball/bounce settings.
-  check(canvas.valueAt(282,std::to_string(Model::defaultBalls+1)) && canvas.valueAt(347,std::to_string(Model::defaultBounces+1)),"existing pending controls work");
+  tap({335,256}); // Existing ping control still applies immediately.
+  check(canvas.valueAt(248,std::to_string(Model::defaultPingRadius+1)),"ping radius plus still works");
+  tap({335,156}); tap({335,206}); // Pending ball/bounce settings.
+  check(canvas.valueAt(148,std::to_string(Model::defaultBalls+1)) && canvas.valueAt(198,std::to_string(Model::defaultBounces+1)),"existing pending controls work");
   for(std::size_t i=1; i<=palettes.size(); ++i) {
     const auto& p=palettes[i%palettes.size()];
-    tap(i%2 ? yy::Vec2{45,470} : yy::Vec2{345,508}); // opposite edges of the 310x48 touch target
+    tap(i%2 ? yy::Vec2{45,668} : yy::Vec2{345,704}); // opposite edges of the 310x44 touch target
     check(canvas.has(p.name) && same(canvas.field,p.field),"COLORS changes the label and field immediately, and wraps");
     check(std::find_if(canvas.fills.begin(),canvas.fills.end(),[&](yy::Color c){return same(c,p.fog[0]);})!=canvas.fills.end(),"render uses the selected fog colour");
-    tap({110,560}); // RESTART
+    tap({110,740}); // RESTART
     check(!canvas.has("COLORS") && canvas.has("TAP TO START") && same(canvas.field,p.field),"restart closes debug and keeps the selected palette");
     tap({330,40});
     check(canvas.has(p.name),"reopening debug keeps the selected scheme name");
-    check(canvas.valueAt(412,std::to_string(Model::defaultPingRadius+1)),"restart also keeps the existing ping radius preference");
-    check(canvas.valueAt(282,std::to_string(Model::defaultBalls+1)) && canvas.valueAt(347,std::to_string(Model::defaultBounces+1)),"restart applies the existing pending settings");
+    check(canvas.valueAt(248,std::to_string(Model::defaultPingRadius+1)),"restart also keeps the existing ping radius preference");
+    check(canvas.valueAt(148,std::to_string(Model::defaultBalls+1)) && canvas.valueAt(198,std::to_string(Model::defaultBounces+1)),"restart applies the existing pending settings");
   }
-  tap({195,490}); // choose EMBER once more
-  tap({275,560}); // CLOSE
+  tap({195,686}); // choose EMBER once more
+  tap({275,740}); // CLOSE
   check(!canvas.has("COLORS") && same(canvas.field,palettes[1].field),"CLOSE keeps the scheme");
   tap({330,40}); check(canvas.has("EMBER"),"scheme survives close and reopen");
   std::cout<<"Debug touch path: cycle all schemes, wrap, restart, close, reopen passed\n";
+
+  // The grid settings: the steppers change the pending values and RESTART builds the new board.
+  check(canvas.has("GRID SIZE") && canvas.valueAt(298,"24X40") && canvas.valueAt(348,"2%") && canvas.has("POWER-UP WEIGHTS"),"debug shows the grid size and glow rate");
+  for(const char* name: {"BOMB","ELECTRIC","PING","GHOST","SPEED"}) check(canvas.has(name),"debug shows a weight for each power-up");
+  check(canvas.columns()==24,"the board starts 24 columns wide");
+  tap({205,306}); tap({205,306}); tap({205,306}); // grid size - (stops at its smallest)
+  check(canvas.valueAt(298,"12X20"),"the grid size steps down to 12x20");
+  tap({205,356}); check(canvas.valueAt(348,"1.5%"),"the glow rate steps by half a percent");
+  for(int i=0; i<10; ++i) tap({335,356});
+  check(canvas.valueAt(348,"8%"),"above 5% it steps by whole percents");
+  tap({205,432}); check(canvas.valueAt(424,"0"),"a weight steps down to 0");
+  tap({335,632}); check(canvas.valueAt(624,"2"),"a weight steps up");
+  check(canvas.columns()==24,"the pending settings leave the board alone");
+  tap({110,740}); // RESTART
+  check(!canvas.has("GRID SIZE") && canvas.columns()==12,"restart builds the 12x20 board, fitted to the play area");
+  tap({330,40});
+  check(canvas.valueAt(298,"12X20") && canvas.valueAt(348,"8%") && canvas.valueAt(424,"0") && canvas.valueAt(624,"2"),"reopening debug shows the applied settings");
+  for(int i=0; i<12; ++i) tap({335,306});
+  check(canvas.valueAt(298,"60X100"),"the grid size steps up to 60x100");
+  tap({110,740});
+  check(canvas.columns()==60,"restart builds the 60x100 board");
+  std::cout<<"Debug touch path: grid size, glow rate and weights apply on restart passed\n";
 }

@@ -10,10 +10,11 @@ namespace tapdemo {
 // Shows the grid in the play area: screen = world * zoom + offset.
 struct Camera {
   yy::Rect view{0,80,390,764}; // below the header
+  yy::Vec2 world{Model::defaultColumns*Model::cell, Model::defaultRows*Model::cell}; // the grid's size
   float zoom{1};
   yy::Vec2 offset{};
   static constexpr float maxZoom=2.5f;
-  float minZoom() const { return std::min(view.w/Model::width(), view.h/Model::height()); }
+  float minZoom() const { return std::min(view.w/world.x, view.h/world.y); }
   yy::Vec2 toScreen(yy::Vec2 w) const { return {w.x*zoom+offset.x, w.y*zoom+offset.y}; }
   yy::Vec2 toWorld(yy::Vec2 s) const { return {(s.x-offset.x)/zoom, (s.y-offset.y)/zoom}; }
   bool contains(yy::Vec2 s) const { return s.x>=view.x && s.y>=view.y && s.x<view.x+view.w && s.y<view.y+view.h; }
@@ -22,8 +23,8 @@ struct Camera {
     const auto axis=[](float& o, float start, float size, float span) {
       o = span<=size ? start+(size-span)/2 : std::clamp(o, start+size-span, start);
     };
-    axis(offset.x, view.x, view.w, Model::width()*zoom);
-    axis(offset.y, view.y, view.h, Model::height()*zoom);
+    axis(offset.x, view.x, view.w, world.x*zoom);
+    axis(offset.y, view.y, view.h, world.y*zoom);
   }
   void fit() { zoom=minZoom(); clamp(); }
   // Puts world point `world` under screen point `screen` at the given (clamped) zoom.
@@ -64,7 +65,9 @@ public:
   std::optional<Aim> aim;
   bool instructions{true}; // shown when the game opens and after each restart
   yy::Vec2 rejected{}; float rejectTime{}; // where a press could not hold a ball, while the ring shows
-  explicit Touch(Model& m): model(m) { camera.fit(); }
+  explicit Touch(Model& m): model(m) { refit(); }
+  // Shows the whole grid, sized as the model's grid is now (after a restart).
+  void refit() { camera.world={model.width(),model.height()}; camera.fit(); }
   float humLevel() const { return aim ? 0.25f+0.5f*std::min(1.0f, std::hypot(aim->pull.x,aim->pull.y)/fullPull) : 0; }
   void cancel() {
     if(aim && haptics) haptics->humStop();

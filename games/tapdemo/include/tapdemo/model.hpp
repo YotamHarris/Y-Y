@@ -1,6 +1,7 @@
 #pragma once
 #include <yy/core.hpp>
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -16,6 +17,19 @@ struct Ball {
   bool fast{};                  // sped up by a Speed power-up
 };
 struct Pocket { int column{}, row{}, columns{}, rows{}; };
+// The grid's debug settings; restart applies them. The grid keeps the 3:5 shape:
+// gridScale k gives 6k columns and 10k rows.
+struct Settings {
+  static constexpr int shapeColumns=6, shapeRows=10;
+  static constexpr int defaultScale=4, minScale=2, maxScale=10;      // 24x40; 12x20 to 60x100
+  static constexpr int defaultGlow=4, maxGlow=50;                   // half percents: 2%; 0 to 25%
+  static constexpr int defaultWeight=1, maxWeight=9;
+  int gridScale{defaultScale};
+  int glow{defaultGlow}; // share of bricks that glow, in half percents
+  std::array<int,powerKinds> weights{defaultWeight,defaultWeight,defaultWeight,defaultWeight,defaultWeight}; // Bomb..Speed
+  // The settings within their ranges.
+  Settings clamped() const;
+};
 // A power-up that fired: its brick's cell, and for Ghost the cell its ball reappeared at (else -1).
 struct Fired { Power power{}; int cell{-1}, to{-1}; };
 // What the last update did, so the game can play sounds and haptics.
@@ -24,8 +38,9 @@ struct Hits { int bricksHit{}, bricksBroken{}, bounces{}, ballsSpent{}; std::vec
 // The slingshot brick breaker: a seeded field of bricks with one or two empty pockets and one
 // goal brick hidden under the fog. Breaking the goal, however it broke, wins the level.
 // Balls are placed only in empty space and fly opposite the pull; every wall or brick
-// hit costs one bounce, and a brick loses one hit point per hit. About one brick in
-// `glowChance` glows with a power-up that fires when the brick breaks, however it broke.
+// hit costs one bounce, and a brick loses one hit point per hit. A `settings.glow` share of the
+// bricks glows with a power-up, each kind picked in proportion to its weight, that fires when
+// the brick breaks, however it broke.
 // Bricks further than `fogReach` straight steps from every empty cell are under fog. Ping shows
 // glowing bricks and the goal within `pingRadius` cells of the pinged brick.
 class Model {
@@ -44,10 +59,9 @@ class Model {
   void ghost(Ball& ball, Fired& fired);
   void zap(const Ball& ball);
 public:
-  static constexpr int columns=24, rows=40;
+  static constexpr int defaultColumns=Settings::shapeColumns*Settings::defaultScale, defaultRows=Settings::shapeRows*Settings::defaultScale;
   static constexpr float cell=32, ballRadius=10, speed=480, minPull=18;
   static constexpr int defaultBalls=10, defaultBounces=15, maxSetting=99;
-  static constexpr float glowChance=1.0f/50;     // share of bricks that glow
   static constexpr int fogReach=2;               // straight steps from a cavity that stay visible
   static constexpr int bombSize=3;               // a bomb breaks the bombSize x bombSize around it
   static constexpr float electricSeconds=3;      // how long a ball stays electric
@@ -61,17 +75,21 @@ public:
   std::vector<Power> powers; // per cell; None on plain bricks and empty cells
   std::vector<Pocket> pockets;
   std::vector<Ball> balls; // in flight
+  int columns{defaultColumns}, rows{defaultRows}; // set by restart from settings.gridScale
+  Settings settings; // the grid settings the current grid was built with
   int ballsLeft{}, ballCount{defaultBalls}, bouncesPerBall{defaultBounces};
   float pingTime{}; // seconds the pings still show
   int pingRadius{defaultPingRadius}; // a setting: restart keeps it
   int goal{-1}; // the goal brick's cell
   Hits hits;
   explicit Model(std::uint32_t seed=42);
-  // A new grid with a new goal; balls and bounces are clamped to 1..maxSetting.
-  void restart(int balls, int bounces);
+  // A new grid with a new goal; balls and bounces are clamped to 1..maxSetting and the
+  // settings to their ranges.
+  void restart(int balls, int bounces, const Settings& grid);
+  void restart(int balls, int bounces) { restart(balls, bounces, settings); }
   void restart() { restart(ballCount, bouncesPerBall); }
-  static constexpr float width() { return columns*cell; }
-  static constexpr float height() { return rows*cell; }
+  float width() const { return columns*cell; }
+  float height() const { return rows*cell; }
   int brick(int column, int row) const;
   Power power(int column, int row) const;
   int bricksLeft() const;

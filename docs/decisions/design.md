@@ -32,3 +32,30 @@ and inspected 390 by 844 smoke screenshots for every scheme at fit, middle and
 maximum zoom, plus the debug panel.
 
 ---
+
+### D3 — Debug sets the grid size, glow rate and power-up mix, applied on restart (2026-10-06)
+
+**Status:** active
+
+**What happened.** Yotam: "control from debug the size of the grid and ratio of power ups and likelihood of encountering them". In the planning thread he chose one size stepper that keeps the 24 by 40 shape, a control for how many bricks glow, and a separate weight for each power-up kind.
+
+**Decision.** The grid size is a per-Model setting in steps of the 3:5 shape:
+6k columns by 10k rows, k from 2 to 10 (12 by 20 to 60 by 100), default 4
+(24 by 40). The glow rate is a share of bricks in half percents, 0 to 25%,
+default 2%; DEBUG steps it by half a percent up to 5% and by whole percents
+above. Bomb, Electricity, Ping, Ghost and Speed each have a weight from 0 to 9,
+default 1, and a glowing brick picks its kind in proportion to the weights.
+All weights 0 means no brick glows. The goal is always placed. Like balls and
+bounces these settings are pending in DEBUG until RESTART, which also refits
+the camera; they last for the session only.
+
+With the defaults the random draws are the same as before, so every seed
+generates the same grid.
+
+**Why.** One stepper keeps the board's proportions for the phone's play area,
+so the camera fit and fog look the same at every size. Weights let the owner
+tune each kind's likelihood independently of how many bricks glow.
+
+**Evidence.** V2.
+
+---

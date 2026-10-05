@@ -28,11 +28,11 @@ static void only(Model& m, const std::vector<std::pair<int,int>>& cells, int hp)
   std::fill(m.bricks.begin(),m.bricks.end(),0);
   std::fill(m.powers.begin(),m.powers.end(),Power::None);
   m.goal=-1;
-  for(auto [c,r]: cells) m.bricks[r*Model::columns+c]=hp;
+  for(auto [c,r]: cells) m.bricks[r*Model::defaultColumns+c]=hp;
   m.refreshFog();
 }
 static void set(Model& m, int c, int r, int hp, Power power=Power::None) {
-  m.bricks[r*Model::columns+c]=hp; m.powers[r*Model::columns+c]=power; m.refreshFog();
+  m.bricks[r*Model::defaultColumns+c]=hp; m.powers[r*Model::defaultColumns+c]=power; m.refreshFog();
 }
 static void collect(Hits& total, const Hits& h) {
   total.bricksHit+=h.bricksHit; total.bricksBroken+=h.bricksBroken; total.bounces+=h.bounces; total.ballsSpent+=h.ballsSpent;
@@ -64,9 +64,9 @@ struct Recorder final: yy::Haptics {
 };
 
 static void powerChecks() {
-  constexpr int cells=Model::columns*Model::rows;
+  constexpr int cells=Model::defaultColumns*Model::defaultRows;
   std::vector<std::pair<int,int>> all;
-  for(int r=0; r<Model::rows; ++r) for(int c=0; c<Model::columns; ++c) all.push_back({c,r});
+  for(int r=0; r<Model::defaultRows; ++r) for(int c=0; c<Model::defaultColumns; ++c) all.push_back({c,r});
   {
     // About one brick in fifty glows, every kind appears, only bricks glow, and a new grid rerolls them.
     int glowing=0, bricks=0; int kinds[tapdemo::powerKinds+1]{};
@@ -105,7 +105,7 @@ static void powerChecks() {
     check(std::all_of(g.pockets.begin(),g.pockets.end(),[&](const tapdemo::Pocket& p){ return g.visible(p.column-1,p.row) && g.visible(p.column-2,p.row+1); })
       ,"a new grid shows the bricks around its pockets");
     int hidden=0;
-    for(int r=0; r<Model::rows; ++r) for(int c=0; c<Model::columns; ++c) hidden+=!g.visible(c,r);
+    for(int r=0; r<Model::defaultRows; ++r) for(int c=0; c<Model::defaultColumns; ++c) hidden+=!g.visible(c,r);
     check(hidden>cells/2,"and most of the grid is under fog");
   }
   {
@@ -119,7 +119,7 @@ static void powerChecks() {
     for(auto [c,r]: std::vector<std::pair<int,int>>{{11,4},{12,4},{13,4},{11,5},{12,5},{13,5},{11,6},{13,6},{14,5}})
       check(m.brick(c,r)==0,"the bombs break their 3x3 outright");
     check(m.brick(15,5)==3 && m.brick(0,0)==3,"bricks outside the blasts are untouched");
-    check(m.pingTime>0 && m.powers[4*Model::columns+11]==Power::None,"a power-up fires once");
+    check(m.pingTime>0 && m.powers[4*Model::defaultColumns+11]==Power::None,"a power-up fires once");
   }
   {
     // Electricity: the ball zaps every brick within 1.5 cells each 0.25 s for 3 s, at no bounce.
@@ -160,7 +160,7 @@ static void powerChecks() {
     check(launchUp(m),"launch up the corridor at a ghost");
     const Hits h=untilFired(m);
     check(firedCount(h,Power::Ghost)==1,"breaking a ghost brick fires it");
-    const auto& f=h.fired.front(); const int c=f.to%Model::columns, r=f.to/Model::columns;
+    const auto& f=h.fired.front(); const int c=f.to%Model::defaultColumns, r=f.to/Model::defaultColumns;
     const auto& ball=m.balls[0];
     // The rest of that frame's sub-steps move it on a few units.
     check(f.to>=0 && near(ball.position.x,(c+0.5f)*Model::cell,Model::cell/2) && near(ball.position.y,(r+0.5f)*Model::cell,Model::cell/2),"the ball reappears at the new cavity's centre");
@@ -178,8 +178,8 @@ static void powerChecks() {
     for(yy::Vec2 pull: {yy::Vec2{0,30},{17,30},{30,17},{-23,29},{29,-3}}) {
       Model t(40); t.restart(5,99);
       std::vector<std::pair<int,int>> wall;
-      for(int c=0; c<Model::columns; ++c) wall.push_back({c,10});
-      for(int c=0; c<Model::columns; c+=2) wall.push_back({c,11});
+      for(int c=0; c<Model::defaultColumns; ++c) wall.push_back({c,10});
+      for(int c=0; c<Model::defaultColumns; c+=2) wall.push_back({c,11});
       only(t,wall,99);
       check(t.launch({12.5f*Model::cell,30.5f*Model::cell},pull),"launch at the wall");
       auto& b=t.balls[0]; b.velocity={b.velocity.x*Model::speedUp,b.velocity.y*Model::speedUp}; b.fast=true;
@@ -203,25 +203,25 @@ static void powerChecks() {
 }
 
 static void goalChecks() {
-  constexpr int cells=Model::columns*Model::rows;
+  constexpr int cells=Model::defaultColumns*Model::defaultRows;
   std::vector<std::pair<int,int>> all;
-  for(int r=0; r<Model::rows; ++r) for(int c=0; c<Model::columns; ++c) all.push_back({c,r});
-  const auto goalAt=[](Model& m, int c, int r, int hp) { set(m,c,r,hp); m.goal=r*Model::columns+c; };
+  for(int r=0; r<Model::defaultRows; ++r) for(int c=0; c<Model::defaultColumns; ++c) all.push_back({c,r});
+  const auto goalAt=[](Model& m, int c, int r, int hp) { set(m,c,r,hp); m.goal=r*Model::defaultColumns+c; };
   {
     // One goal per grid: a plain brick under the fog, set by the seed and rerolled with each grid.
     int moved=0;
     for(std::uint32_t seed=1; seed<=60; ++seed) {
       Model m(seed);
       check(m.goal>=0 && m.goal<cells,"every grid has a goal");
-      const int c=m.goal%Model::columns, r=m.goal/Model::columns;
+      const int c=m.goal%Model::defaultColumns, r=m.goal/Model::defaultColumns;
       int goals=0;
-      for(int rr=0; rr<Model::rows; ++rr) for(int cc=0; cc<Model::columns; ++cc) goals+=m.isGoal(cc,rr);
+      for(int rr=0; rr<Model::defaultRows; ++rr) for(int cc=0; cc<Model::defaultColumns; ++cc) goals+=m.isGoal(cc,rr);
       check(goals==1,"exactly one goal");
       check(m.brick(c,r)>0 && m.power(c,r)==Power::None,"the goal is a brick and not a power-up");
       check(!m.visible(c,r),"the goal starts under the fog");
       check(!m.won() && !m.over(),"a new grid is not won");
       const int before=m.goal; m.restart(); moved+=m.goal!=before;
-      check(m.goal>=0 && !m.visible(m.goal%Model::columns,m.goal/Model::columns),"a new grid hides a new goal");
+      check(m.goal>=0 && !m.visible(m.goal%Model::defaultColumns,m.goal/Model::defaultColumns),"a new grid hides a new goal");
     }
     check(moved>50,"each grid rerolls the goal");
     check(Model(77).goal==Model(77).goal,"the goal is deterministic per seed");
@@ -264,7 +264,7 @@ static void goalChecks() {
     Model m(45); m.restart(1,2);
     check(m.launch(pocketCentre(m),{0,30}),"the only ball");
     run(m,5);
-    check(m.lost() && !m.won() && m.brick(m.goal%Model::columns,m.goal/Model::columns)>0,"no balls left and the goal standing: lost");
+    check(m.lost() && !m.won() && m.brick(m.goal%Model::defaultColumns,m.goal/Model::defaultColumns)>0,"no balls left and the goal standing: lost");
   }
   {
     // Ping shows the cells within its radius of the pinged brick: a goal inside it, not one outside.
@@ -288,6 +288,103 @@ static void goalChecks() {
   }
 }
 
+// The debug grid settings: size, glow rate and power-up weights apply on restart.
+static void settingsChecks() {
+  using tapdemo::Settings; using tapdemo::powerKinds;
+  {
+    Model d(5);
+    check(d.columns==24 && d.rows==40 && d.settings.gridScale==Settings::defaultScale && d.settings.glow==4,"the defaults are today's 24x40 grid and 2% glow");
+  }
+  for(int scale: {Settings::minScale,7,Settings::maxScale}) {
+    const int columns=Settings::shapeColumns*scale, rows=Settings::shapeRows*scale;
+    for(std::uint32_t seed=1; seed<=30; ++seed) {
+      Model m(seed); Settings s; s.gridScale=scale;
+      m.restart(m.ballCount,m.bouncesPerBall,s);
+      check(m.columns==columns && m.rows==rows && m.bricks.size()==static_cast<std::size_t>(columns*rows) && m.powers.size()==m.bricks.size(),"a restart builds the chosen size");
+      check(near(m.width(),columns*Model::cell) && near(m.height(),rows*Model::cell),"the world size follows the grid");
+      int pocketCells=0;
+      for(const auto& p: m.pockets) {
+        check(p.columns>=3 && p.columns<=5 && p.rows>=3 && p.rows<=5 && p.column>=1 && p.row>=1 && p.column+p.columns<=columns-1 && p.row+p.rows<=rows-1,"pockets fit a cell in from the walls");
+        for(int r=p.row; r<p.row+p.rows; ++r) for(int c=p.column; c<p.column+p.columns; ++c) { check(m.brick(c,r)==0,"pocket is empty"); ++pocketCells; }
+        check(m.visible(p.column,p.row) && m.fogDistance(p.column,p.row)==0,"a pocket is clear of fog");
+      }
+      check(m.bricksLeft()==columns*rows-pocketCells,"everything else is brick");
+      check(m.goal>=0 && m.goal<columns*rows && m.brick(m.goal%columns,m.goal/columns)>0 && m.power(m.goal%columns,m.goal/columns)==Power::None,"the goal is a plain brick");
+      check(!m.visible(m.goal%columns,m.goal/columns),"the goal is under the fog");
+      check(!m.visible(0,0) && m.fogDistance(columns-1,rows-1)>Model::fogReach,"the corners are fogged");
+      m.restart();
+      check(m.columns==columns && m.rows==rows,"a plain restart keeps the size");
+    }
+    Model m(9); Settings s; s.gridScale=scale; m.restart(5,5,s);
+    tapdemo::Touch t(m); const auto& cam=t.camera;
+    check(near(cam.zoom,cam.minZoom()) && near(std::max(m.width()*cam.zoom/cam.view.w,m.height()*cam.zoom/cam.view.h),1),"the camera fits the whole grid");
+    const auto corner=cam.toScreen({m.width(),m.height()});
+    check(corner.x<=cam.view.x+cam.view.w+0.01f && corner.y<=cam.view.y+cam.view.h+0.01f && cam.toScreen({0,0}).x>=cam.view.x-0.01f,"the grid sits inside the play area");
+    t.camera.zoomAt({195,400},10); t.camera.pan({-100000,-100000});
+    const auto far=t.camera.toScreen({m.width(),m.height()});
+    check(near(far.x,cam.view.x+cam.view.w,0.05f) && near(far.y,cam.view.y+cam.view.h,0.05f),"panning stops at the far corner of the grid");
+  }
+  {
+    Settings wild; wild.gridScale=99; wild.glow=-3; wild.weights={-1,20,1,1,1};
+    Model m(3); m.restart(5,5,wild);
+    check(m.settings.gridScale==Settings::maxScale && m.settings.glow==0 && m.settings.weights[0]==0 && m.settings.weights[1]==Settings::maxWeight,"restart clamps the settings");
+  }
+  const auto tally=[](const Settings& s, int seeds, int counts[powerKinds+1], int& bricks) {
+    for(std::uint32_t seed=1; seed<=static_cast<std::uint32_t>(seeds); ++seed) {
+      Model m(seed); m.restart(m.ballCount,m.bouncesPerBall,s);
+      check(m.goal>=0 && m.power(m.goal%m.columns,m.goal/m.columns)==Power::None,"the goal is always placed");
+      for(std::size_t i=0; i<m.bricks.size(); ++i) { bricks+=m.bricks[i]>0; ++counts[static_cast<int>(m.powers[i])]; }
+    }
+  };
+  {
+    Settings none; none.glow=0; int counts[powerKinds+1]{}, bricks=0;
+    tally(none,40,counts,bricks);
+    check(std::accumulate(counts+1,counts+powerKinds+1,0)==0,"a glow rate of 0 makes no glowing bricks");
+    Settings zero; zero.weights={0,0,0,0,0}; int zc[powerKinds+1]{}; bricks=0;
+    tally(zero,40,zc,bricks);
+    check(std::accumulate(zc+1,zc+powerKinds+1,0)==0,"all weights 0 makes no glowing bricks");
+  }
+  {
+    Settings high; high.glow=Settings::maxGlow; int counts[powerKinds+1]{}, bricks=0;
+    tally(high,20,counts,bricks);
+    const float share=static_cast<float>(std::accumulate(counts+1,counts+powerKinds+1,0))/bricks;
+    check(share>0.23f && share<0.27f,"a 25% glow rate makes about a quarter of the bricks glow");
+  }
+  {
+    // Bomb 0, Electricity 1, Ping 2, Ghost 3, Speed 4: Bomb never appears and the rest follow the weights.
+    Settings mix; mix.glow=40; mix.weights={0,1,2,3,4}; int counts[powerKinds+1]{}, bricks=0;
+    tally(mix,200,counts,bricks);
+    const int glowing=std::accumulate(counts+1,counts+powerKinds+1,0);
+    check(counts[static_cast<int>(Power::Bomb)]==0,"a kind weighted 0 never appears");
+    check(glowing>10000,"enough glowing bricks to judge the mix");
+    for(int k=2; k<=powerKinds; ++k) {
+      const float share=static_cast<float>(counts[k])/glowing, expected=(k-1)/10.0f;
+      check(std::abs(share-expected)<0.02f,"each kind appears in proportion to its weight");
+    }
+    std::cout<<"Power-up mix 0:1:2:3:4 over "<<glowing<<" glowing bricks:";
+    for(int k=1; k<=powerKinds; ++k) std::cout<<' '<<counts[k];
+    std::cout<<'\n';
+  }
+  {
+    // A single kind: Ghost only.
+    Settings ghosts; ghosts.weights={0,0,0,1,0}; int counts[powerKinds+1]{}, bricks=0;
+    tally(ghosts,60,counts,bricks);
+    check(counts[static_cast<int>(Power::Ghost)]>0 && std::accumulate(counts+1,counts+powerKinds+1,0)==counts[static_cast<int>(Power::Ghost)],"only the weighted kind glows");
+  }
+  {
+    // The defaults keep the seeded grids from before these settings: the bricks, glowing bricks,
+    // goal and pockets of three grids for each of 100 seeds hash to the value the old code gave.
+    std::uint64_t h=1469598103934665603ull;
+    const auto mixIn=[&](std::uint64_t v) { h=(h^v)*1099511628211ull; };
+    for(std::uint32_t seed=1; seed<=100; ++seed) {
+      Model m(seed); m.restart(); m.restart(m.ballCount,m.bouncesPerBall,Settings{});
+      for(std::size_t i=0; i<m.bricks.size(); ++i) { mixIn(static_cast<std::uint64_t>(m.bricks[i])); mixIn(static_cast<std::uint64_t>(m.powers[i])); }
+      mixIn(static_cast<std::uint64_t>(m.goal));
+      for(const auto& p: m.pockets) { mixIn(p.column); mixIn(p.row); mixIn(p.columns); mixIn(p.rows); }
+    }
+    check(h==12729722871215073676ull,"the default settings generate the same seeded grids as before");
+  }
+}
 static void tapdemoChecks() {
   {
     Model a(123), b(123), c(124);
@@ -296,7 +393,7 @@ static void tapdemoChecks() {
     bool sawOne=false, sawTwo=false;
     for(std::uint32_t seed=1; seed<=40; ++seed) {
       Model m(seed);
-      check(m.bricks.size()==Model::columns*Model::rows && Model::columns>=20 && Model::rows>=36,"grid is large");
+      check(m.bricks.size()==Model::defaultColumns*Model::defaultRows && Model::defaultColumns>=20 && Model::defaultRows>=36,"grid is large");
       check(m.pockets.size()==1 || m.pockets.size()==2,"one or two pockets");
       sawOne|=m.pockets.size()==1; sawTwo|=m.pockets.size()==2;
       int pocketCells=0;
@@ -306,7 +403,7 @@ static void tapdemoChecks() {
         for(int r=p.row; r<p.row+p.rows; ++r) for(int col=p.column; col<p.column+p.columns; ++col) { check(m.brick(col,r)==0,"pocket is empty"); ++pocketCells; }
         check(m.canPlace(pocketCentre(m,i)),"a ball fits in every pocket");
       }
-      check(m.bricksLeft()==Model::columns*Model::rows-pocketCells,"everything else is brick");
+      check(m.bricksLeft()==Model::defaultColumns*Model::defaultRows-pocketCells,"everything else is brick");
       check(std::all_of(m.bricks.begin(),m.bricks.end(),[](int hp){ return hp>=0 && hp<=3; }),"bricks have 1 to 3 hit points");
     }
     check(sawOne && sawTwo,"pocket count varies by seed");
@@ -316,7 +413,7 @@ static void tapdemoChecks() {
     check(m.canPlace(centre),"pocket centre is open");
     check(!m.canPlace({(p.column-0.5f)*Model::cell,centre.y}),"a brick cell is not open");
     check(!m.canPlace({p.column*Model::cell+Model::ballRadius*0.5f,centre.y}),"a ball overlapping the pocket edge is not open");
-    check(!m.canPlace({-50,-50}) && !m.canPlace({Model::width()+5,10}),"outside the grid is not open");
+    check(!m.canPlace({-50,-50}) && !m.canPlace({m.width()+5,10}),"outside the grid is not open");
     check(m.launch(centre,{0,40}),"launch from the pocket");
     check(m.canPlace(centre),"a flying ball does not block its spot");
     check(m.launch(centre,{0,40}) && m.balls.size()==2,"a ball launches from on top of a flying ball");
@@ -335,7 +432,7 @@ static void tapdemoChecks() {
   }
   {
     Model m(11); m.restart(5,3); only(m,{{0,0}},1);
-    check(m.launch({Model::width()/2,Model::height()/2},{-30,0}),"launch toward the right wall");
+    check(m.launch({m.width()/2,m.height()/2},{-30,0}),"launch toward the right wall");
     const Hits total=run(m,10);
     check(total.bounces==3 && total.bricksHit==0 && total.ballsSpent==1 && m.balls.empty(),"each wall hit uses a bounce; spent ball removed");
   }
@@ -372,7 +469,7 @@ static void tapdemoChecks() {
     // A press that touches a brick holds the ball at the closest open spot within one cell.
     Model m(30); const float c=Model::cell;
     only(m,{},1); std::fill(m.bricks.begin(),m.bricks.end(),1);
-    for(int r=20; r<23; ++r) for(int col=10; col<13; ++col) m.bricks[r*Model::columns+col]=0; // a 3x3 cavity
+    for(int r=20; r<23; ++r) for(int col=10; col<13; ++col) m.bricks[r*Model::defaultColumns+col]=0; // a 3x3 cavity
     m.refreshFog();
     const yy::Vec2 inside{11.5f*c,21.5f*c};
     auto spot=m.placeNear(inside);
@@ -391,14 +488,14 @@ static void tapdemoChecks() {
     only(m,{},1);
     spot=m.placeNear({4,400});
     check(spot && near(spot->x,Model::ballRadius,0.3f) && near(spot->y,400,0.3f),"a tap near the wall snaps inward");
-    spot=m.placeNear({Model::width()+5,Model::height()-3});
-    check(spot && m.canPlace(*spot) && near(spot->x,Model::width()-Model::ballRadius,0.3f) && near(spot->y,Model::height()-Model::ballRadius,0.3f),"a tap past the corner of the grid snaps to the corner");
+    spot=m.placeNear({m.width()+5,m.height()-3});
+    check(spot && m.canPlace(*spot) && near(spot->x,m.width()-Model::ballRadius,0.3f) && near(spot->y,m.height()-Model::ballRadius,0.3f),"a tap past the corner of the grid snaps to the corner");
   }
   {
     // The touch path: down beside a cavity anchors the aim on the snapped spot, and up launches from it.
     Model m(31); tapdemo::Touch t(m); t.instructions=false; const float c=Model::cell;
     std::fill(m.bricks.begin(),m.bricks.end(),1); std::fill(m.powers.begin(),m.powers.end(),Power::None); m.goal=-1;
-    for(int r=20; r<23; ++r) for(int col=10; col<13; ++col) m.bricks[r*Model::columns+col]=0;
+    for(int r=20; r<23; ++r) for(int col=10; col<13; ++col) m.bricks[r*Model::defaultColumns+col]=0;
     m.refreshFog();
     const yy::Vec2 tap{10*c-4,21.5f*c};
     t.down(0,t.camera.toScreen(tap));
@@ -415,7 +512,7 @@ static void tapdemoChecks() {
     // The player's path: press in a pocket, pull, release, and a brick loses a hit point.
     Model m(21); tapdemo::Touch t(m); Recorder haptics; t.haptics=&haptics;
     const auto& cam=t.camera;
-    check(near(cam.zoom,cam.minZoom()) && Model::width()*cam.zoom<=cam.view.w+0.01f && Model::height()*cam.zoom<=cam.view.h+0.01f,"opens on the whole grid");
+    check(near(cam.zoom,cam.minZoom()) && m.width()*cam.zoom<=cam.view.w+0.01f && m.height()*cam.zoom<=cam.view.h+0.01f,"opens on the whole grid");
     const auto press=cam.toScreen(pocketCentre(m));
     check(t.instructions,"the instructions show when the game opens");
     t.down(0,press);
@@ -494,6 +591,7 @@ int main() {
   clock.advance(1.0/30,[&](float){++ticks;}); check(ticks==2,"fixed updates");
   clock.reset(); clock.advance(100,[&](float){++ticks;}); check(ticks==8,"resume catch-up capped");
   tapdemoChecks();
+  settingsChecks();
   paletteChecks();
   std::cout<<"Engine and TapDemo checks passed\n";
 }

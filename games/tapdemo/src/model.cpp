@@ -8,6 +8,13 @@ float Model::random() {
   randomState ^= randomState << 13; randomState ^= randomState >> 17; randomState ^= randomState << 5;
   return static_cast<float>(randomState & 0xffff) / 65536.0f;
 }
+Settings Settings::clamped() const {
+  Settings s=*this;
+  s.gridScale=std::clamp(gridScale,minScale,maxScale);
+  s.glow=std::clamp(glow,0,maxGlow);
+  for(int& w: s.weights) w=std::clamp(w,0,maxWeight);
+  return s;
+}
 Model::Model(std::uint32_t seed): randomState(seed ? seed : 42) { restart(); }
 
 void Model::generate() {
@@ -27,10 +34,18 @@ void Model::generate() {
     pockets.push_back(p);
     for(int r=p.row; r<p.row+p.rows; ++r) for(int c=p.column; c<p.column+p.columns; ++c) bricks[r*columns+c]=0;
   }
-  // Glowing bricks, each power-up equally likely.
+  // Glowing bricks, each power-up picked in proportion to its weight; all weights 0 means none glow.
   powers.assign(columns*rows, Power::None);
-  for(std::size_t i=0; i<bricks.size(); ++i)
-    if(bricks[i]>0 && random()<glowChance) powers[i]=static_cast<Power>(1+std::min(powerKinds-1,static_cast<int>(random()*powerKinds)));
+  int total=0;
+  for(int w: settings.weights) total+=w;
+  const float glowChance=settings.glow/200.0f;
+  if(total>0) for(std::size_t i=0; i<bricks.size(); ++i) {
+    if(bricks[i]<=0 || !(random()<glowChance)) continue;
+    const float pick=random()*total;
+    int kind=0;
+    for(int sum=settings.weights[0]; kind<powerKinds-1 && !(pick<sum); sum+=settings.weights[++kind]) {}
+    powers[i]=static_cast<Power>(1+kind);
+  }
   refreshFog();
   // The goal: a plain brick under the fog (any plain brick if none is fogged).
   std::vector<int> hidden, plain;
@@ -39,7 +54,9 @@ void Model::generate() {
   goal=hidden.empty() ? -1 : hidden[std::min(hidden.size()-1,static_cast<std::size_t>(random()*hidden.size()))];
   goalBroken_=false;
 }
-void Model::restart(int balls_, int bounces) {
+void Model::restart(int balls_, int bounces, const Settings& grid) {
+  settings=grid.clamped();
+  columns=Settings::shapeColumns*settings.gridScale; rows=Settings::shapeRows*settings.gridScale;
   ballCount=std::clamp(balls_,1,maxSetting); bouncesPerBall=std::clamp(bounces,1,maxSetting);
   ballsLeft=ballCount; balls.clear(); hits={}; pending.clear(); pingCells_.clear(); pingTime=0; paused_=false;
   generate();
