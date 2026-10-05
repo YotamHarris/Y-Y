@@ -52,7 +52,7 @@ public:
   static constexpr float electricSeconds=3;      // how long a ball stays electric
   static constexpr float electricTick=0.25f;     // seconds between zaps
   static constexpr float electricRadius=1.5f;    // cells from the ball to a zapped brick's centre
-  static constexpr float pingSeconds=3;          // how long every glowing brick shows through the fog
+  static constexpr float pingSeconds=3;          // how long a ping shows what lies within pingRadius
   static constexpr float speedUp=2;              // a sped-up ball's speed multiplier
   static constexpr int ghostSize=3;              // the ghost's new cavity is ghostSize x ghostSize
   static constexpr int defaultPingRadius=6, minPingRadius=1, maxPingRadius=40; // cells, centre to centre
@@ -61,7 +61,7 @@ public:
   std::vector<Pocket> pockets;
   std::vector<Ball> balls; // in flight
   int ballsLeft{}, ballCount{defaultBalls}, bouncesPerBall{defaultBounces};
-  float pingTime{}; // seconds Ping still shows the glowing bricks
+  float pingTime{}; // seconds the pings still show
   int pingRadius{defaultPingRadius}; // a setting: restart keeps it
   int goal{-1}; // the goal brick's cell
   Hits hits;

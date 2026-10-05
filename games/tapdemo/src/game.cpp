@@ -212,7 +212,7 @@ public:
     touch.up(id,p);
   }
   void zoom(yy::Vec2 at, float steps) override {
-    if(!debugOpen && touch.camera.contains(at)) touch.camera.zoomAt(at,touch.camera.zoom*std::pow(1.15f,steps));
+    if(!debugOpen && !touch.instructions && touch.camera.contains(at)) touch.camera.zoomAt(at,touch.camera.zoom*std::pow(1.15f,steps));
   }
   void render(yy::Renderer& r) override {
     using yy::Color;
