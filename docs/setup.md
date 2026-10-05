@@ -108,6 +108,13 @@ rejects camera/Bluetooth API references before export. If a future game needs
 those features, enable its required backend and supply truthful user-facing
 privacy purpose strings for that feature before changing this check.
 
+If a binary uploaded and Apple accepted processing but tester delivery needs a
+code fix, dispatch **iOS TestFlight** with its original `sha`, selected `game`, a
+new `task_id`, and its existing `build_number`. This mode uses the current main
+delivery code after its checks pass, preserves the original app commit/build
+number, and runs only distribution and readiness verification. It does not sign,
+archive, or upload another binary. Leave `build_number` empty for normal builds.
+
 ## 6. Complete acceptance on an iPhone
 
 First dispatch **iOS TestFlight** manually with `game=tapdemo`, a published 40-character main SHA, and a unique task ID such as `initial-setup`. Confirm `Verify TestFlight readiness` succeeds and install the build from your internal TestFlight invitation. Hosted macOS minutes/storage and any explicitly configured API usage use their respective billing accounts.

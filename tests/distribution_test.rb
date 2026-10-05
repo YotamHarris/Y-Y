@@ -54,4 +54,30 @@ class DistributionTest < Minitest::Test
     integers = [raw[0, 32], raw[32, 32]].map { |part| OpenSSL::ASN1::Integer.new(OpenSSL::BN.new(part, 2)) }
     assert key.verify('SHA256', OpenSSL::ASN1::Sequence.new(integers).to_der, "#{header}.#{payload}")
   end
+  def apple_client(responses)
+    client = YY::Connect.allocate
+    client.define_singleton_method(:request) do |method, path, body = nil|
+      raise "Unexpected Apple request #{method} #{path}" unless method == 'GET' && responses.key?(path)
+      responses.fetch(path)
+    end
+    client
+  end
+  def test_assignment_reads_group_builds_and_follows_pagination
+    client = apple_client({
+      '/betaGroups/group-1/builds?limit=200' => { 'data' => [{'id' => 'other-build'}],
+        'links' => {'next' => 'https://api.appstoreconnect.apple.com/v1/betaGroups/group-1/builds?cursor=next'} },
+      '/betaGroups/group-1/builds?cursor=next' => { 'data' => [{'id' => 'build-1'}], 'links' => {} }
+    })
+    assert client.assigned?('build-1', 'group-1')
+    refute client.assigned?('missing-build', 'group-1')
+  end
+  def test_empty_group_is_not_assigned
+    client = apple_client('/betaGroups/group-1/builds?limit=200' => { 'data' => [], 'links' => {} })
+    refute client.assigned?('build-1', 'group-1')
+  end
+  def test_assignment_rejects_other_host_pagination
+    client = apple_client('/betaGroups/group-1/builds?limit=200' => {
+      'data' => [], 'links' => {'next' => 'https://example.com/v1/betaGroups/group-1/builds?cursor=next'} })
+    assert_raises(RuntimeError) { client.assigned?('build-1', 'group-1') }
+  end
 end

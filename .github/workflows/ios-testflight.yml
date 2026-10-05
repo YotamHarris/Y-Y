@@ -15,6 +15,10 @@ on:
       task_id:
         description: Coordinator task ID
         required: true
+      build_number:
+        description: Existing uploaded build to reconcile without rebuilding (leave empty for a new build)
+        required: false
+        default: ''
 permissions:
   contents: read
   checks: read
@@ -30,18 +34,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha || github.sha }}
+          ref: ${{ inputs.build_number != '' && github.sha || inputs.sha || github.sha }}
           fetch-depth: 0
       - name: Validate commit
         env:
           YY_SHA: ${{ inputs.sha || github.sha }}
+          YY_EXISTING_BUILD: ${{ inputs.build_number }}
+          YY_GAME: ${{ inputs.game }}
         run: |
           [[ "$YY_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
           git fetch origin main
           git merge-base --is-ancestor "$YY_SHA" origin/main
+          if [[ -n "$YY_EXISTING_BUILD" ]]; then
+            [[ "$YY_EXISTING_BUILD" =~ ^[1-9][0-9]*$ && -n "$YY_GAME" ]] || exit 1
+          fi
       - name: Wait for required checks
         env:
-          YY_SHA: ${{ inputs.sha || github.sha }}
+          YY_SHA: ${{ inputs.build_number != '' && github.sha || inputs.sha || github.sha }}
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/wait-checks.py
       - id: games
@@ -62,7 +71,7 @@ jobs:
     env:
       YY_GAME: ${{ matrix.game }}
       YY_SHA: ${{ inputs.sha || github.sha }}
-      YY_BUILD_NUMBER: ${{ github.run_number }}
+      YY_BUILD_NUMBER: ${{ inputs.build_number || github.run_number }}
       YY_APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
       YY_BUNDLE_ID_OVERRIDE: ${{ vars.BUNDLE_ID }}
       YY_PROFILE_NAME: ${{ vars.PROFILE_NAME }}
@@ -77,19 +86,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.sha || github.sha }}
+          ref: ${{ inputs.build_number != '' && github.sha || inputs.sha || github.sha }}
       - name: Select stable Xcode
+        if: inputs.build_number == ''
         run: python3 scripts/ios-xcode.py
       - uses: ./.github/actions/prefetch-sdl
+        if: inputs.build_number == ''
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
           bundler-cache: true
       - name: Configure signing
+        if: inputs.build_number == ''
         run: python3 scripts/ios-signing.py
       - name: Archive game
+        if: inputs.build_number == ''
         run: bundle exec fastlane ios archive
       - name: Upload build
+        if: inputs.build_number == ''
         run: bundle exec fastlane ios upload
       - name: Distribute to internal testers
         run: bundle exec fastlane ios distribute
@@ -99,11 +113,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-${{ matrix.game }}-${{ github.run_number }}
+          name: ios-${{ matrix.game }}-${{ inputs.build_number || github.run_number }}
           retention-days: 30
           path: |
             build/distribution/**
             ~/Library/Logs/gym/**
       - name: Remove signing material
-        if: always()
+        if: always() && inputs.build_number == ''
         run: python3 scripts/ios-signing.py --clean

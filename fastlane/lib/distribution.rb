@@ -63,7 +63,17 @@ module YY
       request('POST', "/betaGroups/#{group_id}/relationships/builds", {data: [{type: 'builds', id: build_id}]})
     end
     def assigned?(build_id, group_id)
-      query("/builds/#{build_id}/betaGroups", {'limit' => 200}).any? { |g| g['id'] == group_id }
+      # Apple supports reading builds from the group, not GET /builds/{id}/betaGroups.
+      path = "/betaGroups/#{group_id}/builds?limit=200"
+      loop do
+        response = request('GET', path)
+        return true if response.fetch('data').any? { |build| build['id'] == build_id }
+        next_url = response.dig('links', 'next')
+        return false unless next_url
+        parsed = URI(next_url)
+        raise 'Unexpected App Store Connect pagination URL' unless parsed.host == 'api.appstoreconnect.apple.com'
+        path = parsed.request_uri.delete_prefix('/v1')
+      end
     end
     def ready?(build_id)
       detail = request('GET', "/builds/#{build_id}/buildBetaDetail").fetch('data')
