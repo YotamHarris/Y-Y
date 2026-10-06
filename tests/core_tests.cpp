@@ -109,37 +109,66 @@ static void powerChecks() {
     check(hidden>cells/2,"and most of the grid is under fog");
   }
   {
-    // Bomb: breaks the 3x3 around it outright; a glowing brick it breaks fires too, and chains end.
-    Model m(34); m.restart(5,99);
-    only(m,{{0,0},{11,4},{12,4},{13,4},{11,5},{13,5},{11,6},{13,6},{14,5},{15,5}},3);
-    set(m,12,5,1,Power::Bomb); set(m,13,4,3,Power::Bomb); set(m,11,4,3,Power::Ping);
+    // Bomb: breaks the 5x5 around it outright; a glowing brick it breaks fires too, and chains end.
+    // A 7x9 block of 3-point bricks, with a corridor up column 12 to a bomb at (12,8).
+    const auto block=[&](Model& m, int size) {
+      m.restart(5,99); m.setBombSize(size);
+      std::vector<std::pair<int,int>> cells{{0,0}};
+      for(int r=4; r<=10; ++r) for(int c=8; c<=16; ++c) if(c!=12 || r<9) cells.push_back({c,r});
+      only(m,cells,3); set(m,12,8,1,Power::Bomb);
+    };
+    Model m(34); block(m,Model::defaultBombSize);
+    check(m.bombSize==5,"a bomb is 5x5 by default");
+    set(m,14,6,3,Power::Ping); set(m,10,10,3,Power::Bomb);
     check(launchUp(m),"launch at a bomb");
     const Hits h=untilFired(m);
     check(firedCount(h,Power::Bomb)==2 && firedCount(h,Power::Ping)==1,"the bomb fires, and fires the glowing bricks it breaks");
-    for(auto [c,r]: std::vector<std::pair<int,int>>{{11,4},{12,4},{13,4},{11,5},{12,5},{13,5},{11,6},{13,6},{14,5}})
-      check(m.brick(c,r)==0,"the bombs break their 3x3 outright");
-    check(m.brick(15,5)==3 && m.brick(0,0)==3,"bricks outside the blasts are untouched");
-    check(m.pingTime>0 && m.powers[4*Model::defaultColumns+11]==Power::None,"a power-up fires once");
+    for(int r=6; r<=10; ++r) for(int c=10; c<=14; ++c) check(m.brick(c,r)==0,"a bomb clears the 5x5 square around it");
+    for(int r=8; r<=10; ++r) check(m.brick(8,r)==0,"the bomb it set off clears its own 5x5");
+    for(int c=8; c<=16; ++c) check(m.brick(c,4)==3 && (c<10 || c>14 || m.brick(c,5)==3),"bricks above the blasts are untouched");
+    for(int r=5; r<=10; ++r) check(m.brick(15,r)==3 && m.brick(16,r)==3,"bricks right of the blast are untouched");
+    check(m.brick(0,0)==3 && m.brick(8,7)==3,"bricks outside the blasts are untouched");
+    check(m.pingTime>0 && m.power(14,6)==Power::None,"a power-up fires once");
+    // The size is a setting: odd, clamped, applied at once and kept by restart.
+    Model s(34); block(s,3);
+    check(launchUp(s) && firedCount(untilFired(s),Power::Bomb)==1,"a 3x3 bomb fires");
+    check(s.brick(11,7)==0 && s.brick(13,9)==0 && s.brick(10,8)==3 && s.brick(12,6)==3,"a bomb size of 3 clears only the 3x3");
+    s.setBombSize(4); check(s.bombSize==5,"an even bomb size rounds up to odd");
+    s.setBombSize(1); check(s.bombSize==Model::minBombSize,"bomb size clamps up to 3");
+    s.setBombSize(99); check(s.bombSize==Model::maxBombSize && Model::maxBombSize==11,"bomb size clamps down to 11");
+    s.setBombSize(7); s.restart(); check(s.bombSize==7,"restart keeps the bomb size");
   }
   {
-    // Electricity: the ball zaps every brick within 1.5 cells each 0.25 s for 3 s, at no bounce.
+    // Electricity: the ball zaps every brick within 2.5 cells each 0.25 s for 6 s, at no bounce.
     Model m(35); m.restart(5,99);
+    check(m.electricSeconds==6 && near(m.electricRadius,2.5f),"lightning lasts 6 s and reaches 2.5 cells by default");
     only(m,{{0,0}},3); set(m,12,5,1,Power::Electricity);
     check(launchUp(m) && firedCount(untilFired(m),Power::Electricity)==1,"breaking an electric brick fires it");
-    check(m.balls[0].electric>Model::electricSeconds-0.1f,"the ball is electric");
-    // Hold the ball still among bricks to count the zaps.
+    check(m.balls[0].electric>5.9f,"the ball is electric for 6 s");
+    // Hold the ball still at (10,10) among bricks to count the zaps: (10,8) is 2 cells away,
+    // (12,11) 2.24, (12,12) 2.83 and (13,10) 3.
     Model z(36); z.restart(5,99);
-    only(z,{{9,9},{10,9},{11,9},{9,10},{11,10},{9,11},{10,11},{11,11},{12,10},{0,0}},3);
+    only(z,{{10,9},{10,8},{12,11},{12,12},{13,10},{0,0}},99);
     check(z.launch({10.5f*Model::cell,10.5f*Model::cell},{0,30}),"a ball among bricks");
-    auto& b=z.balls[0]; b.velocity={0,0}; b.electric=Model::electricSeconds; b.zapTimer=Model::electricTick;
+    auto& b=z.balls[0]; b.velocity={0,0}; b.electric=static_cast<float>(z.electricSeconds); b.zapTimer=Model::electricTick;
     run(z,0.2f);
-    check(z.brick(10,9)==3,"no zap before the first tick");
+    check(z.brick(10,9)==99,"no zap before the first tick");
     run(z,0.1f);
-    check(z.brick(10,9)==2 && z.brick(11,11)==2 && z.brick(12,10)==3,"a zap takes a point off each brick within 1.5 cells");
+    check(z.brick(10,9)==98 && z.brick(10,8)==98 && z.brick(12,11)==98,"a zap takes a point off each brick within 2.5 cells");
+    check(z.brick(12,12)==99 && z.brick(13,10)==99,"bricks past 2.5 cells are not zapped");
     check(z.balls[0].bounces==99,"zaps cost no bounces");
-    const Hits h=run(z,4);
-    check(z.brick(10,9)==0 && z.brick(9,11)==0 && z.brick(12,10)==3 && h.bricksBroken==8,"zaps keep coming while it lasts");
-    check(z.balls[0].electric==0,"electricity runs out");
+    run(z,5.5f);
+    check(z.balls[0].electric>0,"still electric at 5.8 s");
+    run(z,0.3f);
+    check(z.balls[0].electric==0 && z.brick(10,9)>=99-24 && z.brick(10,9)<=99-23 && z.brick(12,12)==99,"electricity runs out at 6 s, after 24 zaps");
+    // The time and reach are settings: clamped, applied at once and kept by restart.
+    z.setElectricRadius(3.2f); check(near(z.electricRadius,3),"reach steps by half cells");
+    z.setElectricRadius(0); check(near(z.electricRadius,Model::minElectricRadius),"reach clamps up to 1 cell");
+    z.setElectricRadius(100); check(near(z.electricRadius,Model::maxElectricRadius),"reach clamps down to 6 cells");
+    z.setElectricSeconds(0); check(z.electricSeconds==Model::minElectricSeconds,"lightning lasts at least 1 s");
+    z.setElectricSeconds(99); check(z.electricSeconds==Model::maxElectricSeconds,"lightning lasts at most 15 s");
+    z.setElectricRadius(3.5f); z.setElectricSeconds(2); z.restart();
+    check(near(z.electricRadius,3.5f) && z.electricSeconds==2,"restart keeps the lightning settings");
   }
   {
     // Ping: every glowing brick shows through the fog for a while.
@@ -248,7 +277,7 @@ static void goalChecks() {
     // An electric zap that breaks the goal wins.
     Model z(43); z.restart(5,99); only(z,{{0,0}},3); goalAt(z,10,9,1);
     check(z.launch({10.5f*Model::cell,10.5f*Model::cell},{0,30}),"a ball beside the goal");
-    auto& b=z.balls[0]; b.velocity={0,0}; b.electric=Model::electricSeconds; b.zapTimer=Model::electricTick;
+    auto& b=z.balls[0]; b.velocity={0,0}; b.electric=static_cast<float>(z.electricSeconds); b.zapTimer=Model::electricTick;
     const Hits h=run(z,0.3f);
     check(z.brick(10,9)==0 && h.goalBroken && z.won(),"a zap that breaks the goal wins");
   }
@@ -372,8 +401,9 @@ static void settingsChecks() {
     check(counts[static_cast<int>(Power::Ghost)]>0 && std::accumulate(counts+1,counts+powerKinds+1,0)==counts[static_cast<int>(Power::Ghost)],"only the weighted kind glows");
   }
   {
-    // The defaults keep the seeded grids from before these settings: the bricks, glowing bricks,
-    // goal and pockets of three grids for each of 100 seeds hash to the value the old code gave.
+    // The defaults keep the seeded grids: the bricks, glowing bricks, goal and pockets of three
+    // grids for each of 100 seeds hash to a pinned value. It last changed when glowing bricks
+    // became one-hit and bombs moved off the walls (T8); the random stream itself is unchanged.
     std::uint64_t h=1469598103934665603ull;
     const auto mixIn=[&](std::uint64_t v) { h=(h^v)*1099511628211ull; };
     for(std::uint32_t seed=1; seed<=100; ++seed) {
@@ -382,7 +412,96 @@ static void settingsChecks() {
       mixIn(static_cast<std::uint64_t>(m.goal));
       for(const auto& p: m.pockets) { mixIn(p.column); mixIn(p.row); mixIn(p.columns); mixIn(p.rows); }
     }
-    check(h==12729722871215073676ull,"the default settings generate the same seeded grids as before");
+    check(h==8933398709070464508ull,"the default settings generate the same seeded grids as before");
+  }
+}
+// Generation: every glowing brick breaks in one hit, and no bomb lies within half its blast of a wall.
+static void glowChecks() {
+  using tapdemo::Settings; using tapdemo::powerKinds;
+  int bombs=0, edgeGlows=0;
+  for(int size: {3,Model::defaultBombSize,9}) for(int scale: {Settings::minScale,Settings::defaultScale,7}) for(std::uint32_t seed=1; seed<=12; ++seed) {
+    Model m(seed); m.setBombSize(size);
+    Settings s; s.gridScale=scale; s.glow=Settings::maxGlow; m.restart(5,5,s);
+    const int half=size/2;
+    for(int r=0; r<m.rows; ++r) for(int c=0; c<m.columns; ++c) {
+      const Power p=m.power(c,r);
+      if(p==Power::None) continue;
+      check(m.brick(c,r)==1,"every glowing brick has 1 hit point");
+      const bool edge=c<half || r<half || c>=m.columns-half || r>=m.rows-half;
+      edgeGlows+=edge;
+      if(p!=Power::Bomb) continue;
+      ++bombs;
+      check(!edge,"no bomb lies within half its blast of a wall");
+    }
+  }
+  check(bombs>1000 && edgeGlows>1000,"enough bombs and glowing bricks by the walls to judge");
+  {
+    // By the walls Bomb's share goes to the other kinds in their own proportions; inside it keeps its weight.
+    Settings s; s.glow=Settings::maxGlow; s.weights={2,1,1,0,0};
+    int inner[powerKinds+1]{}, outer[powerKinds+1]{};
+    for(std::uint32_t seed=1; seed<=40; ++seed) {
+      Model m(seed); m.restart(5,5,s);
+      for(int r=0; r<m.rows; ++r) for(int c=0; c<m.columns; ++c) {
+        const bool edge=c<2 || r<2 || c>=m.columns-2 || r>=m.rows-2;
+        ++(edge ? outer : inner)[static_cast<int>(m.power(c,r))];
+      }
+    }
+    const int innerGlow=inner[1]+inner[2]+inner[3];
+    check(outer[1]==0 && outer[2]>0 && outer[3]>0 && std::abs(outer[2]-outer[3])<(outer[2]+outer[3])/8,"by the walls the other kinds split Bomb's share evenly");
+    check(std::abs(static_cast<float>(inner[1])/innerGlow-0.5f)<0.03f,"inside, Bomb keeps its weight");
+    Settings only; only.glow=Settings::maxGlow; only.weights={1,0,0,0,0};
+    Model m(3); m.restart(5,5,only);
+    for(int r=0; r<m.rows; ++r) for(int c=0; c<m.columns; ++c) if(c<2 || r<2 || c>=m.columns-2 || r>=m.rows-2)
+      check(m.power(c,r)==Power::None,"with only Bomb weighted, bricks by the walls stay plain");
+  }
+}
+// Aiming: a pull within the snap angle of an axis flies exactly along it.
+static void snapChecks() {
+  constexpr float degree=0.0174532925f;
+  const auto pullAt=[&](float degrees, float length=60) { return yy::Vec2{std::cos(degrees*degree)*length,std::sin(degrees*degree)*length}; };
+  check(Model::defaultSnapDegrees==5,"the snap angle is 5 degrees by default");
+  const auto velocity=[&](Model& m, yy::Vec2 pull) {
+    m.balls.clear(); m.ballsLeft=5;
+    check(m.launch(pocketCentre(m),pull),"a launch from the pocket");
+    return m.balls.back().velocity;
+  };
+  Model m(51);
+  for(float sign: {1.0f,-1.0f}) {
+    const yy::Vec2 h=pullAt(4), v{pullAt(4).y*sign,-pullAt(4).x};
+    yy::Vec2 f=velocity(m,{h.x*sign,h.y*sign});
+    check(f.y==0 && near(f.x,-sign*Model::speed),"a pull 4 degrees off horizontal flies exactly straight");
+    f=velocity(m,v);
+    check(f.x==0 && near(f.y,Model::speed),"a pull 4 degrees off vertical flies exactly straight");
+    const yy::Vec2 six=pullAt(6);
+    f=velocity(m,{six.x*sign,six.y*sign});
+    check(near(f.y,-sign*Model::speed*std::sin(6*degree),0.1f),"a pull 6 degrees off horizontal keeps its angle");
+    f=velocity(m,{six.y,six.x*sign});
+    check(near(f.x,-Model::speed*std::sin(6*degree),0.1f),"a pull 6 degrees off vertical keeps its angle");
+  }
+  const yy::Vec2 four=pullAt(4);
+  const yy::Vec2 snapped=tapdemo::snapPull(four,5);
+  check(snapped.y==0 && near(snapped.x,60),"snapPull keeps the pull's length");
+  m.setSnapDegrees(0);
+  const yy::Vec2 f=velocity(m,four);
+  check(near(f.x,-Model::speed*std::cos(4*degree)) && near(f.y,-Model::speed*std::sin(4*degree)),"snap 0 changes nothing");
+  check(tapdemo::snapPull(four,0).x==four.x && tapdemo::snapPull(four,0).y==four.y,"snapPull with 0 returns the pull");
+  m.setSnapDegrees(-3); check(m.snapDegrees==0,"the snap angle clamps up to 0");
+  m.setSnapDegrees(90); check(m.snapDegrees==Model::maxSnapDegrees && Model::maxSnapDegrees==15,"the snap angle clamps down to 15");
+  m.setSnapDegrees(10); m.restart();
+  check(m.snapDegrees==10,"restart keeps the snap angle");
+  check(tapdemo::snapPull(pullAt(9),10).y==0 && tapdemo::snapPull(pullAt(11),10).y!=0,"a wider snap angle snaps wider pulls");
+  {
+    // The player's path: a near-horizontal pull through Touch launches exactly horizontally.
+    Model p(52); tapdemo::Touch t(p); t.instructions=false;
+    const auto press=t.camera.toScreen(pocketCentre(p));
+    const yy::Vec2 pull=pullAt(3,40);
+    const yy::Vec2 finger{press.x+pull.x*t.camera.zoom,press.y+pull.y*t.camera.zoom};
+    t.down(0,press); t.move(0,finger);
+    check(t.aim && t.aim->pull.y!=0,"the aim holds the pull as pulled");
+    const yy::Vec2 shown=tapdemo::snapPull(t.aim->pull,static_cast<float>(p.snapDegrees));
+    check(shown.y==0 && shown.x>0,"the aim line shows the snapped direction");
+    check(t.up(0,finger) && p.balls.size()==1,"release launches");
+    check(p.balls[0].velocity.y==0 && near(p.balls[0].velocity.x,-Model::speed),"the ball flies exactly horizontally");
   }
 }
 static void tapdemoChecks() {
@@ -592,6 +711,8 @@ int main() {
   clock.reset(); clock.advance(100,[&](float){++ticks;}); check(ticks==8,"resume catch-up capped");
   tapdemoChecks();
   settingsChecks();
+  glowChecks();
+  snapChecks();
   paletteChecks();
   std::cout<<"Engine and TapDemo checks passed\n";
 }

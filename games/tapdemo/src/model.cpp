@@ -15,6 +15,15 @@ Settings Settings::clamped() const {
   for(int& w: s.weights) w=std::clamp(w,0,maxWeight);
   return s;
 }
+yy::Vec2 snapPull(yy::Vec2 pull, float degrees) {
+  const float length=std::hypot(pull.x,pull.y);
+  if(!(degrees>0) || !(length>0)) return pull;
+  // Within `degrees` of an axis means the other component is at most sin(degrees) of the pull.
+  const float limit=length*std::sin(degrees*0.0174532925f);
+  if(std::abs(pull.y)<=limit) return {std::copysign(length,pull.x),0};
+  if(std::abs(pull.x)<=limit) return {0,std::copysign(length,pull.y)};
+  return pull;
+}
 Model::Model(std::uint32_t seed): randomState(seed ? seed : 42) { restart(); }
 
 void Model::generate() {
@@ -35,16 +44,27 @@ void Model::generate() {
     for(int r=p.row; r<p.row+p.rows; ++r) for(int c=p.column; c<p.column+p.columns; ++c) bricks[r*columns+c]=0;
   }
   // Glowing bricks, each power-up picked in proportion to its weight; all weights 0 means none glow.
+  // Where a bomb's blast would pass a wall, the pick is among the other kinds, so Bomb's weight
+  // leaves their proportions alone; with only Bomb weighted that brick stays plain.
+  // A glowing brick breaks in one hit.
   powers.assign(columns*rows, Power::None);
   int total=0;
   for(int w: settings.weights) total+=w;
   const float glowChance=settings.glow/200.0f;
+  const int half=bombSize/2;
   if(total>0) for(std::size_t i=0; i<bricks.size(); ++i) {
     if(bricks[i]<=0 || !(random()<glowChance)) continue;
-    const float pick=random()*total;
+    const int c=static_cast<int>(i)%columns, r=static_cast<int>(i)/columns;
+    const bool bombFits=c>=half && r>=half && c<columns-half && r<rows-half;
+    auto weights=settings.weights;
+    if(!bombFits) weights[0]=0;
+    const int sum=total-settings.weights[0]+weights[0];
+    const float pick=random()*sum;
+    if(sum<=0) continue;
     int kind=0;
-    for(int sum=settings.weights[0]; kind<powerKinds-1 && !(pick<sum); sum+=settings.weights[++kind]) {}
+    for(int s=weights[0]; kind<powerKinds-1 && !(pick<s); s+=weights[++kind]) {}
     powers[i]=static_cast<Power>(1+kind);
+    bricks[i]=1;
   }
   refreshFog();
   // The goal: a plain brick under the fog (any plain brick if none is fogged).
@@ -159,7 +179,7 @@ void Model::fire(Ball& ball) {
       break;
     case Power::Electricity:
       if(ball.electric<=0) ball.zapTimer=electricTick;
-      ball.electric=electricSeconds;
+      ball.electric=static_cast<float>(electricSeconds);
       break;
     case Power::Ping: pingTime=pingSeconds; pingCells_.push_back(f.cell); break;
     case Power::Ghost: ghost(ball,f); break;
@@ -203,6 +223,7 @@ void Model::zap(const Ball& ball) {
   }
 }
 bool Model::launch(yy::Vec2 at, yy::Vec2 pull) {
+  pull=snapPull(pull,static_cast<float>(snapDegrees));
   const float length=std::hypot(pull.x,pull.y);
   if(paused_ || over() || ballsLeft<=0 || !(length>=minPull) || !open(at)) return false;
   balls.push_back({at,{-pull.x/length*speed,-pull.y/length*speed},bouncesPerBall});

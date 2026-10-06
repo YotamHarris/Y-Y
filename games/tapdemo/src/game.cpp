@@ -15,19 +15,22 @@ namespace {
 bool inside(yy::Rect r, yy::Vec2 p) { return p.x>=r.x && p.y>=r.y && p.x<r.x+r.w && p.y<r.y+r.h; }
 // The header holds only DEBUG and the ball counter; the board starts below it (Camera::view).
 constexpr yy::Rect debugButton{286,22,88,36};
-// The debug panel: ten stepper rows (a label, -, value, +), COLORS, RESTART and CLOSE.
-constexpr yy::Rect panel{20,96,350,736};
-enum Stepper { Balls, Bounces, PingRadius, GridSize, GlowRate, Weight0, steppers=Weight0+powerKinds };
-constexpr float stepperTops[steppers]{136,186,236,286,336,412,462,512,562,612}; // the weights below a heading
+// The debug panel covers the screen: fourteen stepper rows (a label, -, value, +) under three
+// headings (what applies now, what RESTART applies, the weights), then COLORS, RESTART and CLOSE.
+constexpr yy::Rect panel{20,12,350,830};
+enum Stepper { PingRadius, BombSize, ZapSeconds, ZapReach, SnapAngle, Balls, Bounces, GridSize, GlowRate, Weight0, steppers=Weight0+powerKinds };
+constexpr float stepperTops[steppers]{72,116,160,204,248, 316,360,404,448, 516,560,604,648,692};
+constexpr float headingTops[]{54,298,498};
 constexpr yy::Rect minusButton(int row) { return {180,stepperTops[row],44,40}; }
 constexpr yy::Rect plusButton(int row) { return {320,stepperTops[row],44,40}; }
-constexpr yy::Rect colorsButton{40,664,310,44};
-constexpr yy::Rect restartButton{40,718,150,46}, closeButton{200,718,150,46};
+constexpr yy::Rect colorsButton{40,742,310,40};
+constexpr yy::Rect restartButton{40,790,150,44}, closeButton{200,790,150,44};
 constexpr yy::Rect overlay{24,340,342,156};
 // Drawing code lets Power::None stand for the goal: its colour, name and flag icon.
 constexpr const char* powerNames[]{"GOAL","BOMB","ELECTRICITY","PING","GHOST","SPEED UP"};
 constexpr const char* weightNames[]{"","BOMB","ELECTRIC","PING","GHOST","SPEED"};
-constexpr const char* powerLines[]{"","BREAKS THE 3X3 AROUND IT","THE BALL ZAPS BRICKS NEAR IT","SHOWS NEARBY POWER-UPS + GOAL",
+// Each power-up's line on the instructions card; Bomb's names its size, so render writes it.
+constexpr const char* powerLines[]{"","","THE BALL ZAPS BRICKS NEAR IT","SHOWS NEARBY POWER-UPS + GOAL",
   "THE BALL JUMPS DEEP INTO FOG","THE BALL FLIES TWICE AS FAST"};
 // Each power-up's sound: pitch and length.
 constexpr float powerTones[][2]{{0,0},{110,0.2f},{1320,0.12f},{1760,0.1f},{392,0.18f},{880,0.1f}};
@@ -37,6 +40,8 @@ int stepGlow(int halfPercents, int by) {
   return std::clamp(halfPercents+by*(whole ? 2 : 1),0,Settings::maxGlow);
 }
 std::string percent(int halfPercents) { return std::to_string(halfPercents/2)+(halfPercents%2 ? ".5%" : "%"); }
+std::string halves(float value) { const int h=static_cast<int>(std::lround(value*2)); return std::to_string(h/2)+(h%2 ? ".5" : ""); }
+std::string square(int cells) { return std::to_string(cells)+"X"+std::to_string(cells); }
 yy::Color glow(const Palette& palette, Power p) { return palette.glows[static_cast<int>(p)]; }
 yy::Color mix(yy::Color a, yy::Color b, float t) {
   const auto c=[&](unsigned char x, unsigned char y) { return static_cast<unsigned char>(x+(y-x)*t); };
@@ -122,6 +127,10 @@ class TapGame final: public yy::Game {
     case Balls: debugBalls=std::clamp(debugBalls+by,1,Model::maxSetting); break;
     case Bounces: debugBounces=std::clamp(debugBounces+by,1,Model::maxSetting); break;
     case PingRadius: model.setPingRadius(model.pingRadius+by); break;
+    case BombSize: model.setBombSize(model.bombSize+2*by); break;
+    case ZapSeconds: model.setElectricSeconds(model.electricSeconds+by); break;
+    case ZapReach: model.setElectricRadius(model.electricRadius+0.5f*by); break;
+    case SnapAngle: model.setSnapDegrees(model.snapDegrees+by); break;
     case GridSize: debugGrid.gridScale=std::clamp(debugGrid.gridScale+by,Settings::minScale,Settings::maxScale); break;
     case GlowRate: debugGrid.glow=stepGlow(debugGrid.glow,by); break;
     default: { int& w=debugGrid.weights[row-Weight0]; w=std::clamp(w+by,0,Settings::maxWeight); }
@@ -138,7 +147,7 @@ class TapGame final: public yy::Game {
   }
   void sling(yy::Vec2 at, yy::Vec2 pull) { pointerDown(0,at); pointerMove(0,{at.x+pull.x,at.y+pull.y}); pointerUp(0,{at.x+pull.x,at.y+pull.y}); }
   // YY_TAPDEMO_SCENE stages a moment for smoke screenshots: instructions (as the game opens),
-  // header (one ball flying), aim, debug, play, zoom, icons (one of each power-up and the goal
+  // header (one ball flying), aim, snap (an aim 3 degrees off horizontal), debug, play, zoom, icons (one of each power-up and the goal
   // beside the pocket) or glow (the same close up), breaks (four launches), electric (a launch
   // into that power-up), pingin or pingout (a launch into a Ping brick with the goal inside or
   // outside the ping radius), won (a launch into the goal), palette / palette-fit /
@@ -218,8 +227,9 @@ class TapGame final: public yy::Game {
     touch.camera.hold(centre,{195,480},1.4f);
     const yy::Vec2 at=touch.camera.toScreen(centre);
     pointerDown(0,at);
-    pointerMove(0,{at.x+40,at.y+70});
-    if(std::strcmp(scene,"play")==0) pointerUp(0,{at.x+40,at.y+70});
+    const yy::Vec2 pull=std::strcmp(scene,"snap")==0 ? yy::Vec2{-100,-5} : yy::Vec2{40,70};
+    pointerMove(0,{at.x+pull.x,at.y+pull.y});
+    if(std::strcmp(scene,"play")==0) pointerUp(0,{at.x+pull.x,at.y+pull.y});
   }
 public: void initialize(yy::Services& services) override {
     audio=&services.audio; haptics=&services.haptics; touch.haptics=haptics;
@@ -319,7 +329,7 @@ public: void initialize(yy::Services& services) override {
     }
     // Power-up bursts: a growing ring on the brick that fired, and on a ghost's arrival.
     for(const auto& b: bursts) {
-      const float t=b.age/1.2f, reach=(b.fired.power==Power::Bomb ? 1.6f : 0.9f)*Model::cell*z*(0.4f+t);
+      const float t=b.age/1.2f, reach=(b.fired.power==Power::Bomb ? model.bombSize*0.5f+0.1f : 0.9f)*Model::cell*z*(0.4f+t);
       const Color c=mix(glow(palette,b.fired.power),field,t);
       for(int index: {b.fired.cell,b.fired.to}) {
         if(index<0) continue;
@@ -338,13 +348,14 @@ public: void initialize(yy::Services& services) override {
         r.circle(cam.toScreen({b.position.x-b.velocity.x*0.012f*i,b.position.y-b.velocity.y*0.012f*i}),ballSize*(1-0.2f*i),mix(streak,field,0.25f*i));
       if(b.electric>0) {
         // An aura at the zap radius and flickering arcs to every brick it reaches.
-        const float reach=Model::electricRadius*Model::cell;
+        const float reach=model.electricRadius*Model::cell;
         for(int i=0; i<24; ++i) {
           const float a=i*6.2831853f/24+clock*2, wobble=1+0.06f*std::sin(clock*37+i*5.0f);
           r.circle({p.x+std::cos(a)*reach*z*wobble,p.y+std::sin(a)*reach*z*wobble},std::max(1.2f,1.6f*z),spark);
         }
         const int bc=static_cast<int>(b.position.x/Model::cell), br=static_cast<int>(b.position.y/Model::cell);
-        for(int row=br-2; row<=br+2; ++row) for(int column=bc-2; column<=bc+2; ++column) {
+        const int span=static_cast<int>(std::ceil(model.electricRadius))+1;
+        for(int row=br-span; row<=br+span; ++row) for(int column=bc-span; column<=bc+span; ++column) {
           const float dx=(column+0.5f)*Model::cell-b.position.x, dy=(row+0.5f)*Model::cell-b.position.y;
           if(model.brick(column,row)<=0 || dx*dx+dy*dy>reach*reach) continue;
           const float length=std::max(1.0f,std::hypot(dx,dy)), nx=-dy/length, ny=dx/length;
@@ -362,6 +373,7 @@ public: void initialize(yy::Services& services) override {
     if(touch.aim) {
       const auto& aim=*touch.aim;
       const float pull=std::hypot(aim.pull.x,aim.pull.y);
+      const yy::Vec2 flies=snapPull(aim.pull,static_cast<float>(model.snapDegrees)); // the launch's direction
       const bool ready=pull>=Model::minPull;
       const auto anchor=cam.toScreen(aim.anchor);
       // The band back to the finger, then dots along the launch line.
@@ -372,7 +384,7 @@ public: void initialize(yy::Services& services) override {
       if(ready) {
         const float length=std::min(pull,Touch::fullPull)*2.5f;
         for(float d=Model::ballRadius+14; d<=length; d+=16) {
-          const yy::Vec2 w{aim.anchor.x-aim.pull.x/pull*d, aim.anchor.y-aim.pull.y/pull*d};
+          const yy::Vec2 w{aim.anchor.x-flies.x/pull*d, aim.anchor.y-flies.y/pull*d};
           r.circle(cam.toScreen(w),std::max(2.0f,3.0f*z*(1-d/(length+16))),white);
         }
       }
@@ -416,7 +428,7 @@ public: void initialize(yy::Services& services) override {
         const Power power=static_cast<Power>(k);
         r.rectangle({24,y,40,40},tile); icon(r,palette,power,{44,y+20},34);
         r.text({76,y+4},powerNames[k],glow(palette,power),2);
-        r.text({76,y+26},powerLines[k],muted,1.25f);
+        r.text({76,y+26},power==Power::Bomb ? "BREAKS THE "+square(model.bombSize)+" AROUND IT" : std::string(powerLines[k]),muted,1.25f);
         y+=54;
       }
       r.text({75,card.y+card.h-50},"TAP TO START",teal,2.5f);
@@ -431,8 +443,10 @@ public: void initialize(yy::Services& services) override {
     if(debugOpen) {
       r.rectangle(panel,palette.card);
       r.rectangle({panel.x,panel.y,panel.w,2},teal);
-      r.text({panel.x+20,panel.y+22},"DEBUG",teal);
-      r.text({panel.x+150,panel.y+24},"VERSION " YY_GAME_VERSION,muted,1.25f);
+      r.text({panel.x+20,panel.y+16},"DEBUG",teal);
+      r.text({panel.x+150,panel.y+18},"VERSION " YY_GAME_VERSION,muted,1.25f);
+      const char* headings[]{"APPLY NOW","APPLY ON RESTART","POWER-UP WEIGHTS, ON RESTART"};
+      for(int i=0; i<3; ++i) r.text({panel.x+20,headingTops[i]},headings[i],teal,1.5f);
       const auto row=[&](int index, const std::string& label, Color labelColor, const std::string& value) {
         const yy::Rect minus=minusButton(index), plus=plusButton(index);
         r.text({panel.x+20,minus.y+14},label,labelColor,1.5f);
@@ -441,22 +455,22 @@ public: void initialize(yy::Services& services) override {
         const float centre=(minus.x+minus.w+plus.x)/2, scale=value.size()>5 ? 1.75f : 2; // 60X100 fits between
         r.text({centre-4*scale*value.size(),minus.y+12},value,teal,scale);
       };
+      row(PingRadius,"PING RADIUS",white,std::to_string(model.pingRadius));
+      row(BombSize,"BOMB SIZE",white,square(model.bombSize));
+      row(ZapSeconds,"ZAP SECONDS",white,std::to_string(model.electricSeconds));
+      row(ZapReach,"ZAP REACH",white,halves(model.electricRadius));
+      row(SnapAngle,"SNAP ANGLE",white,model.snapDegrees>0 ? std::to_string(model.snapDegrees)+" DEG" : std::string("OFF"));
       row(Balls,"BALLS",white,std::to_string(debugBalls));
       row(Bounces,"BOUNCES",white,std::to_string(debugBounces));
-      row(PingRadius,"PING RADIUS",white,std::to_string(model.pingRadius));
       row(GridSize,"GRID SIZE",white,std::to_string(Settings::shapeColumns*debugGrid.gridScale)+"X"+std::to_string(Settings::shapeRows*debugGrid.gridScale));
       row(GlowRate,"GLOWING",white,percent(debugGrid.glow));
-      r.text({panel.x+20,stepperTops[GlowRate]+56},"POWER-UP WEIGHTS",teal,1.5f);
       for(int k=1; k<=powerKinds; ++k) row(Weight0+k-1,weightNames[k],glow(palette,static_cast<Power>(k)),std::to_string(debugGrid.weights[k-1]));
       r.rectangle(colorsButton,palette.button);
-      r.text({colorsButton.x+16,colorsButton.y+14},"COLORS",white);
-      r.text({colorsButton.x+132,colorsButton.y+14},palette.name,teal);
-      r.text({colorsButton.x+278,colorsButton.y+14},">",white);
-      r.rectangle(restartButton,palette.teal); r.text({restartButton.x+19,restartButton.y+15},"RESTART",dark);
-      r.rectangle(closeButton,palette.button); r.text({closeButton.x+35,closeButton.y+15},"CLOSE",white);
-      r.text({panel.x+20,panel.y+680},"RESTART APPLIES BALLS, BOUNCES,",muted,1.25f);
-      r.text({panel.x+20,panel.y+696},"GRID SIZE, GLOWING + WEIGHTS",muted,1.25f);
-      r.text({panel.x+20,panel.y+712},"PING RADIUS + COLORS APPLY NOW",muted,1.25f);
+      r.text({colorsButton.x+16,colorsButton.y+12},"COLORS",white);
+      r.text({colorsButton.x+132,colorsButton.y+12},palette.name,teal);
+      r.text({colorsButton.x+278,colorsButton.y+12},">",white);
+      r.rectangle(restartButton,palette.teal); r.text({restartButton.x+19,restartButton.y+14},"RESTART",dark);
+      r.rectangle(closeButton,palette.button); r.text({closeButton.x+35,closeButton.y+14},"CLOSE",white);
     }
   }
 };

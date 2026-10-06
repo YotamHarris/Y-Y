@@ -91,3 +91,42 @@ pockets and glowing bricks.
 
 **Open:** Yotam's phone review. At 60 by 100 a cell is about 6.5 points at
 minimum zoom, so play needs zooming in. Device performance is not applicable.
+
+### V3 Power-up tuning and snapped straight shots (D4)
+
+**Status:** active
+
+T8 turns the bomb size, lightning seconds and reach into Model settings with
+the new snap angle, enforces one-hit glowing bricks and wall-free bombs in
+generation, and draws the bomb burst, the electric aura and the aim line from
+the settings. The instructions card names the bomb's square. DEBUG now covers
+12 to 842 of the 844 logical height: fourteen 44 by 40 stepper pairs on a
+44-point pitch under three headings (APPLY NOW: ping radius, bomb size, zap
+seconds, zap reach, snap angle; APPLY ON RESTART: balls, bounces, grid size,
+glowing; the weights), then COLORS (310 by 40), RESTART and CLOSE (150 by 44).
+The footer notes gave way to the headings.
+
+**Tests.** `scripts/build.ps1` runs `yy_tests`. A bomb clears exactly the 5
+by 5 around it and sets off the Ping and Bomb inside it; size 3 clears a 3 by
+3; sizes round to odd and clamp. A still electric ball zaps bricks 2, 2.24
+cells away and not 2.83 or 3, is still electric at 5.8 s and stops at 6 s
+after 23 to 24 zaps; reach and time clamp and survive restart. Over bomb sizes
+3, 5 and 9, grids 12 by 20, 24 by 40 and 42 by 70 and 12 seeds at 25% glow,
+every glowing brick has 1 hit point and no bomb lies within half its blast of
+a wall. With weights 2:1:1 Bomb keeps half the inner share and the wall band
+splits evenly between the other two. Launches 4 degrees off either axis, both
+directions, fly exactly straight; 6 degrees keep their angle; snap 0 changes
+nothing. Player path: a 3 degree pull through Touch shows a snapped aim and
+launches with a vertical velocity of exactly 0. The palette test drives the
+real Game: the new rows show 5X5, 6, 2.5 and 5 DEG, step, and survive
+RESTART; the moved rows still work. The pinned default-grid hash changed to
+8933398709070464508 because glowing bricks and bomb places changed.
+
+**Visual evidence.** `YY_TAPDEMO_SCENE=debug` and the new `snap` scene (a pull
+3 degrees off horizontal) with the smoke command. Inspected 390 by 844
+captures: every row, heading and button is legible and on screen; the aim dots
+run exactly horizontal while the band to the finger keeps its slight tilt.
+
+**Open:** Yotam's phone review of the numbers and of tapping the denser panel.
+A bomb near the wall can still exist when the bomb size is raised after the
+grid was generated. Device performance is not applicable.

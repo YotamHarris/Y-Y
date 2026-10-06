@@ -59,3 +59,32 @@ tune each kind's likelihood independently of how many bricks glow.
 **Evidence.** V2.
 
 ---
+
+### D4 — Wider bombs kept off the walls, longer lightning, one-hit power-ups and snapped straight shots (2026-10-06)
+
+**Status:** active
+
+**What happened.** Yotam: "Increase the range of the bomb and give debug option for it. Make the lighting more powerful and longer and add debug option for it. Do not allow the bomb to spawn near the edges of the map. Make straight lines easier to achieve by clamping a straight line horizontal or vertical if the angle is close to it about 5 degrees for now. Power ups should always require one hit, currently it's random if they are under 1 2 or 3." The numbers below are the planner's reading of "increase", "more powerful and longer" (a wider reach) and "about 5 degrees"; Yotam tunes them from DEBUG.
+
+**Decision.** A bomb clears a 5 by 5 square (odd sizes 3 to 11). An electric
+ball zaps for 6 s (1 to 15) every brick whose centre is within 2.5 cells (1 to
+6, in half cells). A launch within 5 degrees (0 to 15; 0 is off) of horizontal
+or vertical flies exactly along that axis, and the aim line shows the snapped
+direction: one function, `snapPull`, serves both. These four are Model settings
+like the ping radius: DEBUG changes them at once and restart keeps them, for
+the session only.
+
+Every glowing brick has 1 hit point. A Bomb is never placed closer to a wall
+than half its blast (the bomb size when the grid is generated): there the
+brick's kind is picked among the other kinds by their own weights, and with
+only Bomb weighted it stays plain. The random draws are unchanged, so a seed
+still gives the same pockets and goal search; its bricks' hit points and kinds
+differ where these rules apply.
+
+**Why.** A bomb by the wall wastes part of its blast; a glowing brick that
+needs three hits hides its power-up behind luck. Snapping only within a small
+angle keeps every other aim exact.
+
+**Evidence.** V3.
+
+---

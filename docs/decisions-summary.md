@@ -9,11 +9,11 @@ python studio/fe_docs.py show D64
 python studio/fe_docs.py category design
 ```
 
-3 entries: 3 active.
+4 entries: 4 active.
 
 | category | file | entries | covers |
 |---|---|---|---|
-| Design | [design.md](decisions/design.md) | 2, 2 holding | game rules, touch interaction, look and feel |
+| Design | [design.md](decisions/design.md) | 3, 3 holding | game rules, touch interaction, look and feel |
 | Engine | [engine.md](decisions/engine.md) | 0, 0 holding | C++20, SDL3, iOS and deterministic simulation |
 | Process | [process.md](decisions/process.md) | 1, 1 holding | Agent Studio, Discord and TestFlight delivery |
 
@@ -21,10 +21,11 @@ python studio/fe_docs.py category design
 
 ## Design
 
-2 entries: 2 active. [decisions/design.md](decisions/design.md)
+3 entries: 3 active. [decisions/design.md](decisions/design.md)
 
 #### Active — the current rules
 
+- **D4** (2026-10-06) Wider bombs kept off the walls, longer lightning, one-hit power-ups and snapped straight shots
 - **D3** (2026-10-06) Debug sets the grid size, glow rate and power-up mix, applied on restart
 - **D2** (2026-10-05) Fog has brightness and texture contrast in every colour scheme
 

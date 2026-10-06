@@ -2,6 +2,7 @@
 #include <yy/core.hpp>
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -17,6 +18,9 @@ struct Ball {
   bool fast{};                  // sped up by a Speed power-up
 };
 struct Pocket { int column{}, row{}, columns{}, rows{}; };
+// The pull turned onto the nearest axis when it lies within `degrees` of it; 0 snaps nothing.
+// launch() and the aim line both use it, so the line shows what flies.
+yy::Vec2 snapPull(yy::Vec2 pull, float degrees);
 // The grid's debug settings; restart applies them. The grid keeps the 3:5 shape:
 // gridScale k gives 6k columns and 10k rows.
 struct Settings {
@@ -40,7 +44,8 @@ struct Hits { int bricksHit{}, bricksBroken{}, bounces{}, ballsSpent{}; std::vec
 // Balls are placed only in empty space and fly opposite the pull; every wall or brick
 // hit costs one bounce, and a brick loses one hit point per hit. A `settings.glow` share of the
 // bricks glows with a power-up, each kind picked in proportion to its weight, that fires when
-// the brick breaks, however it broke.
+// the brick breaks, however it broke. A glowing brick has 1 hit point, and no Bomb sits closer
+// to a wall than half its blast.
 // Bricks further than `fogReach` straight steps from every empty cell are under fog. Ping shows
 // glowing bricks and the goal within `pingRadius` cells of the pinged brick.
 class Model {
@@ -63,14 +68,15 @@ public:
   static constexpr float cell=32, ballRadius=10, speed=480, minPull=18;
   static constexpr int defaultBalls=10, defaultBounces=15, maxSetting=99;
   static constexpr int fogReach=2;               // straight steps from a cavity that stay visible
-  static constexpr int bombSize=3;               // a bomb breaks the bombSize x bombSize around it
-  static constexpr float electricSeconds=3;      // how long a ball stays electric
   static constexpr float electricTick=0.25f;     // seconds between zaps
-  static constexpr float electricRadius=1.5f;    // cells from the ball to a zapped brick's centre
   static constexpr float pingSeconds=3;          // how long a ping shows what lies within pingRadius
   static constexpr float speedUp=2;              // a sped-up ball's speed multiplier
   static constexpr int ghostSize=3;              // the ghost's new cavity is ghostSize x ghostSize
   static constexpr int defaultPingRadius=6, minPingRadius=1, maxPingRadius=40; // cells, centre to centre
+  static constexpr int defaultBombSize=5, minBombSize=3, maxBombSize=11;      // odd: the blast square's side in cells
+  static constexpr int defaultElectricSeconds=6, minElectricSeconds=1, maxElectricSeconds=15;
+  static constexpr float defaultElectricRadius=2.5f, minElectricRadius=1, maxElectricRadius=6; // cells, steps of 0.5
+  static constexpr int defaultSnapDegrees=5, maxSnapDegrees=15;               // 0 turns snapping off
   std::vector<int> bricks; // hit points per cell, row-major; 0 is empty
   std::vector<Power> powers; // per cell; None on plain bricks and empty cells
   std::vector<Pocket> pockets;
@@ -79,7 +85,12 @@ public:
   Settings settings; // the grid settings the current grid was built with
   int ballsLeft{}, ballCount{defaultBalls}, bouncesPerBall{defaultBounces};
   float pingTime{}; // seconds the pings still show
-  int pingRadius{defaultPingRadius}; // a setting: restart keeps it
+  // Settings that apply at once and that restart keeps.
+  int pingRadius{defaultPingRadius};
+  int bombSize{defaultBombSize};             // a bomb breaks the bombSize x bombSize around it
+  int electricSeconds{defaultElectricSeconds}; // how long a ball stays electric
+  float electricRadius{defaultElectricRadius}; // cells from the ball to a zapped brick's centre
+  int snapDegrees{defaultSnapDegrees};       // a launch this close to an axis flies along it
   int goal{-1}; // the goal brick's cell
   Hits hits;
   explicit Model(std::uint32_t seed=42);
@@ -95,6 +106,11 @@ public:
   int bricksLeft() const;
   bool isGoal(int column, int row) const { return goal>=0 && column>=0 && row>=0 && column<columns && row<rows && row*columns+column==goal; }
   void setPingRadius(int cells) { pingRadius=std::clamp(cells,minPingRadius,maxPingRadius); }
+  // An even size rounds up to the next odd one.
+  void setBombSize(int cells) { bombSize=std::clamp(cells|1,minBombSize,maxBombSize); }
+  void setElectricSeconds(int seconds) { electricSeconds=std::clamp(seconds,minElectricSeconds,maxElectricSeconds); }
+  void setElectricRadius(float cells) { electricRadius=std::clamp(std::round(cells*2)/2,minElectricRadius,maxElectricRadius); }
+  void setSnapDegrees(int degrees) { snapDegrees=std::clamp(degrees,0,maxSnapDegrees); }
   // While Ping lasts: the cell lies within pingRadius cells of a pinged brick's cell.
   bool pinged(int column, int row) const;
   const std::vector<int>& pingCells() const { return pingCells_; }
@@ -108,7 +124,7 @@ public:
   // Where a press at `tap` holds a ball: the tap itself when open, else the closest open spot
   // within one cell of it, else nothing.
   std::optional<yy::Vec2> placeNear(yy::Vec2 tap) const;
-  // Launches from `at` opposite `pull` (finger minus ball). A pull shorter than minPull,
+  // Launches from `at` opposite `pull` (finger minus ball), snapped by snapPull. A pull shorter than minPull,
   // no balls left, a finished round or a spot a brick covers launches nothing.
   bool launch(yy::Vec2 at, yy::Vec2 pull);
   void update(float dt);
