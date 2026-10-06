@@ -41,5 +41,15 @@ void levelBandChecks() {
     check(touched.winRate()>=t.minWins && touched.winRate()<=t.maxWins,n,"through touch the win rate is outside its feel's band");
     check(std::abs(touched.winRate()-measured[n-1].winRate())<=0.05f,n,"through touch the win rate differs from the direct shots'");
   }
+  // Ghost on level 9 through the player's touch path: every landing takes no power-up from its cavity.
+  {
+    constexpr int ghostLevel=9;
+    check(levels[ghostLevel-1].introduces==Power::Ghost,ghostLevel,"level 9 introduces Ghost");
+    const auto touched=levelbot::measure(ghostLevel,levels[ghostLevel-1],1,runs,{},true);
+    std::cout<<"Level "<<ghostLevel<<" through touch: wins "<<100*touched.winRate()<<"%, "<<touched.ghostLandings
+      <<" Ghost landings, "<<touched.ghostTakes<<" power-ups fired from a landing\n";
+    check(touched.ghostLandings>0,ghostLevel,"no Ghost landed through touch");
+    check(touched.ghostTakes==0,ghostLevel,"a Ghost landing fired another power-up");
+  }
   std::cout<<"Level bands: ten levels meet their feel over "<<runs<<" bot games each; levels 1-3 also through touch\n";
 }

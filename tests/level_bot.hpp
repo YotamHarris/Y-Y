@@ -8,6 +8,7 @@
 #include <tapdemo/model.hpp>
 #include <tapdemo/touch.hpp>
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <vector>
 
@@ -21,6 +22,8 @@ struct Result {
   bool chain{};     // a power-up fired, or an electric ball zapped, in the update the goal broke
   bool goalSeen{};  // the goal showed at any time (out of the fog, or pinged)
   int goalDistance{}; // straight steps from the goal to the nearest open cell when the level ended
+  int ghostLandings{}; // Ghost power-ups that moved the ball
+  int ghostTakes{};    // power-ups that fired from inside a Ghost's landing cavity in the update it landed
 };
 
 // A small generator of the bot's own, apart from the model's.
@@ -92,6 +95,15 @@ inline Result play(int level, const tapdemo::Level& table, std::uint32_t botSeed
       for(const auto& b: m.balls) electric|=b.electric>0;
       m.update(dt);
       result.goalSeen|=goalShows(m);
+      // A power-up fired after a Ghost in the same update, from a brick in its 3x3, was taken for free.
+      const auto& fired=m.hits.fired;
+      for(std::size_t g=0; g<fired.size(); ++g) {
+        if(fired[g].power!=Power::Ghost || fired[g].to<0) continue;
+        ++result.ghostLandings;
+        for(std::size_t k=g+1; k<fired.size(); ++k)
+          result.ghostTakes+=std::abs(fired[k].cell%m.columns-fired[g].to%m.columns)<=Model::ghostSize/2 &&
+                             std::abs(fired[k].cell/m.columns-fired[g].to/m.columns)<=Model::ghostSize/2;
+      }
       if(m.won()) { result.won=true; result.lastBall=last; result.chain=electric || !m.hits.fired.empty(); }
     }
     m.balls.clear(); // a ball still flying after two minutes is spent
@@ -104,8 +116,9 @@ inline Result play(int level, const tapdemo::Level& table, std::uint32_t botSeed
 struct Metrics {
   int runs{}, wins{}, lastBallWins{}, chainWins{}, lastChainWins{}, nearLosses{}, seenLosses{};
   long long lossDistance{};
+  int ghostLandings{}, ghostTakes{};
   void add(const Result& r) {
-    ++runs;
+    ++runs; ghostLandings+=r.ghostLandings; ghostTakes+=r.ghostTakes;
     if(r.won) { ++wins; lastBallWins+=r.lastBall; chainWins+=r.chain; lastChainWins+=r.lastBall && r.chain; return; }
     nearLosses+=r.goalSeen || r.goalDistance<=2; seenLosses+=r.goalSeen; lossDistance+=r.goalDistance;
   }

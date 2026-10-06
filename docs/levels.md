@@ -73,7 +73,8 @@ brick now breaks in one hit, like every power-up brick. This moved the seeded gr
 and the bot's results, so levels 6 and 10 left their bands and were re-searched
 (`level_tune search 6 1 3000 300 4 18`, `search 10 1 3000 200 4 17`): level 6 is seed 696
 with 18 bounces, level 10 is seed 2104 with 17 bounces. The other levels kept their
-seeds; the table above is the new measurement.
+seeds; the table above is the new measurement. The band test also plays level 9 through touch for its 200
+games and fails if any power-up fires from a Ghost landing's 3x3 (140 landings, none).
 
 ## How it was measured
 
