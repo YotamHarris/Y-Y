@@ -298,6 +298,7 @@ bool Runtime::initialize() {
   impl->renderer.handle=SDL_CreateRenderer(impl->window,driver);
   if(!impl->renderer.handle) { SDL_Log("Renderer: %s",SDL_GetError()); return false; }
   SDL_SetRenderVSync(impl->renderer.handle,1);
+  SDL_SetRenderDrawBlendMode(impl->renderer.handle,SDL_BLENDMODE_BLEND); // colours with alpha below 255 blend; opaque draws are unchanged
   impl->audio.initialize(); impl->viewport(); impl->haptics=std::make_unique<PlatformHaptics>();
   impl->storage=std::make_unique<PreferenceStorage>();
   Services services{impl->renderer,impl->audio,*impl->haptics,*impl->storage}; impl->game->initialize(services);

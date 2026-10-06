@@ -49,6 +49,10 @@ inline constexpr std::array<Palette,4> palettes{{navy,
 // Linear sRGB luminance, 0..1. Fog must be clearly lighter than an empty cavity
 // even in greyscale; its stipple adds a separate shape cue at every zoom.
 inline constexpr float minFogLuminanceGap=0.08f;
+// The first fogged ring fades in over this many strips, from faint (next to a clear cell) to
+// nearly solid (next to deeper fog); alpha 0..255.
+inline constexpr int fogEdgeStrips=4;
+inline constexpr int fogEdgeFaint=90, fogEdgeSolid=240;
 inline float luminance(yy::Color c) {
   const auto linear=[](unsigned char channel) {
     const float s=channel/255.0f;

@@ -283,6 +283,20 @@ class TapGame final: public yy::Game {
       if(scene[0]=='g') touch.camera.hold(centre,{195,480},2.0f);
       return;
     }
+    if(std::strncmp(scene,"fogedge",7)==0) {
+      // Screenshot fixture for the faded fog ring: hit-point bricks, power-ups and the goal three steps from the
+      // pocket, so they sit in the first fogged ring. Fog and Ping rules are untouched.
+      const int row=pocket.row-3;
+      const auto hit=[&](int c,int hp) { set(c,row,Power::None); model.bricks[row*model.columns+c]=hp; };
+      hit(column-2,3); hit(column-1,2);
+      set(column,row,Power::Bomb); set(column+1,row,Power::Ping);
+      setGoal(column+2,row);
+      set(pocket.column+pocket.columns+2,pocket.row,Power::Speed);
+      lastBricks=model.bricks;
+      if(std::strcmp(scene,"fogedge-fit")==0) touch.camera.fit();
+      else touch.camera.hold({centre.x,(row+1.0f)*Model::cell},{195,480},std::strcmp(scene,"fogedge-near")==0 ? 2.0f : 3.0f);
+      return;
+    }
     if(std::strcmp(scene,"breaks")==0) {
       const yy::Vec2 at=touch.camera.toScreen(centre);
       for(yy::Vec2 pull: {yy::Vec2{20,40},{-40,15},{5,-40},{40,-10}}) sling(at,pull);
@@ -429,6 +443,21 @@ public: void initialize(yy::Services& services) override {
     // Icon bricks hide their hit points so no digit is read as part of the icon.
     const auto& fogColors=palette.fog;
     const float pulse=0.5f+0.5f*std::sin(clock*6);
+    // A brick with its hit points, or the icon brick of a power-up or the goal.
+    const auto cellContents=[&](int column,int row,yy::Vec2 p,yy::Rect box,int hp,bool goal,Power power) {
+      if(goal || power!=Power::None) { iconBrick(r,palette,power,box,pulse); return; }
+      if(gardening) {
+        float squash=0;
+        for(const auto& pop: pops) if(pop.cell==row*model.columns+column) {
+          squash=std::sin(std::min(1.0f,pop.age/0.12f)*3.14159265f); break;
+        }
+        const float w=cellSize-gap-cellSize*0.06f*squash, h=cellSize-gap-cellSize*0.16f*squash;
+        gardenSprite(r,gardenDamage(hp),{p.x+(cellSize-w)/2,p.y+(cellSize-h)/2,w,h});
+        return;
+      }
+      r.rectangle({p.x+gap/2,p.y+gap/2,cellSize-gap,cellSize-gap},brickColors[std::min(hp,3)-1]);
+      if(cellSize>=12) r.text({p.x+cellSize/2-4*digit,p.y+cellSize/2-4*digit},std::to_string(hp),dark,digit);
+    };
     for(int row=r0; row<=r1; ++row) for(int column=c0; column<=c1; ++column) {
       const int hp=model.brick(column,row);
       const bool goal=hp>0 && model.isGoal(column,row);
@@ -436,6 +465,33 @@ public: void initialize(yy::Services& services) override {
       const auto p=cam.toScreen({column*Model::cell,row*Model::cell});
       const yy::Rect box{p.x,p.y,cellSize,cellSize};
       if(!model.visible(column,row)) {
+        if(model.fogDistance(column,row)==Model::fogReach+1) {
+          // The first fogged ring fades in: contents first, then fog in thin strips, faint on
+          // the side facing a clear cell and nearly solid on the side facing deeper fog.
+          if(hp>0) cellContents(column,row,p,box,hp,goal,power);
+          const auto clear=[&](int c,int rr) { return c>=0 && rr>=0 && c<model.columns && rr<model.rows && model.visible(c,rr); };
+          const bool up=clear(column,row-1), down=clear(column,row+1), left=clear(column-1,row), right=clear(column+1,row);
+          const auto base=fogColors[(column+row)%2];
+          const auto tint=[&](float proximity) { auto c=base; c.a=static_cast<unsigned char>(fogEdgeFaint+(fogEdgeSolid-fogEdgeFaint)*(1-proximity)); return c; };
+          // Proximity of a point in the cell to its nearest clear side: 1 on it, 0 a cell away.
+          const auto closeness=[&](float u,float v) {
+            float best=0;
+            if(up) best=std::max(best,1-v);
+            if(down) best=std::max(best,v);
+            if(left) best=std::max(best,1-u);
+            if(right) best=std::max(best,u);
+            return best;
+          };
+          const bool vertical=up||down, horizontal=left||right;
+          const float step=1.0f/fogEdgeStrips;
+          // One axis: strips across the cell. Two axes (a corner, or a dead end): a small tile grid.
+          for(int j=0; j<(vertical ? fogEdgeStrips : 1); ++j) for(int i=0; i<(horizontal ? fogEdgeStrips : 1); ++i) {
+            const float u0=horizontal ? i*step : 0, v0=vertical ? j*step : 0, w=horizontal ? step : 1, h=vertical ? step : 1;
+            r.rectangle({p.x+u0*cellSize,p.y+v0*cellSize,w*cellSize,h*cellSize},tint(closeness(u0+w/2,v0+h/2)));
+          }
+          if((goal || power!=Power::None) && model.pinged(column,row)) iconBrick(r,palette,power,box,pulse);
+          continue;
+        }
         if(gardening) {
           const float rim=std::clamp(cellSize*0.045f,1.0f,3.0f);
           const auto exposed=[&](int c,int rr) { return c>=0 && rr>=0 && c<model.columns && rr<model.rows && model.visible(c,rr); };
@@ -456,19 +512,7 @@ public: void initialize(yy::Services& services) override {
         continue;
       }
       if(gardening) gardenCellTexture(r,GardenSprite::Clear,column,row,box);
-      if(hp<=0) continue;
-      if(goal || power!=Power::None) { iconBrick(r,palette,power,box,pulse); continue; }
-      if(gardening) {
-        float squash=0;
-        for(const auto& pop: pops) if(pop.cell==row*model.columns+column) {
-          squash=std::sin(std::min(1.0f,pop.age/0.12f)*3.14159265f); break;
-        }
-        const float w=cellSize-gap-cellSize*0.06f*squash, h=cellSize-gap-cellSize*0.16f*squash;
-        gardenSprite(r,gardenDamage(hp),{p.x+(cellSize-w)/2,p.y+(cellSize-h)/2,w,h});
-        continue;
-      }
-      r.rectangle({p.x+gap/2,p.y+gap/2,cellSize-gap,cellSize-gap},brickColors[std::min(hp,3)-1]);
-      if(cellSize>=12) r.text({p.x+cellSize/2-4*digit,p.y+cellSize/2-4*digit},std::to_string(hp),dark,digit);
+      if(hp>0) cellContents(column,row,p,box,hp,goal,power);
     }
     // The entire 200 ms flash/clipping sequence stays inside the struck cell. Aim and balls
     // draw after it, so a second shot can be held and released while the previous hit settles.

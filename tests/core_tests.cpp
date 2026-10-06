@@ -105,6 +105,20 @@ static void powerChecks() {
     for(int i=0; i<120 && m.brick(11,10)>0; ++i) { m.update(1.0f/60); collect(total,m.hits); }
     check(m.brick(11,10)==0 && total.bricksBroken==1,"the brick beside the cavity breaks");
     check(m.visible(13,10) && m.fogDistance(13,10)==2 && !m.visible(14,10),"fog lifts two steps past the break");
+    {
+      // The first fogged ring, which the renderer fades, is exactly the fogged cells touching a visible cell.
+      Model e(34); only(e,all,1); set(e,10,10,0); set(e,20,5,0); set(e,0,0,0);
+      int ring=0;
+      bool exact=true;
+      for(int r=0; r<e.rows; ++r) for(int c=0; c<e.columns; ++c) {
+        const bool touches=(r>0 && e.visible(c,r-1)) || (r+1<e.rows && e.visible(c,r+1)) || (c>0 && e.visible(c-1,r)) || (c+1<e.columns && e.visible(c+1,r));
+        const bool edge=!e.visible(c,r) && touches;
+        exact=exact && edge==(e.fogDistance(c,r)==Model::fogReach+1);
+        ring+=edge;
+      }
+      check(exact && ring>0,"the edge ring is the fogged cells touching a visible cell");
+      check(e.fogDistance(13,10)==3 && !e.visible(13,10) && e.visible(12,10),"and fog visibility is unchanged at the ring");
+    }
     Model g(33);
     check(std::all_of(g.pockets.begin(),g.pockets.end(),[&](const tapdemo::Pocket& p){ return g.visible(p.column-1,p.row) && g.visible(p.column-2,p.row+1); })
       ,"a new grid shows the bricks around its pockets");
