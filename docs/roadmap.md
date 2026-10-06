@@ -327,3 +327,41 @@ dark or white rim on either background and no magenta pixel anywhere.
 40-point flower in the 1x desktop capture shows it. Text has no kerning. The
 capture is desktop 1x; the 3x phone draws from the larger bakes, not yet seen
 on a device. No game art, look or gameplay changes.
+
+### V9 Garden Pop plays with material damage and a local hit pop (D8)
+
+**Status:** active
+
+T16 implements the accepted Garden Pop concept. Fresh games use dense grass,
+cut turf and bare soil for three, two and one hits, with dark cleared ground
+and no ordinary-brick digits. Generated phone-resolution alpha BMPs provide
+wooden power holders, the ladybird goal pennant, pale dewy mist with a stepped
+rim, glossy red ball and wooden/cream UI. Fredoka draws the header and card
+within their original bounds; the card teaches the three damage pictures.
+DEBUG / COLORS keeps all four previous palettes and their saved indices.
+
+Each hit starts a renderer-only 200 ms squash, flash and clipping sequence.
+The effect stays local and below the aim, without delaying the next shot.
+The deterministic model, seeds, grid, hit points, physics, touch rules, hidden
+goal and zoom limits are unchanged. Source artwork, exact imagegen prompt,
+crop registration and production contrast are recorded with the assets.
+
+**Validation.** `scripts/build.ps1 -Smoke` passed compilation, CTest 1/1 and
+the 120-frame smoke through `fe_manager.py gpu`. `build/windows/yy_tests.exe`
+passed existing deterministic/level/font tests and Garden's real Game/Touch
+shots, all five powers, goal, simultaneous aim/next shot, 200 ms lifetime,
+both pinch limits, card and saved look checks. The actual production BMPs
+have a minimum mist/cavity luminance gap of 0.368624 against the 0.08 rule.
+
+**Visual evidence.** `tests/capture_garden.py`, launched through
+`fe_manager.py gpu`, captures gameplay, damage, mid-hit aim, powers/goal,
+instructions, both zoom limits, a new level 1 and DEBUG. All nine were read
+at 390 wide beside the accepted mockups. The staged placements and frozen
+75 ms screenshot are explicitly identified in `docs/garden-pop-validation.md`;
+independent live touch tests prove timing and activation. The final pictures
+show material damage without digits and an unobscured aim during the pop.
+
+**Open:** the captures are desktop SDL at 1x. Phone 3x appearance and the
+200 ms pop's tactile feel remain the owner's TestFlight check. This task has
+no device performance goal. An installation with a saved legacy palette
+keeps it; select GARDEN POP in DEBUG / COLORS to try the new look.

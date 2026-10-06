@@ -1,0 +1,182 @@
+[
+  {
+    "name": "gameplay",
+    "scene": "aim",
+    "level": "10",
+    "debug_fixture": false,
+    "capture": "gameplay.png",
+    "readback": "gameplay-compare.png",
+    "concept": "garden-gameplay.png",
+    "artwork_sha256": {
+      "card.bmp": "6ae6186bf00667e7ac7347a8be235410ded112936d58620d7076dea18157c5d2",
+      "header.bmp": "7d35a53d0dcce19ac3231522ea22a7c066732415949cbef425da7434d912d1ad",
+      "tiles.bmp": "d1fa9ba7bcf11dd22737bd2de95a307d95dd688c1ca204ff6ccbfc153f777d88"
+    },
+    "command": "TapDemo.exe --smoke 45",
+    "read_width": 390,
+    "capture_size": [
+      390,
+      844
+    ]
+  },
+  {
+    "name": "damage",
+    "scene": "garden-damage",
+    "level": "10",
+    "debug_fixture": true,
+    "capture": "damage.png",
+    "readback": "damage-compare.png",
+    "concept": "garden-damage.png",
+    "artwork_sha256": {
+      "card.bmp": "6ae6186bf00667e7ac7347a8be235410ded112936d58620d7076dea18157c5d2",
+      "header.bmp": "7d35a53d0dcce19ac3231522ea22a7c066732415949cbef425da7434d912d1ad",
+      "tiles.bmp": "d1fa9ba7bcf11dd22737bd2de95a307d95dd688c1ca204ff6ccbfc153f777d88"
+    },
+    "command": "TapDemo.exe --smoke 45",
+    "read_width": 390,
+    "capture_size": [
+      390,
+      844
+    ]
+  },
+  {
+    "name": "mid-hit",
+    "scene": "garden-hit",
+    "level": "10",
+    "debug_fixture": true,
+    "capture": "mid-hit.png",
+    "readback": "mid-hit-compare.png",
+    "concept": "garden-damage.png",
+    "artwork_sha256": {
+      "card.bmp": "6ae6186bf00667e7ac7347a8be235410ded112936d58620d7076dea18157c5d2",
+      "header.bmp": "7d35a53d0dcce19ac3231522ea22a7c066732415949cbef425da7434d912d1ad",
+      "tiles.bmp": "d1fa9ba7bcf11dd22737bd2de95a307d95dd688c1ca204ff6ccbfc153f777d88"
+    },
+    "command": "TapDemo.exe --smoke 45",
+    "read_width": 390,
+    "capture_size": [
+      390,
+      844
+    ]
+  },
+  {
+    "name": "powers-goal",
+    "scene": "glow",
+    "level": "10",
+    "debug_fixture": true,
+    "capture": "powers-goal.png",
+    "readback": "powers-goal-compare.png",
+    "concept": "garden-powers.png",
+    "artwork_sha256": {
+      "card.bmp": "6ae6186bf00667e7ac7347a8be235410ded112936d58620d7076dea18157c5d2",
+      "header.bmp": "7d35a53d0dcce19ac3231522ea22a7c066732415949cbef425da7434d912d1ad",
+      "tiles.bmp": "d1fa9ba7bcf11dd22737bd2de95a307d95dd688c1ca204ff6ccbfc153f777d88"
+    },
+    "command": "TapDemo.exe --smoke 45",
+    "read_width": 390,
+    "capture_size": [
+      390,
+      844
+    ]
+  },
+  {
+    "name": "instructions",
+    "scene": "instructions",
+    "level": "10",
+    "debug_fixture": false,
+    "capture": "instructions.png",
+    "readback": "instructions-compare.png",
+    "concept": "garden-instructions.png",
+    "artwork_sha256": {
+      "card.bmp": "6ae6186bf00667e7ac7347a8be235410ded112936d58620d7076dea18157c5d2",
+      "header.bmp": "7d35a53d0dcce19ac3231522ea22a7c066732415949cbef425da7434d912d1ad",
+      "tiles.bmp": "d1fa9ba7bcf11dd22737bd2de95a307d95dd688c1ca204ff6ccbfc153f777d88"
+    },
+    "command": "TapDemo.exe --smoke 45",
+    "read_width": 390,
+    "capture_size": [
+      390,
+      844
+    ]
+  },
+  {
+    "name": "fit",
+    "scene": "palette-fit",
+    "level": "10",
+    "debug_fixture": true,
+    "capture": "fit.png",
+    "readback": "fit-compare.png",
+    "concept": "garden-gameplay.png",
+    "artwork_sha256": {
+      "card.bmp": "6ae6186bf00667e7ac7347a8be235410ded112936d58620d7076dea18157c5d2",
+      "header.bmp": "7d35a53d0dcce19ac3231522ea22a7c066732415949cbef425da7434d912d1ad",
+      "tiles.bmp": "d1fa9ba7bcf11dd22737bd2de95a307d95dd688c1ca204ff6ccbfc153f777d88"
+    },
+    "command": "TapDemo.exe --smoke 45",
+    "read_width": 390,
+    "capture_size": [
+      390,
+      844
+    ]
+  },
+  {
+    "name": "max",
+    "scene": "palette-max",
+    "level": "10",
+    "debug_fixture": true,
+    "capture": "max.png",
+    "readback": "max-compare.png",
+    "concept": "garden-powers.png",
+    "artwork_sha256": {
+      "card.bmp": "6ae6186bf00667e7ac7347a8be235410ded112936d58620d7076dea18157c5d2",
+      "header.bmp": "7d35a53d0dcce19ac3231522ea22a7c066732415949cbef425da7434d912d1ad",
+      "tiles.bmp": "d1fa9ba7bcf11dd22737bd2de95a307d95dd688c1ca204ff6ccbfc153f777d88"
+    },
+    "command": "TapDemo.exe --smoke 45",
+    "read_width": 390,
+    "capture_size": [
+      390,
+      844
+    ]
+  },
+  {
+    "name": "new-game",
+    "scene": "instructions",
+    "level": "1",
+    "debug_fixture": false,
+    "capture": "new-game.png",
+    "readback": "new-game-compare.png",
+    "concept": "garden-instructions.png",
+    "artwork_sha256": {
+      "card.bmp": "6ae6186bf00667e7ac7347a8be235410ded112936d58620d7076dea18157c5d2",
+      "header.bmp": "7d35a53d0dcce19ac3231522ea22a7c066732415949cbef425da7434d912d1ad",
+      "tiles.bmp": "d1fa9ba7bcf11dd22737bd2de95a307d95dd688c1ca204ff6ccbfc153f777d88"
+    },
+    "command": "TapDemo.exe --smoke 45",
+    "read_width": 390,
+    "capture_size": [
+      390,
+      844
+    ]
+  },
+  {
+    "name": "debug",
+    "scene": "debug",
+    "level": "10",
+    "debug_fixture": false,
+    "capture": "debug.png",
+    "readback": "debug-compare.png",
+    "concept": "garden-plate.jpg",
+    "artwork_sha256": {
+      "card.bmp": "6ae6186bf00667e7ac7347a8be235410ded112936d58620d7076dea18157c5d2",
+      "header.bmp": "7d35a53d0dcce19ac3231522ea22a7c066732415949cbef425da7434d912d1ad",
+      "tiles.bmp": "d1fa9ba7bcf11dd22737bd2de95a307d95dd688c1ca204ff6ccbfc153f777d88"
+    },
+    "command": "TapDemo.exe --smoke 45",
+    "read_width": 390,
+    "capture_size": [
+      390,
+      844
+    ]
+  }
+]

@@ -9,11 +9,11 @@ python studio/fe_docs.py show D64
 python studio/fe_docs.py category design
 ```
 
-7 entries: 7 active.
+8 entries: 8 active.
 
 | category | file | entries | covers |
 |---|---|---|---|
-| Design | [design.md](decisions/design.md) | 5, 5 holding | game rules, touch interaction, look and feel |
+| Design | [design.md](decisions/design.md) | 6, 6 holding | game rules, touch interaction, look and feel |
 | Engine | [engine.md](decisions/engine.md) | 1, 1 holding | C++20, SDL3, iOS and deterministic simulation |
 | Process | [process.md](decisions/process.md) | 1, 1 holding | Agent Studio, Discord and TestFlight delivery |
 
@@ -21,10 +21,11 @@ python studio/fe_docs.py category design
 
 ## Design
 
-5 entries: 5 active. [decisions/design.md](decisions/design.md)
+6 entries: 6 active. [decisions/design.md](decisions/design.md)
 
 #### Active — the current rules
 
+- **D8** (2026-10-06) Garden Pop draws damage as materials and keeps hit effects outside the model
 - **D6** (2026-10-06) Level seeds are picked by a simulated player against each level's experience
 - **D5** (2026-10-06) Ten fixed levels in order; a level's seed decides it and every retry
 - **D4** (2026-10-06) Wider bombs kept off the walls, longer lightning, one-hit power-ups and snapped straight shots

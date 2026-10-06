@@ -1,0 +1,294 @@
+{
+  "created": "2026-10-06",
+  "author": "Codex with built-in imagegen; original production artwork",
+  "task": "T16 Garden Pop",
+  "reference": "docs/figures/reskin-concepts/garden-atlas.png",
+  "source": "docs/figures/garden-pop/source-atlas.png",
+  "source_sha256": "089b932c5df56f8309fa9b8f5ec2fe35220af73635365f4e2396bad8d115afec",
+  "prompt": "docs/figures/garden-pop/prompt.txt",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_crops": {
+    "grass": [
+      [
+        0,
+        0,
+        314,
+        314
+      ],
+      [
+        36,
+        49,
+        303,
+        314
+      ]
+    ],
+    "cut": [
+      [
+        314,
+        0,
+        627,
+        314
+      ],
+      [
+        34,
+        51,
+        296,
+        314
+      ]
+    ],
+    "soil": [
+      [
+        627,
+        0,
+        940,
+        314
+      ],
+      [
+        26,
+        56,
+        292,
+        314
+      ]
+    ],
+    "clear": [
+      [
+        940,
+        0,
+        1254,
+        314
+      ],
+      [
+        34,
+        54,
+        279,
+        310
+      ]
+    ],
+    "holder": [
+      [
+        0,
+        314,
+        314,
+        627
+      ],
+      [
+        37,
+        35,
+        304,
+        295
+      ]
+    ],
+    "mist": [
+      [
+        314,
+        314,
+        627,
+        627
+      ],
+      [
+        38,
+        47,
+        295,
+        293
+      ]
+    ],
+    "ball": [
+      [
+        627,
+        314,
+        940,
+        627
+      ],
+      [
+        51,
+        68,
+        266,
+        281
+      ]
+    ],
+    "flag": [
+      [
+        940,
+        314,
+        1254,
+        627
+      ],
+      [
+        19,
+        38,
+        278,
+        311
+      ]
+    ],
+    "flash": [
+      [
+        0,
+        627,
+        314,
+        940
+      ],
+      [
+        73,
+        42,
+        275,
+        249
+      ]
+    ],
+    "burst": [
+      [
+        314,
+        627,
+        627,
+        940
+      ],
+      [
+        37,
+        15,
+        289,
+        275
+      ]
+    ],
+    "clippings": [
+      [
+        627,
+        627,
+        940,
+        940
+      ],
+      [
+        35,
+        32,
+        280,
+        271
+      ]
+    ],
+    "header": [
+      [
+        940,
+        627,
+        1254,
+        940
+      ],
+      [
+        5,
+        87,
+        277,
+        220
+      ]
+    ],
+    "card": [
+      [
+        0,
+        940,
+        314,
+        1254
+      ],
+      [
+        85,
+        0,
+        248,
+        262
+      ]
+    ],
+    "rim-h": [
+      [
+        314,
+        940,
+        627,
+        1254
+      ],
+      [
+        32,
+        97,
+        299,
+        148
+      ]
+    ],
+    "rim-v": [
+      [
+        627,
+        940,
+        940,
+        1254
+      ],
+      [
+        131,
+        0,
+        181,
+        261
+      ]
+    ],
+    "rim-corner": [
+      [
+        940,
+        940,
+        1254,
+        1254
+      ],
+      [
+        64,
+        58,
+        216,
+        203
+      ]
+    ]
+  },
+  "sheet": {
+    "file": "tiles.bmp",
+    "cell_size": 256,
+    "stride": 260,
+    "padding": 2,
+    "reading_order": [
+      "grass",
+      "cut",
+      "soil",
+      "clear",
+      "holder",
+      "mist",
+      "ball",
+      "flag",
+      "flash",
+      "burst",
+      "clippings",
+      "header",
+      "card",
+      "rim-h",
+      "rim-v",
+      "rim-corner"
+    ]
+  },
+  "panels": {
+    "header.bmp": [
+      1146,
+      216
+    ],
+    "card.bmp": [
+      1098,
+      2232
+    ]
+  },
+  "processing": "Crop generated alpha, Lanczos phone scaling; mirror-repeat texture interiors in conservative approved luminance ranges; offline nine-slice UI. Original icon silhouettes are drawn over the generated holder. Straight-alpha BITMAPV4HEADER, no runtime shaders.",
+  "fog_contrast": {
+    "darkest_mist": {
+      "rgb": [
+        154,
+        177,
+        143
+      ],
+      "luminance": 0.4029747589191982
+    },
+    "brightest_cavity": {
+      "rgb": [
+        37,
+        57,
+        34
+      ],
+      "luminance": 0.03435062800806472
+    },
+    "luminance_gap": 0.3686241309111335
+  },
+  "font": "Fredoka SemiBold, assets/fonts/OFL.txt"
+}

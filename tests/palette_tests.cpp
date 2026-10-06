@@ -1,5 +1,7 @@
 #include <tapdemo/palette.hpp>
+#include <tapdemo/garden.hpp>
 #include <tapdemo/model.hpp>
+#include <tapdemo/touch.hpp>
 #include <yy/runtime.hpp>
 #include <algorithm>
 #include <cmath>
@@ -9,6 +11,8 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <fstream>
+#include <iterator>
 
 namespace tapdemo { std::unique_ptr<yy::Game> createGame(); }
 namespace {
@@ -19,6 +23,11 @@ struct Canvas final: yy::Renderer {
   struct Text { yy::Vec2 at; std::string value; };
   std::vector<yy::Color> fills;
   std::vector<Text> texts;
+  struct Sprite { std::string asset; yy::Rect source, destination; int order; };
+  std::vector<Sprite> sprites;
+  struct Frame { std::vector<yy::Color> fills; std::vector<Sprite> sprites; };
+  Frame frame() const { return {fills,sprites}; }
+  int order{}, lastAimDot{};
   yy::Color field;
   float fieldWidth{}, cellWidth{}; bool afterField{};
   void rectangle(yy::Rect r, yy::Color c) override {
@@ -29,12 +38,26 @@ struct Canvas final: yy::Renderer {
     if(r.w>0 && std::abs(r.h/r.w-shape)<0.0001f) { field=c; fieldWidth=r.w; afterField=true; }
   }
   int columns() const { return static_cast<int>(std::lround(fieldWidth/cellWidth)); }
-  void circle(yy::Vec2, float, yy::Color) override {}
+  void circle(yy::Vec2 p, float, yy::Color c) override { ++order; if(p.y>=80 && same(c,tapdemo::garden.white)) lastAimDot=order; }
   void text(yy::Vec2 p, std::string_view v, yy::Color, float) override { texts.push_back({p,std::string(v)}); }
-  bool label(std::string_view, yy::Vec2, std::string_view, float, yy::Color, yy::Align) override { return false; }
-  bool sprite(std::string_view, yy::Rect) override { return false; }
-  bool sprite(std::string_view, yy::Rect, yy::Rect) override { return false; }
-  void read(yy::Game& game) { fills.clear(); texts.clear(); game.render(*this); }
+  bool label(std::string_view, yy::Vec2 p, std::string_view v, float, yy::Color, yy::Align) override { texts.push_back({p,std::string(v)}); return true; }
+  bool sprite(std::string_view a, yy::Rect d) override { return sprite(a,{},d); }
+  bool sprite(std::string_view a, yy::Rect s, yy::Rect d) override {
+    if(afterField && a=="garden/tiles.bmp") { cellWidth=d.w/tapdemo::gardenTextureCells; afterField=false; }
+    sprites.push_back({std::string(a),s,d,++order}); return true;
+  }
+  void read(yy::Game& game) { fills.clear(); texts.clear(); sprites.clear(); order=lastAimDot=0; game.render(*this); }
+  bool spriteHas(tapdemo::GardenSprite kind) const {
+    const auto rect=tapdemo::gardenSource(kind);
+    return std::any_of(sprites.begin(),sprites.end(),[&](const Sprite& s){return s.asset=="garden/tiles.bmp" && s.source.x>=rect.x && s.source.x+s.source.w<=rect.x+rect.w && s.source.y>=rect.y && s.source.y+s.source.h<=rect.y+rect.h;});
+  }
+  bool spriteAt(tapdemo::GardenSprite kind, yy::Vec2 center) const {
+    const auto rect=tapdemo::gardenSource(kind);
+    return std::any_of(sprites.begin(),sprites.end(),[&](const Sprite& s){
+      return s.asset=="garden/tiles.bmp" && s.source.x==rect.x && s.source.y==rect.y &&
+        std::abs(s.destination.x+s.destination.w/2-center.x)<.01f && std::abs(s.destination.y+s.destination.h/2-center.y)<.01f;
+    });
+  }
   bool has(std::string_view value) const {
     return std::any_of(texts.begin(),texts.end(),[&](const Text& t){ return t.value==value; });
   }
@@ -60,7 +83,7 @@ void paletteChecks() {
   auto game=createGame(); Canvas canvas;
   const auto tap=[&](yy::Vec2 p) { game->pointerDown(7,p); game->pointerUp(7,p); canvas.read(*game); };
   tap({330,40}); // DEBUG works even over the initial instructions.
-  check(canvas.has("COLORS") && canvas.has("NAVY"),"debug opens with the default named palette");
+  check(canvas.has("COLORS") && canvas.has("GARDEN POP"),"debug opens with the default Garden look");
   check(canvas.has("BALLS") && canvas.has("BOUNCES") && canvas.has("PING RADIUS"),"existing controls remain beside COLORS");
   // Every label and value lies on the 390x844 screen (the debug font is 8 units a character at scale 1).
   check(std::all_of(canvas.texts.begin(),canvas.texts.end(),[](const auto& t){ return t.at.x>=0 && t.at.y>=0 && t.at.y+16<=844; }),"every debug row fits the screen");
@@ -68,11 +91,11 @@ void paletteChecks() {
   check(canvas.valueAt(78,std::to_string(Model::defaultPingRadius+1)),"ping radius plus still works");
   tap({335,359}); tap({335,401}); // Pending ball/bounce settings.
   check(canvas.valueAt(352,std::to_string(Model::defaultBalls+1)) && canvas.valueAt(394,std::to_string(Model::defaultBounces+1)),"existing pending controls work");
-  for(std::size_t i=1; i<=palettes.size(); ++i) {
-    const auto& p=palettes[i%palettes.size()];
+  for(std::size_t i=1; i<=lookCount; ++i) {
+    const auto& p=lookPalette((gardenScheme+i)%lookCount);
     tap(i%2 ? yy::Vec2{45,750} : yy::Vec2{345,780}); // opposite edges of the 310x38 touch target
     check(canvas.has(p.name) && same(canvas.field,p.field),"COLORS changes the label and field immediately, and wraps");
-    check(std::find_if(canvas.fills.begin(),canvas.fills.end(),[&](yy::Color c){return same(c,p.fog[0]);})!=canvas.fills.end(),"render uses the selected fog colour");
+    check(p.name==garden.name ? canvas.spriteHas(GardenSprite::Mist) : std::find_if(canvas.fills.begin(),canvas.fills.end(),[&](yy::Color c){return same(c,p.fog[0]);})!=canvas.fills.end(),"render uses the selected fog");
     tap({110,812}); // RESTART
     check(!canvas.has("COLORS") && canvas.has("TAP TO START") && same(canvas.field,p.field),"restart closes debug and keeps the selected palette");
     tap({330,40});
@@ -80,7 +103,7 @@ void paletteChecks() {
     check(canvas.valueAt(78,std::to_string(Model::defaultPingRadius+1)),"restart also keeps the existing ping radius preference");
     check(canvas.valueAt(352,std::to_string(Model::defaultBalls+1)) && canvas.valueAt(394,std::to_string(Model::defaultBounces+1)),"restart applies the existing pending settings");
   }
-  tap({195,762}); // choose EMBER once more
+  tap({195,762}); tap({195,762}); // Garden -> NAVY -> EMBER
   tap({275,812}); // CLOSE
   check(!canvas.has("COLORS") && same(canvas.field,palettes[1].field),"CLOSE keeps the scheme");
   tap({330,40}); check(canvas.has("EMBER"),"scheme survives close and reopen");
@@ -134,7 +157,8 @@ struct MemoryStorage final: yy::Storage {
   bool write(std::string_view name, std::string_view text) override { file(name)=text; ++writes; return true; }
 };
 struct Quiet final: yy::Audio, yy::Haptics {
-  void tone(float, float) override {}
+  std::vector<float> tones;
+  void tone(float hz, float) override { tones.push_back(hz); }
   void impact(float) override {}
   void humStart(float) override {}
   void humStop() override {}
@@ -168,11 +192,103 @@ struct Session {
   }
   void play(int count) { for(int i=0; i<count; ++i) { game->update(1.0f/60); ++frames; } canvas.read(*game); }
   // The field's colours, with the instructions card dismissed by a tap on the board.
-  std::vector<yy::Color> field() { if(canvas.has("TAP TO START")) tap({195,600}); return canvas.fills; }
+  Canvas::Frame field() { if(canvas.has("TAP TO START")) tap({195,600}); return canvas.frame(); }
 };
-bool sameFills(const std::vector<yy::Color>& a, const std::vector<yy::Color>& b) {
-  return a.size()==b.size() && std::equal(a.begin(),a.end(),b.begin(),same);
+bool sameFills(const Canvas::Frame& a, const Canvas::Frame& b) {
+  const auto rect=[](yy::Rect x,yy::Rect y){ return x.x==y.x && x.y==y.y && x.w==y.w && x.h==y.h; };
+  return a.fills.size()==b.fills.size() && std::equal(a.fills.begin(),a.fills.end(),b.fills.begin(),same) &&
+    a.sprites.size()==b.sprites.size() && std::equal(a.sprites.begin(),a.sprites.end(),b.sprites.begin(),[&](const auto& x,const auto& y){
+      return x.asset==y.asset && rect(x.source,y.source) && rect(x.destination,y.destination);
+    });
 }
+}
+
+void gardenChecks() {
+  using namespace tapdemo;
+  // Read actual production BMP texels, without SDL, including the exposed rim pieces.
+  std::ifstream in(YY_SOURCE_DIR "/games/tapdemo/assets/garden/tiles.bmp",std::ios::binary);
+  const std::vector<unsigned char> bytes{std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};
+  const auto u32=[&](int at) { return static_cast<unsigned>(bytes.at(at)) | static_cast<unsigned>(bytes.at(at+1))<<8 |
+    static_cast<unsigned>(bytes.at(at+2))<<16 | static_cast<unsigned>(bytes.at(at+3))<<24; };
+  check(bytes.size()>122 && bytes[0]=='B' && bytes[1]=='M' && u32(14)==108 && u32(66)==0xff000000,"garden sprites use explicit BMP V4 alpha");
+  const auto width=u32(18),height=u32(22),offset=u32(10);
+  check(width==1040 && height==1040 && bytes.size()==offset+width*height*4,"production sheet dimensions and byte count are valid");
+  const auto pixel=[&](int x,int y) {
+    const auto at=offset+((height-1-y)*width+x)*4;
+    return yy::Color{bytes[at+2],bytes[at+1],bytes[at],bytes[at+3]};
+  };
+  float minMist=1,maxClear=luminance(garden.field);
+  for(auto kind: {GardenSprite::Mist,GardenSprite::RimH,GardenSprite::RimV,GardenSprite::RimCorner,GardenSprite::Clear}) {
+    const auto source=gardenSource(kind);
+    for(int y=static_cast<int>(source.y);y<source.y+source.h;++y) for(int x=static_cast<int>(source.x);x<source.x+source.w;++x) {
+      const auto c=pixel(x,y); check(c.a==255,"mist, rim and cleared-soil samples are opaque at every interior texel");
+      if(kind==GardenSprite::Clear) maxClear=std::max(maxClear,luminance(c));
+      else minMist=std::min(minMist,luminance(c));
+    }
+  }
+  check(minMist-maxClear>=minFogLuminanceGap,"darkest production mist/rim is at least 0.08 above brightest cavity");
+  check(pixel(0,0).a==0 && pixel(259,259).a==0,"atlas has transparent gutters against filtering bleed");
+  std::cout<<"Garden production BMP minimum mist/cavity gap "<<minMist-maxClear<<'\n';
+  {
+    Session card("","10");
+    check(card.canvas.has("EACH HIT STRIPS A LAYER") && card.canvas.has("LAST HIT OPENS THE PATH"),"garden card teaches material damage");
+    for(auto kind: {GardenSprite::Grass,GardenSprite::Cut,GardenSprite::Soil,GardenSprite::Flag}) check(card.canvas.spriteHas(kind),"card shows progression pictures and ladybird pennant");
+    card.tap({195,600}); check(!card.canvas.has("TAP TO START"),"touch dismisses the card without shooting");
+    card.tap({330,40}); card.tap({110,812}); check(card.canvas.has("TAP TO START"),"debug restart opens the card again");
+    for(int i=0;i<4;++i) {
+      Session saved("",nullptr,nullptr,("debug 1\nscheme "+std::to_string(i)+"\n").c_str());
+      saved.tap({330,40}); check(saved.canvas.has(palettes[i].name),"all four old saved scheme indices retain their palettes");
+    }
+  }
+  {
+    Session damage("","1","garden-damage");
+    Model reference; reference.play(1); const auto& pocket=reference.pockets.front();
+    const yy::Vec2 center{(pocket.column+pocket.columns/2.0f)*Model::cell,(pocket.row+pocket.rows/2.0f)*Model::cell};
+    Camera camera; camera.world={reference.width(),reference.height()}; camera.hold(center,{195,480},1.4f);
+    const GardenSprite states[]{GardenSprite::Grass,GardenSprite::Cut,GardenSprite::Soil};
+    for(int i=0;i<3;++i) check(damage.canvas.spriteAt(states[i],camera.toScreen({(pocket.column+i+.5f)*Model::cell,(pocket.row-.5f)*Model::cell})),"3/2/1 hit-point fixture cells select dense/cut/bare sprites in their exact unchanged positions");
+    for(auto kind: {GardenSprite::Grass,GardenSprite::Cut,GardenSprite::Soil,GardenSprite::Clear,GardenSprite::Mist}) check(damage.canvas.spriteHas(kind),"actual Garden board renders each material and cavity");
+    check(std::none_of(damage.canvas.texts.begin(),damage.canvas.texts.end(),[](const auto& t){return t.at.y>=80 && t.value.size()==1 && t.value[0]>='0' && t.value[0]<='9';}),"ordinary Garden bricks draw no digits");
+    damage.game->pointerDown(1,{145,440}); damage.game->pointerDown(2,{245,440});
+    damage.game->pointerMove(1,{-1000,440}); damage.game->pointerMove(2,{1000,440}); damage.canvas.read(*damage.game);
+    check(std::abs(damage.canvas.fieldWidth-12*Model::cell*Camera::maxZoom)<.01f,"two-finger touch reaches maximum zoom without changing the grid");
+    damage.game->pointerMove(1,{195,440}); damage.game->pointerMove(2,{196,440}); damage.canvas.read(*damage.game);
+    check(std::abs(damage.canvas.fieldWidth-390)<.01f,"two-finger touch reaches fit zoom without changing the grid");
+    damage.game->pointerUp(1,{195,440}); damage.game->pointerUp(2,{196,440});
+  }
+  {
+    Session shot("","1","garden-shot");
+    for(int i=0;i<120 && !shot.canvas.spriteHas(GardenSprite::Flash);++i) shot.play(1);
+    check(shot.canvas.spriteHas(GardenSprite::Flash) && shot.canvas.spriteHas(GardenSprite::Cut),"ordinary pointer shot removes one grass layer and starts contact flash");
+    Model reference; reference.play(1); const auto& p=reference.pockets.front();
+    const yy::Vec2 centre{(p.column+p.columns/2.0f)*Model::cell,(p.row+p.rows/2.0f)*Model::cell};
+    Camera camera; camera.world={reference.width(),reference.height()}; camera.hold(centre,{195,480},1.4f);
+    const auto at=camera.toScreen({(p.column+p.columns/2+0.5f)*Model::cell,centre.y});
+    const auto struck=camera.toScreen({(p.column+p.columns/2+.5f)*Model::cell,(p.row-.5f)*Model::cell});
+    check(shot.canvas.spriteAt(GardenSprite::Cut,struck),"the struck three-hit cell is now the two-hit sprite at its unchanged center");
+    shot.game->pointerDown(8,at); shot.game->pointerMove(8,{at.x+30,at.y+50}); shot.canvas.read(*shot.game);
+    int effectOrder=0;
+    for(const auto& s: shot.canvas.sprites) if(s.source.x==gardenSource(GardenSprite::Flash).x && s.source.y==gardenSource(GardenSprite::Flash).y) effectOrder=std::max(effectOrder,s.order);
+    check(effectOrder>0 && shot.canvas.lastAimDot>effectOrder,"aim draws above the local hit effect while next shot is held");
+    shot.game->pointerUp(8,{at.x+30,at.y+50}); shot.canvas.read(*shot.game);
+    check(std::any_of(shot.canvas.texts.begin(),shot.canvas.texts.end(),[](const auto& t){return t.at.x==62 && t.at.y==13 && t.value==std::to_string(levels[0].balls-2);}),"next pointer release spends another ball during the first hit's flash");
+    // A separate single-shot run isolates the complete visual lifetime from the next collision.
+    Session timing("","1","garden-shot");
+    for(int i=0;i<120 && !timing.canvas.spriteHas(GardenSprite::Flash);++i) timing.play(1);
+    timing.play(4); check(timing.canvas.spriteHas(GardenSprite::Burst),"hit reaches clipping burst at 67 ms");
+    timing.play(4); check(timing.canvas.spriteHas(GardenSprite::Clippings),"hit reaches clear-centred settle at 133 ms");
+    timing.play(5); check(!timing.canvas.spriteHas(GardenSprite::Flash) && !timing.canvas.spriteHas(GardenSprite::Burst) && !timing.canvas.spriteHas(GardenSprite::Clippings),"hit is gone by 217 ms, with stable cut-grass damage");
+    check(timing.canvas.spriteAt(GardenSprite::Cut,struck),"the cosmetic sequence settles to the real damage at the same grid position");
+  }
+  const char* scenes[]{"garden-BOMB","garden-ELECTRIC","garden-PING","garden-GHOST","garden-SPEED"};
+  const float tones[]{110,1320,1760,392,880};
+  for(int k=0;k<5;++k) {
+    Session power("","0",scenes[k]);
+    for(int i=0;i<120 && power.quiet.tones.empty();++i) power.play(1);
+    check(std::find(power.quiet.tones.begin(),power.quiet.tones.end(),tones[k])!=power.quiet.tones.end(),"real Game pointer shot triggers each of the five powers");
+  }
+  Session goal("","1","won"); check(goal.until("GOAL FOUND"),"pointer shot finds and breaks staged goal through normal win logic");
+  std::cout<<"Garden touch path: ordinary hit, simultaneous aim/shot, five powers, goal, both pinch limits and card passed\n";
 }
 
 // The debug panel survives a relaunch: every change is saved as it is made, the next session opens
@@ -184,8 +300,8 @@ void debugPersistenceChecks() {
     first.tap({330,40});
     first.tap({335,127}); first.tap({335,359}); first.tap({335,443}); first.tap({335,549}); // bomb, balls, grid, bomb weight
     check(first.storage.writes==4 && first.storage.debug.rfind("debug 1\n",0)==0,"each debug change is saved as it is made");
-    first.tap({195,762});
-    check(first.storage.writes==5,"cycling the colours saves too");
+    first.tap({195,762}); first.tap({195,762});
+    check(first.storage.writes==6,"cycling the colours saves too");
     saved=first.storage.debug;
   }
   {
@@ -206,7 +322,7 @@ void debugPersistenceChecks() {
   {
     Session damaged("",nullptr,nullptr,"debug 1\nballs 12\nscheme 99\nbomb\n\x01");
     damaged.tap({330,40});
-    check(damaged.canvas.valueAt(352,"12") && damaged.canvas.valueAt(120,"5X5") && damaged.canvas.has("PLUM"),"a damaged save still opens, clamped and defaulted");
+    check(damaged.canvas.valueAt(352,"12") && damaged.canvas.valueAt(120,"5X5") && damaged.canvas.has("GARDEN POP"),"a damaged save still opens, clamped and defaulted");
   }
   std::cout<<"Debug touch path: settings survive a relaunch, pins neither read nor write them passed\n";
 }
@@ -256,7 +372,7 @@ void levelFlowChecks() {
     check(lose.canvas.has("LEVEL 2") && !lose.canvas.has("TAP TO START") && lose.storage.writes==0,"a retry goes straight back into the same level");
     Session again("","2");
     again.play(lose.frames);
-    check(sameFills(lose.canvas.fills,again.field()),"the retry is the identical field, brick for brick");
+    check(sameFills(lose.canvas.frame(),again.field()),"the retry is the identical field, brick for brick");
   }
   {
     Session last("","10","won");

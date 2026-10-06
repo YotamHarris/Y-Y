@@ -1,6 +1,7 @@
 #include <tapdemo/model.hpp>
 #include <tapdemo/touch.hpp>
 #include <tapdemo/palette.hpp>
+#include <tapdemo/garden.hpp>
 #include <yy/runtime.hpp>
 #include <algorithm>
 #include <cmath>
@@ -99,6 +100,15 @@ void icon(yy::Renderer& r, const Palette& palette, Power power, yy::Vec2 at, flo
 }
 // A glowing (or goal) brick: a pulsing frame in its colour around its icon.
 void iconBrick(yy::Renderer& r, const Palette& palette, Power power, yy::Rect cell, float pulse) {
+  if(palette.name==garden.name) {
+    const float inset=cell.w*0.045f;
+    r.rectangle({cell.x+inset,cell.y+cell.h*0.82f,cell.w-2*inset,cell.h*0.14f},glow(palette,power));
+    gardenSprite(r,GardenSprite::Holder,cell);
+    const yy::Rect inner{cell.x+cell.w*0.20f,cell.y+cell.h*0.18f,cell.w*0.60f,cell.h*0.62f};
+    if(power==Power::None) gardenSprite(r,GardenSprite::Flag,inner);
+    else icon(r,palette,power,{inner.x+inner.w/2,inner.y+inner.h/2},inner.w);
+    return;
+  }
   const auto white=palette.white, tile=palette.tile;
   const float rim=std::max(1.5f,cell.w*0.1f);
   r.rectangle(cell,mix(glow(palette,power),white,pulse*0.35f));
@@ -114,7 +124,7 @@ class TapGame final: public yy::Game {
   yy::Haptics* haptics{};
   bool debugOpen{};
   yy::Storage* storage{};
-  std::size_t scheme{}; // restarting a round keeps it; saved with the debug settings
+  std::size_t scheme{gardenScheme}; // restarting a round keeps it; saved with the debug settings
   bool saveDebugSettings{true}; // off while a smoke run pins a level, scene or scheme
   int freeBalls{Model::defaultBalls}, freeBounces{Model::defaultBounces};
   Settings freeGrid; // free play's settings; levels bring their own
@@ -124,10 +134,14 @@ class TapGame final: public yy::Game {
   int uiFinger{-1}; // a finger the HUD took, kept from the board
   struct Burst { Fired fired; float age; };
   std::vector<Burst> bursts; // power-ups that just fired, while their rings grow
+  struct Pop { int cell; float age; };
+  std::vector<Pop> pops; // cosmetic only: never part of Model, input or the shot clock
+  std::vector<int> lastBricks;
   float clock{};             // seconds, for glow pulses and sparks
   bool renderTest{};         // YY_TAPDEMO_SCENE=render-test: the renderer's own checks over the field
+  bool frozenPopScene{}; // only the explicitly staged mid-hit screenshot, never ordinary play
 
-  void reset(bool instructions) { bursts.clear(); touch.refit(); touch.instructions=instructions; }
+  void reset(bool instructions) { bursts.clear(); pops.clear(); frozenPopScene=false; lastBricks=model.bricks; touch.refit(); touch.instructions=instructions; }
   // Opens a level on its instructions card; `save` records it as the reached level.
   void enter(int level, bool save=true) {
     touch.cancel(); model.play(level); reset(true);
@@ -175,7 +189,7 @@ class TapGame final: public yy::Game {
       if(inside(minusButton(row),p)) { step(row,-1); return; }
       if(inside(plusButton(row),p)) { step(row,1); return; }
     }
-    if(inside(colorsButton,p)) { scheme=(scheme+1)%palettes.size(); persist(); }
+    if(inside(colorsButton,p)) { scheme=(scheme+1)%lookCount; persist(); }
     else if(inside(restartButton,p)) {
       freeBalls=debugBalls; freeBounces=debugBounces; freeGrid=debugGrid;
       if(debugLevel>0) enter(debugLevel); else freePlay();
@@ -214,6 +228,37 @@ class TapGame final: public yy::Game {
     const yy::Vec2 below{(column+0.5f)*Model::cell,centre.y}; // in the pocket, under the brick at (column, pocket.row-1)
     const auto set=[&](int c, int r, Power power) { model.bricks[r*model.columns+c]=1; model.powers[r*model.columns+c]=power; model.refreshFog(); };
     const auto setGoal=[&](int c, int r) { set(c,r,Power::None); model.goal=r*model.columns+c; };
+    // Garden evidence fixtures alter only explicitly pinned smoke scenes. Shots still use
+    // the real pointer handlers, collision and power activation paths.
+    if(std::strncmp(scene,"garden-",7)==0) {
+      touch.camera.hold(centre,{195,480},1.4f);
+      if(std::strcmp(scene,"garden-damage")==0) {
+        for(int i=0; i<3; ++i) {
+          const int c=pocket.column+i;
+          model.bricks[(pocket.row-1)*model.columns+c]=3-i;
+          model.powers[(pocket.row-1)*model.columns+c]=Power::None;
+        }
+        model.refreshFog(); return;
+      }
+      Power power=Power::None;
+      for(int k=1; k<=powerKinds; ++k) {
+        const std::string name="garden-"+std::string(weightNames[k]);
+        if(name==scene) power=static_cast<Power>(k);
+      }
+      set(column,pocket.row-1,power);
+      if(power==Power::None) model.bricks[(pocket.row-1)*model.columns+column]=3;
+      lastBricks=model.bricks;
+      sling(touch.camera.toScreen(below),{0,40});
+      if(!model.balls.empty()) model.balls.back().bounces=1;
+      if(std::strcmp(scene,"garden-hit")==0) {
+        for(int i=0; i<120 && pops.empty(); ++i) update(1.0f/60);
+        update(0.075f);
+        const auto at=touch.camera.toScreen(below);
+        pointerDown(9,at); pointerMove(9,{at.x+40,at.y+70});
+        frozenPopScene=true;
+      }
+      return;
+    }
     if(std::strcmp(scene,"debug")==0) { openDebug(); return; }
     if(std::strcmp(scene,"zoom")==0) { touch.camera.hold(centre,{195,480},2.0f); return; }
     if(std::strcmp(scene,"header")==0) { sling(touch.camera.toScreen(below),{20,40}); return; }
@@ -289,8 +334,10 @@ public: void initialize(yy::Services& services) override {
     saveDebugSettings=!pinned && !scene && !scheme_;
     const bool saved=!pinned && !scene;
     // Before the first grid: free play's grid, balls and bounces come from the save.
-    const DebugSettings d=saved ? loadDebug(storage->read(debugFile),static_cast<int>(palettes.size())) : DebugSettings{};
+    const std::string debugText=saved ? storage->read(debugFile) : std::string();
+    const DebugSettings d=saved ? loadDebug(debugText,static_cast<int>(lookCount)) : DebugSettings{};
     freeBalls=debugBalls=d.balls; freeBounces=debugBounces=d.bounces; freeGrid=debugGrid=d.grid; scheme=static_cast<std::size_t>(d.scheme);
+    if(debugText.rfind("debug 1\n",0)!=0) scheme=gardenScheme;
     if(pinned) { if(std::atoi(pinned)>0) enter(std::atoi(pinned),false); }
     else enter(loadProgress(storage->read(progressFile)),false);
     // A level's table sets the power-up values, so the saved ones go on after it.
@@ -298,11 +345,23 @@ public: void initialize(yy::Services& services) override {
                 model.setElectricRadius(d.electricHalves/2.0f); }
     model.setSnapDegrees(d.snapDegrees);
     if(scheme_)
-      for(std::size_t i=0; i<palettes.size(); ++i) if(palettes[i].name==scheme_) { scheme=i; break; }
+      for(std::size_t i=0; i<lookCount; ++i) if(lookPalette(i).name==scheme_) { scheme=i; break; }
     stage(scene);
+    lastBricks=model.bricks;
   }
   void update(float seconds) override {
+    if(frozenPopScene) return;
     model.update(seconds); touch.update(seconds);
+    for(auto& p: pops) p.age+=seconds;
+    std::erase_if(pops,[](const Pop& p){ return p.age>=popSeconds; });
+    if(lastBricks.size()==model.bricks.size()) for(std::size_t i=0; i<lastBricks.size(); ++i) {
+      if(model.bricks[i]<lastBricks[i]) {
+        const auto found=std::find_if(pops.begin(),pops.end(),[&](const Pop& p){ return p.cell==static_cast<int>(i); });
+        if(found!=pops.end()) found->age=0;
+        else pops.push_back({static_cast<int>(i),0});
+      }
+    }
+    lastBricks=model.bricks;
     clock+=seconds;
     for(auto& b: bursts) b.age+=seconds;
     bursts.erase(std::remove_if(bursts.begin(),bursts.end(),[](const Burst& b){ return b.age>1.2f; }),bursts.end());
@@ -340,7 +399,8 @@ public: void initialize(yy::Services& services) override {
   }
   void render(yy::Renderer& r) override {
     using yy::Color;
-    const Palette& palette=palettes[scheme];
+    const Palette& palette=lookPalette(scheme);
+    const bool gardening=scheme==gardenScheme;
     const auto muted=palette.muted, teal=palette.teal, dark=palette.dark;
     const auto ballRed=palette.ballRed, field=palette.field, white=palette.white, tile=palette.tile;
     const auto& brickColors=palette.bricks;
@@ -350,6 +410,15 @@ public: void initialize(yy::Services& services) override {
     // At fit zoom the grid leaves margins; give those the scheme's backdrop too.
     r.rectangle({0,0,cam.view.w,cam.view.y+cam.view.h},dark);
     r.rectangle({origin.x,origin.y,model.width()*z,model.height()*z},field);
+    // A mist patch spans eight cells, as in the concept: dew stays soft instead of
+    // becoming a small repeated pattern. Visible cells cover it with dark soil below.
+    if(gardening) for(int row=0; row<model.rows; row+=gardenTextureCells) for(int column=0; column<model.columns; column+=gardenTextureCells) {
+      const int cols=std::min(gardenTextureCells,model.columns-column), rows=std::min(gardenTextureCells,model.rows-row);
+      const auto at=cam.toScreen({column*Model::cell,row*Model::cell});
+      auto source=gardenSource(GardenSprite::Mist);
+      source.w*=static_cast<float>(cols)/gardenTextureCells; source.h*=static_cast<float>(rows)/gardenTextureCells;
+      r.sprite("garden/tiles.bmp",source,{at.x,at.y,cols*cellSize,rows*cellSize});
+    }
 
     // Bricks in view, with their hit points once the cells are big enough to read.
     const auto first=cam.toWorld({cam.view.x,cam.view.y}), last=cam.toWorld({cam.view.x+cam.view.w,cam.view.y+cam.view.h});
@@ -367,6 +436,16 @@ public: void initialize(yy::Services& services) override {
       const auto p=cam.toScreen({column*Model::cell,row*Model::cell});
       const yy::Rect box{p.x,p.y,cellSize,cellSize};
       if(!model.visible(column,row)) {
+        if(gardening) {
+          const float rim=std::clamp(cellSize*0.045f,1.0f,3.0f);
+          const auto exposed=[&](int c,int rr) { return c>=0 && rr>=0 && c<model.columns && rr<model.rows && model.visible(c,rr); };
+          if(exposed(column,row-1)) gardenSprite(r,GardenSprite::RimH,{p.x,p.y,cellSize,rim});
+          if(exposed(column,row+1)) gardenSprite(r,GardenSprite::RimH,{p.x,p.y+cellSize-rim,cellSize,rim});
+          if(exposed(column-1,row)) gardenSprite(r,GardenSprite::RimV,{p.x,p.y,rim,cellSize});
+          if(exposed(column+1,row)) gardenSprite(r,GardenSprite::RimV,{p.x+cellSize-rim,p.y,rim,cellSize});
+          if((goal || power!=Power::None) && model.pinged(column,row)) iconBrick(r,palette,power,box,pulse);
+          continue;
+        }
         r.rectangle(box,fogColors[(column+row)%2]);
         // Two staggered flecks per hidden cell. Screen-sized marks stay legible
         // at fit zoom; plain open cavities never receive this texture.
@@ -376,10 +455,29 @@ public: void initialize(yy::Services& services) override {
         if((goal || power!=Power::None) && model.pinged(column,row)) iconBrick(r,palette,power,box,pulse);
         continue;
       }
+      if(gardening) gardenCellTexture(r,GardenSprite::Clear,column,row,box);
       if(hp<=0) continue;
       if(goal || power!=Power::None) { iconBrick(r,palette,power,box,pulse); continue; }
+      if(gardening) {
+        float squash=0;
+        for(const auto& pop: pops) if(pop.cell==row*model.columns+column) {
+          squash=std::sin(std::min(1.0f,pop.age/0.12f)*3.14159265f); break;
+        }
+        const float w=cellSize-gap-cellSize*0.06f*squash, h=cellSize-gap-cellSize*0.16f*squash;
+        gardenSprite(r,gardenDamage(hp),{p.x+(cellSize-w)/2,p.y+(cellSize-h)/2,w,h});
+        continue;
+      }
       r.rectangle({p.x+gap/2,p.y+gap/2,cellSize-gap,cellSize-gap},brickColors[std::min(hp,3)-1]);
       if(cellSize>=12) r.text({p.x+cellSize/2-4*digit,p.y+cellSize/2-4*digit},std::to_string(hp),dark,digit);
+    }
+    // The entire 200 ms flash/clipping sequence stays inside the struck cell. Aim and balls
+    // draw after it, so a second shot can be held and released while the previous hit settles.
+    if(gardening) for(const auto& pop: pops) {
+      const int c=pop.cell%model.columns, row=pop.cell/model.columns;
+      if(c<c0 || c>c1 || row<r0 || row>r1 || !model.visible(c,row)) continue;
+      const auto p=cam.toScreen({c*Model::cell,row*Model::cell});
+      const auto frame=pop.age<0.05f ? GardenSprite::Flash : pop.age<0.12f ? GardenSprite::Burst : GardenSprite::Clippings;
+      gardenSprite(r,frame,{p.x,p.y,cellSize,cellSize});
     }
     // Each ping's reach, fading as it wears off.
     for(int index: model.pingCells()) {
@@ -431,7 +529,8 @@ public: void initialize(yy::Services& services) override {
         r.circle(p,ballSize+2*z,spark);
       }
       r.circle(p,ballSize+std::max(1.5f,z),tile);
-      r.circle(p,ballSize,ballRed);
+      if(gardening) gardenSprite(r,GardenSprite::Ball,{p.x-ballSize,p.y-ballSize,2*ballSize,2*ballSize});
+      else r.circle(p,ballSize,ballRed);
       r.text({p.x+ballSize+3,p.y-ballSize-6},std::to_string(b.bounces),white,1.25f);
     }
     if(touch.aim) {
@@ -453,8 +552,11 @@ public: void initialize(yy::Services& services) override {
         }
       }
       r.circle(anchor,ballSize+3,ready ? white : muted);
-      r.circle(anchor,ballSize,ballRed);
-      r.circle({anchor.x-ballSize*0.3f,anchor.y-ballSize*0.3f},ballSize*0.25f,palette.aimHighlight);
+      if(gardening) gardenSprite(r,GardenSprite::Ball,{anchor.x-ballSize,anchor.y-ballSize,2*ballSize,2*ballSize});
+      else {
+        r.circle(anchor,ballSize,ballRed);
+        r.circle({anchor.x-ballSize*0.3f,anchor.y-ballSize*0.3f},ballSize*0.25f,palette.aimHighlight);
+      }
     }
     if(touch.rejectTime>0) {
       const auto p=cam.toScreen(touch.rejected); const float ring=(Model::ballRadius+6)*z;
@@ -466,6 +568,15 @@ public: void initialize(yy::Services& services) override {
 
     // The header covers anything of the grid drawn above the play area: the ball counter and DEBUG.
     r.rectangle({0,0,cam.view.w,cam.view.y},dark);
+    if(gardening) {
+      r.sprite("garden/header.bmp",{4,4,382,72});
+      r.circle({36,40},17,white);
+      gardenSprite(r,GardenSprite::Ball,{20,24,32,32});
+      gardenLabel(r,{62,13},std::to_string(model.ballsLeft),48,white);
+      gardenLabel(r,{150,29},model.level()>0 ? "LEVEL "+std::to_string(model.level()) : "FREE PLAY",20,white);
+      r.rectangle(debugButton,palette.button);
+      gardenLabel(r,{330,30},"DEBUG",17,white,yy::Align::Center);
+    } else {
     r.rectangle({0,cam.view.y-2,cam.view.w,2},palette.button);
     r.circle({36,40},16,ballRed);
     r.circle({31,35},4.5f,palette.ballHighlight);
@@ -474,9 +585,12 @@ public: void initialize(yy::Services& services) override {
     else r.text({150,33},"FREE PLAY",teal,1.75f);
     r.rectangle(debugButton,palette.button);
     r.text({debugButton.x+14,debugButton.y+12},"DEBUG",white,1.5f);
+    }
 
     if(touch.instructions) {
       const yy::Rect card{12,cam.view.y+10,cam.view.w-24,cam.view.h-20};
+      if(gardening) drawGardenCard(r,card);
+      else {
       r.rectangle(card,palette.card);
       r.rectangle({card.x,card.y,card.w,2},glow(palette,Power::None));
       float y=card.y+20;
@@ -508,6 +622,7 @@ public: void initialize(yy::Services& services) override {
         powerRow(power);
       }
       r.text({75,card.y+card.h-50},"TAP TO START",teal,2.5f);
+      }
     }
     if(model.over()) {
       r.rectangle(overlay,palette.card);
@@ -548,12 +663,53 @@ public: void initialize(yy::Services& services) override {
       for(int k=1; k<=powerKinds; ++k) row(Weight0+k-1,weightNames[k],debugLevel>0 ? muted : glow(palette,static_cast<Power>(k)),std::to_string(debugGrid.weights[k-1]));
       r.rectangle(colorsButton,palette.button);
       r.text({colorsButton.x+16,colorsButton.y+11},"COLORS",white);
-      r.text({colorsButton.x+132,colorsButton.y+11},palette.name,teal);
+      if(gardening) gardenLabel(r,{colorsButton.x+132,colorsButton.y+8},palette.name,17,teal);
+      else r.text({colorsButton.x+132,colorsButton.y+11},palette.name,teal);
       r.text({colorsButton.x+278,colorsButton.y+11},">",white);
       r.rectangle(restartButton,palette.teal); r.text({restartButton.x+19,restartButton.y+14},"RESTART",dark);
       r.rectangle(closeButton,palette.button); r.text({closeButton.x+35,closeButton.y+14},"CLOSE",white);
     }
     if(renderTest) drawRenderTest(r);
+  }
+  void drawGardenCard(yy::Renderer& r, yy::Rect card) {
+    constexpr yy::Color ink{47,75,35}, green{46,122,48}, mutedInk{88,105,66};
+    r.sprite("garden/card.bmp",card);
+    float y=card.y+16;
+    gardenLabel(r,{26,y},model.level()>0 ? "LEVEL "+std::to_string(model.level()) : "FREE PLAY",21,green);
+    y+=34;
+    iconBrick(r,garden,Power::None,{26,y,40,40},0);
+    gardenLabel(r,{78,y+4},"FIND THE GOAL",25,green);
+    y+=53;
+    const std::string limits=std::to_string(model.ballCount)+" BALLS, "+std::to_string(model.bouncesPerBall)+" BOUNCES EACH.";
+    for(const std::string& line: {std::string("BREAK THE GOAL BRICK TO WIN."),std::string("IT HIDES IN THE FOG."),std::string(),
+                                 std::string("HOLD IN A GAP, PULL, LET GO."),limits,std::string("NO BALLS LEFT: YOU LOSE.")}) {
+      gardenLabel(r,{26,y},line,15,ink); y+=19;
+    }
+    y+=10;
+    const auto powerRow=[&](Power power) {
+      const int k=static_cast<int>(power);
+      iconBrick(r,garden,power,{26,y,36,36},0);
+      gardenLabel(r,{76,y},powerNames[k],18,ink);
+      gardenLabel(r,{76,y+21},power==Power::Bomb ? "BREAKS THE "+square(model.bombSize)+" AROUND IT" : std::string(powerLines[k]),11.5f,mutedInk);
+      y+=44;
+    };
+    const Power introduced=model.level()>0 ? levels[model.level()-1].introduces : Power::None;
+    if(introduced!=Power::None) { gardenLabel(r,{26,y},"NEW POWER-UP",17,green); y+=24; powerRow(introduced); y+=4; }
+    bool heading=false;
+    for(int k=1; k<=powerKinds; ++k) {
+      const Power power=static_cast<Power>(k);
+      if(power==introduced || (model.level()>0 && model.settings.weights[k-1]==0)) continue;
+      if(!heading) { gardenLabel(r,{26,y},introduced!=Power::None ? "ALSO HERE" : "POWER-UPS",17,green); y+=24; heading=true; }
+      powerRow(power);
+    }
+    const float teaching=card.y+card.h-192;
+    gardenLabel(r,{195,teaching},"EACH HIT STRIPS A LAYER",18,green,yy::Align::Center);
+    for(int i=0; i<3; ++i) {
+      gardenSprite(r,gardenDamage(3-i),{78.0f+i*86,teaching+31,58,58});
+      if(i<2) gardenLabel(r,{144.0f+i*86,teaching+46},">",20,green);
+    }
+    gardenLabel(r,{195,teaching+102},"LAST HIT OPENS THE PATH",13,mutedInk,yy::Align::Center);
+    gardenLabel(r,{195,card.y+card.h-51},"TAP TO START",26,green,yy::Align::Center);
   }
   // Not game art: the alpha edges, sheet cropping and font sizes a reskin depends on, at the header's
   // size (40) and the card's (16), over the dark field and over a light card.

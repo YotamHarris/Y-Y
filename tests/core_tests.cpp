@@ -809,6 +809,7 @@ static void debugSettingsChecks() {
   check(tapdemo::loadDebug("debug 1\nballs 99999999999\n",4).balls==Model::defaultBalls,"a number too large to read leaves the default");
   std::cout<<"Debug settings: round-trip, defaults and clamping\n";
 }
+void gardenChecks();
 int main() {
   yy::Viewport v{{10,40,780,1688}};
   auto point=v.map({400,884});
@@ -850,6 +851,7 @@ int main() {
   levelChecks();
   debugSettingsChecks();
   paletteChecks();
+  gardenChecks();
   levelFlowChecks();
   debugPersistenceChecks();
   levelBandChecks();

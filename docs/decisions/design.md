@@ -143,3 +143,37 @@ plays it, and the test stops a model change from silently moving a level out
 of its experience. The bot is not a person: a person will win more often.
 
 **Evidence.** V5, `docs/levels.md`.
+
+---
+
+### D8 — Garden Pop draws damage as materials and keeps hit effects outside the model (2026-10-06)
+
+**Status:** active
+
+**What happened.** T16 implements the accepted concept 1 of
+`docs/reskin-concepts.md`: Garden Pop's material damage, garden art, ladybird
+flag, short hit sequence and licensed font support.
+
+**Decision.** Garden Pop is the default look for a fresh installation. Three,
+two and one remaining hits select dense grass, clipped turf and bare soil;
+cleared cells show dark soil. Ordinary bricks have no digits in Garden.
+The four existing palettes retain their appearance and saved indices, remain
+selectable in DEBUG / COLORS, and valid saved choices are preserved.
+
+Generated alpha BMPs supply the garden materials, wooden holders, glossy ball,
+ladybird pennant, mist and UI. Existing power silhouettes and rules remain.
+Fredoka draws the header and instructions inside their existing bounds; three
+pictures teach the damage progression. The darkest production mist pixel must
+stay at least 0.08 linear-sRGB luminance above the brightest cavity pixel,
+with an exposed stepped rim providing a separate shape cue.
+
+A renderer-owned timer observes hit-point decreases and plays a local 200 ms
+squash, contact flash and clipping sequence. It never changes the model, grid,
+collision areas or input timing. Balls and the current aim draw above it.
+Normal levels, seeds, hidden-goal logic and both zoom limits are unchanged.
+
+**Why.** Material coverage teaches damage without numbers, while the short
+local pop makes contact visible during continuous aiming and shooting.
+
+**Evidence.** V9 and `docs/garden-pop-validation.md` record production pixel
+checks, live touch tests and nine inspected runtime/mockup pairs at 390 wide.
