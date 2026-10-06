@@ -96,8 +96,10 @@ struct Hits { int bricksHit{}, bricksBroken{}, bounces{}, ballsSpent{}; std::vec
 // Balls are placed only in empty space and fly opposite the pull; every wall or brick
 // hit costs one bounce, and a brick loses one hit point per hit. A `settings.glow` share of the
 // bricks glows with a power-up, each kind picked in proportion to its weight, that fires when
-// the brick breaks, however it broke. A glowing brick has 1 hit point, and no Bomb sits closer
-// to a wall than half its blast.
+// the brick breaks, however it broke. A glowing brick and the goal have 1 hit point, and no Bomb
+// sits closer to a wall than half its blast. Ghost lands where its 3x3 holds no power-up brick
+// (under fog first); a 3x3 holding the goal is a valid landing and wins. With no such spot it
+// still lands and clears the 3x3, and the power-ups in it vanish without firing.
 // Bricks further than `fogReach` straight steps from every empty cell are under fog. Ping shows
 // glowing bricks and the goal within `pingRadius` cells of the pinged brick.
 class Model {

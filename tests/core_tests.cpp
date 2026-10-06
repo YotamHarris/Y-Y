@@ -217,6 +217,59 @@ static void powerChecks() {
     check(m.bricksLeft()==cells-16-9-1,"only the ghost brick and the new cavity break");
   }
   {
+    // Ghost never takes another power-up: most landings have a Ping brick in their 3x3, and it lands clean.
+    // A Ping at every fourth column on every second row leaves only columns 2 mod 4 clean.
+    Model m(38); m.restart(5,99);
+    only(m,all,2);
+    for(int r=0; r<Model::defaultRows; r+=2) for(int c=0; c<Model::defaultColumns; c+=4) m.powers[r*Model::defaultColumns+c]=Power::Ping;
+    for(int r=6; r<=21; ++r) set(m,12,r,0);
+    set(m,12,5,1,Power::Ghost);
+    int powersBefore=0; for(Power p: m.powers) powersBefore+=p==Power::Ping;
+    check(launchUp(m),"launch up the corridor at a ghost among power-ups");
+    const Hits h=untilFired(m);
+    check(firedCount(h,Power::Ghost)==1 && h.fired.size()==1 && m.pingTime==0,"the ghost fires and no other power-up does");
+    const int c=h.fired.front().to%Model::defaultColumns, r=h.fired.front().to/Model::defaultColumns;
+    check(h.fired.front().to>=0 && c%4==2,"it lands on a clean spot");
+    int powersAfter=0; for(Power p: m.powers) powersAfter+=p==Power::Ping;
+    check(powersAfter==powersBefore,"no power-up was taken by the landing");
+  }
+  {
+    // Every landing has a power-up: the cavity clears, nothing else fires, and those power-ups are gone.
+    Model m(38); m.restart(5,99);
+    only(m,all,2);
+    for(int r=0; r<Model::defaultRows; r+=2) for(int c=0; c<Model::defaultColumns; c+=2) m.powers[r*Model::defaultColumns+c]=Power::Ping;
+    for(int r=6; r<=21; ++r) set(m,12,r,0);
+    set(m,12,5,1,Power::Ghost);
+    check(launchUp(m),"launch up the corridor at a ghost in a field of power-ups");
+    const Hits h=untilFired(m);
+    check(firedCount(h,Power::Ghost)==1 && h.fired.size()==1 && m.pingTime==0,"the cavity's power-ups vanish without firing");
+    const int c=h.fired.front().to%Model::defaultColumns, r=h.fired.front().to/Model::defaultColumns;
+    bool gone=true;
+    for(int dr=-1; dr<=1; ++dr) for(int dc=-1; dc<=1; ++dc) gone=gone && m.brick(c+dc,r+dr)==0 && m.power(c+dc,r+dr)==Power::None;
+    check(gone,"the 3x3 is clear of bricks and power-ups");
+    int left=0; for(Power p: m.powers) left+=p==Power::Ping;
+    check(left>0,"power-ups outside the cavity are untouched");
+  }
+  {
+    // A landing whose 3x3 holds the goal wins.
+    Model m(38); m.restart(5,99);
+    only(m,{{5,25},{6,25}},2);
+    set(m,12,5,1,Power::Ghost);
+    m.goal=25*Model::defaultColumns+6; m.bricks[m.goal]=1;
+    check(launchUp(m),"launch at a ghost with the goal in its only landing");
+    const Hits h=untilFired(m);
+    check(firedCount(h,Power::Ghost)==1 && h.goalBroken && m.won() && m.brick(6,25)==0,"the ghost's cavity breaks the goal and wins");
+  }
+  {
+    // The goal and every glowing brick break in one hit, on every level and on free-play seeds.
+    const auto oneHit=[&](const Model& m, const char* label) {
+      check(m.goal>=0 && m.bricks[m.goal]==1,label);
+      for(std::size_t i=0; i<m.bricks.size(); ++i) check(m.powers[i]==Power::None || m.bricks[i]==1,"a power-up brick has 1 hit point");
+    };
+    for(int level=1; level<=tapdemo::levelCount; ++level) { Model m(7); m.play(level); oneHit(m,"the goal has 1 hit point on every level"); }
+    for(std::uint32_t seed=1; seed<=60; ++seed) { Model m(seed); oneHit(m,"the goal has 1 hit point on free-play seeds"); m.restart(); oneHit(m,"and on a new grid"); }
+  }
+  {
     // Speed up: the ball goes twice as fast and still never tunnels through a brick or a corner.
     Model m(39); m.restart(5,99);
     only(m,{{0,0}},3); set(m,12,5,1,Power::Speed);
@@ -421,7 +474,8 @@ static void settingsChecks() {
   {
     // The defaults keep the seeded grids: the bricks, glowing bricks, goal and pockets of three
     // grids for each of 100 seeds hash to a pinned value. It last changed when glowing bricks
-    // became one-hit and bombs moved off the walls (T8); the random stream itself is unchanged.
+    // became one-hit and bombs moved off the walls (T8), and again when the goal became one-hit (T19);
+    // the random stream itself is unchanged.
     std::uint64_t h=1469598103934665603ull;
     const auto mixIn=[&](std::uint64_t v) { h=(h^v)*1099511628211ull; };
     for(std::uint32_t seed=1; seed<=100; ++seed) {
@@ -430,7 +484,7 @@ static void settingsChecks() {
       mixIn(static_cast<std::uint64_t>(m.goal));
       for(const auto& p: m.pockets) { mixIn(p.column); mixIn(p.row); mixIn(p.columns); mixIn(p.rows); }
     }
-    check(h==8933398709070464508ull,"the default settings generate the same seeded grids as before");
+    check(h==3712109982144219255ull,"the default settings generate the same seeded grids as before");
   }
 }
 // Generation: every glowing brick breaks in one hit, and no bomb lies within half its blast of a wall.

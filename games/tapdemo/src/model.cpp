@@ -43,16 +43,16 @@ const std::array<Level,levelCount> levels{{
    .balls=levelBalls, .bounces=10, .bombSize=5, .electricSeconds=5, .electricRadius=2, .pingRadius=6, .expectedWins=13},
   {.seed=522, .feel=Feel::BuildUp, .introduces=Power::Speed, .grid={.gridScale=3,.glow=16,.weights={0,0,0,0,1}},
    .balls=levelBalls, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=55},
-  {.seed=948, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=3,.glow=30,.weights={1,1,0,0,0}},
-   .balls=levelBalls, .bounces=25, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=6, .expectedWins=39},
+  {.seed=696, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=3,.glow=30,.weights={1,1,0,0,0}},
+   .balls=levelBalls, .bounces=18, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=6, .expectedWins=38},
   {.seed=1751, .feel=Feel::Relief, .introduces=Power::Ping, .grid={.gridScale=3,.glow=16,.weights={0,0,1,0,0}},
    .balls=levelBalls, .bounces=20, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=7, .expectedWins=93},
   {.seed=2669, .feel=Feel::BuildUp, .introduces=Power::None, .grid={.gridScale=4,.glow=16,.weights={1,0,1,0,0}},
-   .balls=levelBalls, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=55},
+   .balls=levelBalls, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=56},
   {.seed=1009, .feel=Feel::Fu, .introduces=Power::Ghost, .grid={.gridScale=4,.glow=6,.weights={0,0,0,1,0}},
-   .balls=levelBalls, .bounces=12, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=13},
-  {.seed=1762, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=5,.glow=30,.weights={1,1,1,1,1}},
-   .balls=levelBalls, .bounces=15, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=8, .expectedWins=44},
+   .balls=levelBalls, .bounces=12, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=19},
+  {.seed=2104, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=5,.glow=30,.weights={1,1,1,1,1}},
+   .balls=levelBalls, .bounces=17, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=8, .expectedWins=46},
 }};
 DebugSettings DebugSettings::clamped() const {
   DebugSettings s=*this;
@@ -167,6 +167,7 @@ void Model::generate() {
   for(int i=0; i<columns*rows; ++i) if(bricks[i]>0 && powers[i]==Power::None) { plain.push_back(i); if(fog_[i]>fogReach) hidden.push_back(i); }
   if(hidden.empty()) hidden=plain;
   goal=hidden.empty() ? -1 : hidden[std::min(hidden.size()-1,static_cast<std::size_t>(random()*hidden.size()))];
+  if(goal>=0) bricks[goal]=1; // the goal breaks in one hit, like a glowing brick
   goalBroken_=false;
 }
 void Model::restart() {
@@ -308,17 +309,30 @@ void Model::fire(Ball& ball) {
 void Model::ghost(Ball& ball, Fired& fired) {
   refreshFog();
   constexpr int half=ghostSize/2;
-  std::vector<int> hidden, any;
+  const auto holdsPower=[&](int column, int row) {
+    for(int r=row-half; r<=row+half; ++r) for(int c=column-half; c<=column+half; ++c)
+      if(bricks[r*columns+c]>0 && powers[r*columns+c]!=Power::None) return true;
+    return false;
+  };
+  std::vector<int> hidden, any, cleanHidden, clean;
   for(int r=half; r<rows-half; ++r) for(int c=half; c<columns-half; ++c) {
     if(bricks[r*columns+c]<=0) continue;
     any.push_back(r*columns+c);
     if(!visible(c,r)) hidden.push_back(r*columns+c);
+    if(holdsPower(c,r)) continue;
+    clean.push_back(r*columns+c);
+    if(!visible(c,r)) cleanHidden.push_back(r*columns+c);
   }
-  const auto& from=hidden.empty() ? any : hidden;
+  // Prefer a landing whose cavity holds no power-up (under fog first); with none, the usual pick.
+  const auto& from=!cleanHidden.empty() ? cleanHidden : !clean.empty() ? clean : !hidden.empty() ? hidden : any;
   if(from.empty()) return;
   const int target=from[std::min(from.size()-1,static_cast<std::size_t>(random()*from.size()))];
   const int column=target%columns, row=target/columns;
-  for(int r=row-half; r<=row+half; ++r) for(int c=column-half; c<=column+half; ++c) damage(r*columns+c,bricks[r*columns+c]);
+  for(int r=row-half; r<=row+half; ++r) for(int c=column-half; c<=column+half; ++c) {
+    const int cell_=r*columns+c;
+    powers[cell_]=Power::None; // any power-up left in the cavity vanishes without firing
+    damage(cell_,bricks[cell_]);
+  }
   ball.position={(column+0.5f)*cell,(row+0.5f)*cell};
   fired.to=target;
 }

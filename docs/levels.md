@@ -33,15 +33,15 @@ of the fog, so a loss within 2 always saw the goal. The targets are
 | # | Experience | Power-ups (glow) | Seed | Balls / bounces | Wins | Experience metric |
 | ---: | --- | --- | ---: | --- | ---: | --- |
 | 1 | relief | Bomb, new (8%) | 1659 | 4 / 15 | 100% | 99.9% of wins through a Bomb |
-| 2 | build-up | Bomb (12%) | 2920 | 4 / 12 | 54.9% | 99.5% of wins through a Bomb |
+| 2 | build-up | Bomb (12%) | 2920 | 4 / 12 | 55.0% | 99.2% of wins through a Bomb |
 | 3 | relief | Electricity, new (8%) | 334 | 4 / 15 | 98.4% | 85.6% of wins through lightning |
 | 4 | fu | Electricity (4%) | 893 | 4 / 10 | 12.9% | 54.4% of losses saw the goal (mean 2.4 cells off) |
 | 5 | build-up | Speed, new (8%) | 522 | 4 / 15 | 54.8% | 78.7% of losses saw the goal |
-| 6 | fuck yeah | Bomb, Electricity (15%) | 948 | 4 / 25 | 38.9% | 50.9% of wins on the last ball; 71.3% through a chain |
+| 6 | fuck yeah | Bomb, Electricity (15%) | 696 | 4 / 18 | 38.0% | 56.9% of wins on the last ball; 90.8% through a chain |
 | 7 | relief | Ping, new (8%) | 1751 | 4 / 20 | 92.8% | wins by direct hits (1.6% through a power-up) |
-| 8 | build-up | Bomb, Ping (8%) | 2669 | 4 / 15 | 54.8% | 99.5% of wins through a power-up |
-| 9 | fu | Ghost, new (3%) | 1009 | 4 / 12 | 12.5% | 58.3% of losses saw the goal (mean 2.1 cells off) |
-| 10 | fuck yeah | all five (15%) | 1762 | 4 / 15 | 44.2% | 61.8% of wins on the last ball, all through a chain |
+| 8 | build-up | Bomb, Ping (8%) | 2669 | 4 / 15 | 55.7% | 97.8% of wins through a power-up |
+| 9 | fu | Ghost, new (3%) | 1009 | 4 / 12 | 19.1% | 56.7% of losses saw the goal (mean 2.2 cells off) |
+| 10 | fuck yeah | all five (15%) | 2104 | 4 / 17 | 45.8% | 52.1% of wins on the last ball, all through a chain |
 
 Grids grow 12x20 (1 to 3), 18x30 (4 to 7), 24x40 (8, 9), 30x50 (10). **Every level
 gives 4 balls** (Yotam's call: all levels have the same number). Difficulty comes
@@ -52,10 +52,10 @@ beyond a new seed. At 5 balls the fuck-yeah levels reached at most 45% of wins o
 the last ball (best seeds of 3,000); at 4 balls level 6 reaches 51% and level 10
 62%.
 
-**The curve.** Wins run 100, 55, 98, 13, 55, 39, 93, 55, 13, 44%. Within each
+**The curve.** Wins run 100, 55, 98, 13, 55, 38, 93, 56, 19, 46%. Within each
 experience a later level is never easier than an earlier one by more than 10
 points (the band test checks it; 200 games carry about 3.5 points of noise).
-Level 10 (44%) is 5 points easier than level 6 (39%) over 2,000 games, a bigger
+Level 10 (46%) is 8 points easier than level 6 (38%) over 2,000 games, a bigger
 field with the same bands.
 
 **What the numbers do not show.** Speed and Ping break nothing, so the chain
@@ -64,6 +64,16 @@ needing Ping. The relief levels are won almost every time, so a person will
 find them very easy. Level 10's losses rarely see the goal (5%): it
 looks lost until it is won, as the experience asks, but those losses do not
 feel near.
+
+## T19: Ghost and the goal
+
+Ghost lands only where its 3x3 holds no power-up brick (under fog first); with no such
+spot it still lands and the power-ups in the cavity vanish without firing. The goal
+brick now breaks in one hit, like every power-up brick. This moved the seeded grids
+and the bot's results, so levels 6 and 10 left their bands and were re-searched
+(`level_tune search 6 1 3000 300 4 18`, `search 10 1 3000 200 4 17`): level 6 is seed 696
+with 18 bounces, level 10 is seed 2104 with 17 bounces. The other levels kept their
+seeds; the table above is the new measurement.
 
 ## How it was measured
 
@@ -95,4 +105,4 @@ above). The band test fails if the figure leaves the level's feel band, or if it
 differs from the 200 test games by more than 7 points (two widths of their
 noise). It is the bot's rate, not a person's. `YY_TAPDEMO_SCENE=instructions`
 captures the card: `docs/figures/levels/card-02.png` (55%) and `card-10.png`
-(44%).
+(now 46%).
