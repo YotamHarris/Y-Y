@@ -27,32 +27,32 @@ yy::Vec2 snapPull(yy::Vec2 pull, float degrees) {
 }
 Model::Model(std::uint32_t seed): randomState(seed ? seed : 42) { restart(); }
 
-// Bomb, Electricity, Speed, Ping, then Ghost, each brought in alone and then stacked. The seeds
-// are hand-picked placeholders that a random player wins (one ball at a time, from a random open
-// cell in a random direction: 99, 66, 86, 19, 64, 100, 78, 59, 14 and 99% of 200 tries); task T11
-// tunes them and the numbers.
+// Bomb, Electricity, Speed, Ping, then Ghost, each brought in alone and then stacked. Each seed
+// was picked by simulated play (tests/level_tune.cpp, T11) so that the bot's results meet the
+// level's feel (target() in model.hpp); docs/levels.md has the numbers, and the band test holds them.
+// Levels 6 and 10 drop to 3 balls, where wins come mostly on the last one.
 // Weights run Bomb, Electricity, Ping, Ghost, Speed.
 const std::array<Level,levelCount> levels{{
-  {.seed=901188, .feel=Feel::Relief, .introduces=Power::Bomb, .grid={.gridScale=2,.glow=16,.weights={1,0,0,0,0}},
+  {.seed=2651, .feel=Feel::Relief, .introduces=Power::Bomb, .grid={.gridScale=2,.glow=16,.weights={1,0,0,0,0}},
    .balls=8, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6},
-  {.seed=201838, .feel=Feel::BuildUp, .introduces=Power::None, .grid={.gridScale=2,.glow=24,.weights={1,0,0,0,0}},
+  {.seed=2913, .feel=Feel::BuildUp, .introduces=Power::None, .grid={.gridScale=2,.glow=24,.weights={1,0,0,0,0}},
    .balls=5, .bounces=12, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6},
-  {.seed=979312, .feel=Feel::Relief, .introduces=Power::Electricity, .grid={.gridScale=2,.glow=16,.weights={0,1,0,0,0}},
+  {.seed=263, .feel=Feel::Relief, .introduces=Power::Electricity, .grid={.gridScale=2,.glow=16,.weights={0,1,0,0,0}},
    .balls=8, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6},
-  {.seed=201838, .feel=Feel::Fu, .introduces=Power::None, .grid={.gridScale=3,.glow=8,.weights={0,1,0,0,0}},
+  {.seed=718, .feel=Feel::Fu, .introduces=Power::None, .grid={.gridScale=3,.glow=8,.weights={0,1,0,0,0}},
    .balls=5, .bounces=10, .bombSize=5, .electricSeconds=5, .electricRadius=2, .pingRadius=6},
-  {.seed=901188, .feel=Feel::BuildUp, .introduces=Power::Speed, .grid={.gridScale=3,.glow=16,.weights={0,0,0,0,1}},
+  {.seed=547, .feel=Feel::BuildUp, .introduces=Power::Speed, .grid={.gridScale=3,.glow=16,.weights={0,0,0,0,1}},
    .balls=7, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6},
-  {.seed=328984, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=3,.glow=30,.weights={1,1,0,0,0}},
-   .balls=8, .bounces=15, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=6},
-  {.seed=901188, .feel=Feel::Relief, .introduces=Power::Ping, .grid={.gridScale=3,.glow=16,.weights={0,0,1,0,0}},
+  {.seed=2877, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=3,.glow=30,.weights={1,1,0,0,0}},
+   .balls=3, .bounces=15, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=6},
+  {.seed=1751, .feel=Feel::Relief, .introduces=Power::Ping, .grid={.gridScale=3,.glow=16,.weights={0,0,1,0,0}},
    .balls=8, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=7},
-  {.seed=604740, .feel=Feel::BuildUp, .introduces=Power::None, .grid={.gridScale=4,.glow=16,.weights={1,0,1,0,0}},
+  {.seed=2173, .feel=Feel::BuildUp, .introduces=Power::None, .grid={.gridScale=4,.glow=16,.weights={1,0,1,0,0}},
    .balls=7, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6},
-  {.seed=176941, .feel=Feel::Fu, .introduces=Power::Ghost, .grid={.gridScale=4,.glow=6,.weights={0,0,0,1,0}},
+  {.seed=1247, .feel=Feel::Fu, .introduces=Power::Ghost, .grid={.gridScale=4,.glow=6,.weights={0,0,0,1,0}},
    .balls=5, .bounces=12, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6},
-  {.seed=103022, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=5,.glow=30,.weights={1,1,1,1,1}},
-   .balls=10, .bounces=15, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=8},
+  {.seed=1440, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=5,.glow=30,.weights={1,1,1,1,1}},
+   .balls=3, .bounces=15, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=8},
 }};
 std::string saveProgress(int level) { return "level "+std::to_string(std::clamp(level,1,levelCount))+'\n'; }
 int loadProgress(std::string_view text) {
@@ -118,7 +118,10 @@ void Model::restart() {
 }
 void Model::play(int level) {
   level=std::clamp(level,1,levelCount);
-  const Level& l=levels[level-1];
+  play(level,levels[level-1]);
+}
+void Model::play(int level, const Level& l) {
+  level=std::clamp(level,1,levelCount);
   randomState=l.seed ? l.seed : 42;
   setBombSize(l.bombSize); setElectricSeconds(l.electricSeconds); setElectricRadius(l.electricRadius); setPingRadius(l.pingRadius);
   restart(l.balls,l.bounces,l.grid);

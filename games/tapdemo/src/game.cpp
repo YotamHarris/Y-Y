@@ -172,7 +172,7 @@ class TapGame final: public yy::Game {
   }
   void sling(yy::Vec2 at, yy::Vec2 pull) { pointerDown(0,at); pointerMove(0,{at.x+pull.x,at.y+pull.y}); pointerUp(0,{at.x+pull.x,at.y+pull.y}); }
   // YY_TAPDEMO_SCENE stages a moment for smoke screenshots: instructions (as the game opens),
-  // header (one ball flying), aim, snap (an aim 3 degrees off horizontal), debug, play, zoom, icons (one of each power-up and the goal
+  // field (the opening field with the card dismissed, untouched), header (one ball flying), aim, snap (an aim 3 degrees off horizontal), debug, play, zoom, icons (one of each power-up and the goal
   // beside the pocket) or glow (the same close up), breaks (four launches), electric (a launch
   // into that power-up), pingin or pingout (a launch into a Ping brick with the goal inside or
   // outside the ping radius), won (a launch into the goal), lost (the last ball, spent on a brick), palette / palette-fit /
@@ -192,6 +192,7 @@ class TapGame final: public yy::Game {
       return;
     }
     touch.instructions=false;
+    if(std::strcmp(scene,"field")==0) return;
     const auto& pocket=model.pockets.front();
     const yy::Vec2 centre{(pocket.column+pocket.columns/2.0f)*Model::cell, (pocket.row+pocket.rows/2.0f)*Model::cell};
     const int column=pocket.column+pocket.columns/2;

@@ -118,3 +118,28 @@ revealed. One new power-up per level teaches each before they combine.
 **Evidence.** V4.
 
 ---
+
+### D6 — Level seeds are picked by a simulated player against each level's experience (2026-10-06)
+
+**Status:** active
+
+**What happened.** Yotam asked for four experiences: relief levels you must win, build-up levels with a "Lower success rate 50 - 60%" that teach something new, "Fuck yeah" levels that look lost until "on the last ball some chain reaction is triggered and goal is achieved", and "Fu" levels where the player fails but "sees it as a near miss". He chose "Fixed random seed per level, tuned by picking good seeds". The 35 to 50% win band for fuck-yeah levels is the worker's choice within the task's "~35–50%".
+
+**Decision.** Each feel has a target in `tapdemo::target()` beside the level
+table: relief at least 90% wins; build-up 50 to 60%; fu at most 25% with at
+least half the losses near (the goal seen, or within 2 cells of an open cell);
+fuck yeah 35 to 50% with at least half the wins on the last ball and at least
+half through a power-up chain. A headless bot (`tests/level_bot.hpp`) plays a
+level one ball at a time from random open cavity cells, 60% of shots aimed (with
+up to 4 degrees error) at the goal once it shows, else a visible glowing brick,
+the rest at random, with the snap applied. `level_tune` searches thousands of
+seeds per level and keeps one whose results over 2,000 and over the first 200
+bot games both meet the target. The band test replays the 200 in `yy_tests`.
+Levels 6 and 10 drop to 3 balls: with 8 or 10, no seed put most wins on the
+last ball. Within a feel, a later level may not be easier by more than 5 points.
+
+**Why.** A seed the bot cannot meet a band with is visibly wrong before anyone
+plays it, and the test stops a model change from silently moving a level out
+of its experience. The bot is not a person: a person will win more often.
+
+**Evidence.** V5, `docs/levels.md`.

@@ -49,6 +49,19 @@ struct Level {
   int bombSize{}, electricSeconds{}; float electricRadius{}; int pingRadius{};
 };
 constexpr int levelCount=10;
+// What a simulated player's results must show on a level of each feel (T11; docs/levels.md):
+// the win rate's band, and the least share of wins on the last ball and through a power-up
+// chain, and of losses that came near (the goal seen or within fogReach of an open cell).
+struct Target { float minWins{}, maxWins{1}, lastBall{}, chain{}, near{}; };
+constexpr Target target(Feel feel) {
+  switch(feel) {
+  case Feel::Relief: return {.minWins=0.9f};
+  case Feel::BuildUp: return {.minWins=0.5f, .maxWins=0.6f};
+  case Feel::Fu: return {.maxWins=0.25f, .near=0.5f};
+  case Feel::FuckYeah: return {.minWins=0.35f, .maxWins=0.5f, .lastBall=0.5f, .chain=0.5f};
+  }
+  return {};
+}
 // levels[0] is level 1.
 extern const std::array<Level,levelCount> levels;
 // The level an end-of-round tap opens: the next one after a win, the same one after a loss.
@@ -127,6 +140,9 @@ public:
   // Starts level 1..levelCount (clamped) from its seed with its table's settings, including the
   // bomb size, lightning and ping radius; snapDegrees is left alone.
   void play(int level);
+  // The same with `table` in place of the level's entry, for trying other seeds or settings;
+  // a restart goes back to the real table.
+  void play(int level, const Level& table);
   int level() const { return level_; }
   float width() const { return columns*cell; }
   float height() const { return rows*cell; }

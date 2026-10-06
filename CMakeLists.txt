@@ -14,10 +14,13 @@ target_link_libraries(tapdemo_logic PUBLIC yy_core)
 
 if(YY_BUILD_TESTS AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
   enable_testing()
-  add_executable(yy_tests tests/core_tests.cpp tests/palette_tests.cpp games/tapdemo/src/game.cpp)
+  add_executable(yy_tests tests/core_tests.cpp tests/palette_tests.cpp tests/level_band_tests.cpp games/tapdemo/src/game.cpp)
   target_link_libraries(yy_tests PRIVATE tapdemo_logic)
   target_compile_definitions(yy_tests PRIVATE YY_GAME_VERSION="test")
   add_test(NAME engine_and_tapdemo COMMAND yy_tests)
+  # Picks level seeds by simulated play (docs/levels.md); built, never run by the tests.
+  add_executable(level_tune tests/level_tune.cpp)
+  target_link_libraries(level_tune PRIVATE tapdemo_logic)
 endif()
 
 if(YY_BUILD_APP)

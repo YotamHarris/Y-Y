@@ -192,3 +192,47 @@ rows muted while a level is picked.
 level 2, lose, retry) is Yotam's TestFlight check; the Windows tests drive the
 same Game handlers. Seeds and numbers are T11's. Debug settings other than the
 level are still session-only (T9). Device performance is not applicable.
+
+### V5 Level seeds tuned by simulated play to their experiences (D6)
+
+**Status:** active
+
+T11 adds a headless bot (`tests/level_bot.hpp`), a seed search tool
+(`level_tune`, built beside the tests and not run by them), per-feel targets in
+`tapdemo::target()`, `Model::play(level, table)` for trying another seed, and a
+`field` smoke scene (the opening field, card dismissed). It writes ten new
+seeds into the level table and drops levels 6 and 10 to 3 balls. The report is
+`docs/levels.md`.
+
+| Level | Feel | Seed | Balls | Bot wins (2,000 games) | Experience metric |
+| ---: | --- | ---: | ---: | ---: | --- |
+| 1 | relief | 2651 | 8 | 100% | all wins through a Bomb |
+| 2 | build-up | 2913 | 5 | 55.3% | 99.5% of wins through a Bomb |
+| 3 | relief | 263 | 8 | 100% | 72% of wins through lightning |
+| 4 | fu | 718 | 5 | 13.3% | 64.6% of losses saw the goal |
+| 5 | build-up | 547 | 7 | 55.4% | 93.6% of losses saw the goal |
+| 6 | fuck yeah | 2877 | 3 | 41.0% | 58.6% of wins on the last ball, all chains |
+| 7 | relief | 1751 | 8 | 99.9% | direct hits |
+| 8 | build-up | 2173 | 7 | 52.3% | 99.9% of wins through a power-up |
+| 9 | fu | 1247 | 5 | 12.8% | 86.4% of losses saw the goal |
+| 10 | fuck yeah | 1440 | 3 | 44.2% | 58.4% of wins on the last ball, all chains |
+
+**Tests.** `yy_tests` plays each level 200 times with bot seeds 1 to 200 and
+fails when its win rate, last-ball share, chain share or near-loss share leaves
+its feel's target, or when a later level of the same feel is easier by more than
+5 points; it also plays levels 1 to 3 with every shot pressed, dragged and
+released through `tapdemo::Touch` on the fitted camera and requires the same
+band within 5 points of the direct shots (100%, 55.5%, 100%). Restoring level
+2's old seed fails it ("level 2: the win rate is outside its feel's band", 86.5%).
+The test adds about a second.
+
+**Visual evidence.** `TapDemo.exe --smoke 30` with `YY_TAPDEMO_LEVEL` 1 to 10
+and `YY_TAPDEMO_SCENE=field`: `docs/figures/levels/level-01.png` to
+`level-10.png`. Inspected: each shows LEVEL N in the header with its ball count
+(3 on levels 6 and 10), the cavities ringed by the level's own glowing kinds,
+and the rest under fog.
+
+**Open:** the bot is not a person; whether relief feels too easy (the bot wins
+100%) and whether level 6's losses feel near (0.7% see the goal) are Yotam's
+calls on TestFlight. Speed and Ping break nothing, so the numbers cannot show
+levels 5 and 7 teach them. Device performance is not applicable.
