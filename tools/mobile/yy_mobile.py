@@ -233,10 +233,19 @@ class GitHub:
                 for step in job.get("steps", [])):
             return "ready"
         if run.get("status") == "completed":
+            # Successful pushes may select no games or only other games. Require
+            # selector and matrix evidence before treating delivery as unnecessary.
+            selected = any(j["name"] == "select" and j.get("conclusion") == "success" for j in jobs)
+            excluded = any((j["name"] == "TestFlight (${{ matrix.game }})" and
+                            j.get("conclusion") == "skipped") or
+                           (j["name"].startswith("TestFlight (") and j["name"].endswith(")") and
+                            j["name"] != "TestFlight (${{ matrix.game }})") for j in jobs)
+            if not job and run.get("event") == "push" and run.get("conclusion") == "success" and selected and excluded:
+                return "not_applicable"
             return "failed"  # workflow success alone never establishes tester readiness
         if job and any(s["name"] == "Upload build" and s.get("conclusion") == "success" for s in job.get("steps", [])):
             return "processing"
-        return "building"
+        return "building" if job and job.get("status") == "in_progress" else "waiting_build"
 
 
 def delivery_key(item):
@@ -289,7 +298,8 @@ def tick(b, config, client=None, now=None):
     pending = b.q("SELECT key,value FROM pm_settings WHERE key LIKE 'mobile.delivery:%'")
     for row in pending:
         item = json.loads(row["value"])
-        if item["state"] in ("ready", "failed"):
+        # Reclassify cached failures once after introducing intentional skips.
+        if item["state"] in ("ready", "not_applicable") or (item["state"] == "failed" and item.get("state_version") == 1):
             continue
         try:
             client = client or GitHub(config["repo"])
@@ -304,6 +314,7 @@ def tick(b, config, client=None, now=None):
                 run = max(matching, key=lambda r: r["id"])
                 item.update(run=run["id"], url=run["html_url"])
                 state = client.state(run, item["game"])
+                item["state_version"] = 1
             elif item["state"] == "queued":
                 # Never repeat this POST automatically after an unknown outcome.
                 item["state"] = "dispatching"
@@ -318,6 +329,8 @@ def tick(b, config, client=None, now=None):
                           "failed": "Delivery failed; inspect the workflow. The game commit remains landed.",
                           "processing": "Uploaded; Apple processing and tester readiness are still pending.",
                           "building": "Hosted Mac build and signing are running.",
+                          "waiting_build": "Waiting for workflow checks and the game build job.",
+                          "not_applicable": "No game changes require a TestFlight build; the workflow skipped delivery for this game.",
                           "dispatching": "Build dispatch recorded; waiting for GitHub to expose its run.",
                           "waiting_workflow": "Waiting for the main-push TestFlight workflow."}.get(state, state)
                 message = f"TestFlight {item['game']} @ {item['sha'][:12]}: {detail}" + ("\n" + item["url"] if item.get("url") else "")

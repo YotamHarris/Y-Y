@@ -550,7 +550,7 @@ function viewManager() {
   const planner = ((o || {}).models || {}).planner;
   const workers = m.runs.filter(r => r.role !== "planner" && ["queued", "running"].includes(r.state));
   const deliveries = S.state.mobile && S.state.mobile.deliveries || [];
-  const deliveryLabels = { queued: "Queued", dispatching: "Waiting for GitHub", waiting_workflow: "Waiting for workflow", building: "Building and signing", processing: "Uploaded; Apple verification pending", ready: "Ready for internal testing", failed: "Delivery failed" };
+  const deliveryLabels = { queued: "Queued", dispatching: "Waiting for GitHub", waiting_workflow: "Waiting for workflow", waiting_build: "Waiting for checks and build", not_applicable: "No TestFlight build needed", building: "Building and signing", processing: "Uploaded; Apple verification pending", ready: "Ready for internal testing", failed: "Delivery failed" };
   const mobileSection = !S.state.mobile ? "" : `<h2>TestFlight deliveries</h2>${deliveries.map(d => `<div class="card"><b>${esc(d.game)} · ${esc(deliveryLabels[d.state] || d.state)}</b> <code>${esc((d.sha || "").slice(0, 12))}</code>${d.task ? ` · <a href="#" data-ref="T${d.task}">T${d.task}</a>` : ""}${d.url && d.url.startsWith("https://github.com/") ? ` · <a href="${esc(d.url)}" target="_blank" rel="noopener">Workflow</a>` : ""}${d.error ? `<p>${esc(d.error)}</p>` : ""}</div>`).join("") || '<div class="card muted">No builds requested or published yet.</div>'}`;
   const whoRuns = `<div class="card manager-models">
     <p><b>Planner</b> ${planner ? modelChip(planner) : ""} ${plan ? `<code class="small">${esc(plan.model || plan.provider)}</code>

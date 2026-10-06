@@ -72,6 +72,8 @@ A normal game push builds affected games automatically. Explicit requests build 
 The manager tracks each exact commit and announces ready only after the workflow's
 **Verify TestFlight readiness** step and the selected game job succeed. Ambiguous dispatches
 are reconciled by their persisted request IDs. Failed delivery does not rerun implementation.
+Successful main-push workflows that exclude the selected game are recorded as not applicable,
+without a failure ping. Build announcements wait until the game's hosted job actually starts.
 For a retry or reconciliation of an already uploaded binary, use the existing workflow's
 build_number input as described in setup.
 

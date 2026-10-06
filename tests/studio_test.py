@@ -191,6 +191,44 @@ class NativeManagerTests(unittest.TestCase):
         self.assertEqual(json.loads(manager_store.setting(self.board, mobile.delivery_key("build")))["request"], item["request"])
         self.assertFalse(self.board.q("SELECT * FROM pm_tasks"))
 
+    def test_cached_failure_is_reclassified_once_without_dispatch_or_failure_ping(self):
+        key = mobile.delivery_key("T13:" + "a" * 40)
+        item = dict(game="tapdemo", sha="a" * 40, task=13, state="failed", reported="failed")
+        manager_store.set_setting(self.board, key, json.dumps(item))
+        api = mobile.GitHub.__new__(mobile.GitHub)
+        api.runs = Mock(return_value=[dict(id=41, event="push", head_sha=item["sha"],
+                                         status="completed", conclusion="success", html_url="https://example.test/run/41")])
+        api.api = Mock(return_value={"jobs": [
+            dict(name="select", status="completed", conclusion="success"),
+            dict(name="TestFlight (${{ matrix.game }})", status="completed", conclusion="skipped", steps=[])]})
+        with patch.object(manager_store, "notify") as notify, patch.object(self.board, "add_message") as message:
+            mobile.tick(self.board, self.config, api, now=1000)
+            mobile.tick(self.board, self.config, api, now=1100)
+        updated = json.loads(manager_store.setting(self.board, key))
+        self.assertEqual(updated["state"], "not_applicable")
+        self.assertEqual(updated["reported"], "not_applicable")
+        self.assertEqual(updated["run"], 41)
+        api.runs.assert_called_once_with(item["sha"])
+        api.api.assert_called_once_with("/actions/runs/41/jobs?per_page=100")
+        notify.assert_called_once()
+        self.assertFalse(notify.call_args.kwargs["ping"])
+        self.assertIn("No game changes require a TestFlight build", notify.call_args.args[2])
+        message.assert_called_once()
+
+    def test_rechecked_real_failure_stays_terminal_without_duplicate_alert(self):
+        key = mobile.delivery_key("failed")
+        manager_store.set_setting(self.board, key, json.dumps(dict(
+            game="tapdemo", sha="a" * 40, state="failed", reported="failed")))
+        api = Mock()
+        api.runs.return_value = [dict(id=42, event="push", head_sha="a" * 40, html_url="https://example.test/run/42")]
+        api.state.return_value = "failed"
+        with patch.object(manager_store, "notify") as notify:
+            mobile.tick(self.board, self.config, api, now=1000)
+            mobile.tick(self.board, self.config, api, now=1100)
+        self.assertEqual(json.loads(manager_store.setting(self.board, key))["state"], "failed")
+        api.state.assert_called_once()
+        notify.assert_not_called()
+
 
 class MobileSafetyTests(unittest.TestCase):
     def test_codex_extended_paths_are_normalized_before_checkout_matching(self):
@@ -270,6 +308,53 @@ class MobileSafetyTests(unittest.TestCase):
         self.assertEqual(client.state(run, "tapdemo"), "failed")
         client.api.return_value = {"jobs": [dict(name="TestFlight (puzzle)", conclusion="success", steps=job["steps"])]}
         self.assertEqual(client.state(run, "tapdemo"), "failed")
+
+    def test_successful_push_excluding_game_is_not_applicable(self):
+        client = mobile.GitHub.__new__(mobile.GitHub)
+        run = dict(id=41, event="push", status="completed", conclusion="success")
+        selector = dict(name="select", status="completed", conclusion="success")
+        for matrix in (
+            dict(name="TestFlight (${{ matrix.game }})", status="completed", conclusion="skipped", steps=[]),
+            dict(name="TestFlight (puzzle)", status="completed", conclusion="success", steps=[]),
+        ):
+            with self.subTest(matrix=matrix["name"]):
+                client.api = Mock(return_value={"jobs": [selector, matrix]})
+                self.assertEqual(client.state(run, "tapdemo"), "not_applicable")
+
+    def test_skip_does_not_hide_real_failure_or_missing_requested_build(self):
+        client = mobile.GitHub.__new__(mobile.GitHub)
+        selector = dict(name="select", status="completed", conclusion="success")
+        skipped = dict(name="TestFlight (${{ matrix.game }})", status="completed", conclusion="skipped", steps=[])
+        base = dict(id=41, event="push", status="completed", conclusion="success")
+        cases = [
+            (dict(base, event="workflow_dispatch"), [selector, skipped]),
+            (dict(base, conclusion="failure"), [selector, skipped]),
+            (dict(base, conclusion="cancelled"), [selector, skipped]),
+            (base, [dict(selector, conclusion="failure"), skipped]),
+            (base, [selector]),
+            (base, [selector, dict(name="TestFlight (tapdemo)", status="completed", conclusion="failure", steps=[])]),
+            (base, [selector, dict(name="TestFlight (tapdemo)", status="completed", conclusion="success", steps=[])]),
+            (base, [selector, dict(name="TestFlight (tapdemo)", status="completed", conclusion="skipped", steps=[])]),
+        ]
+        for run, jobs in cases:
+            with self.subTest(run=run, jobs=jobs):
+                client.api = Mock(return_value={"jobs": jobs})
+                self.assertEqual(client.state(run, "tapdemo"), "failed")
+
+    def test_building_is_only_reported_after_selected_job_starts(self):
+        client = mobile.GitHub.__new__(mobile.GitHub)
+        run = dict(id=41, event="push", status="in_progress")
+        for jobs in ([], [dict(name="select", status="in_progress")],
+                     [dict(name="TestFlight (tapdemo)", status="queued")],
+                     [dict(name="TestFlight (puzzle)", status="in_progress")]):
+            with self.subTest(jobs=jobs):
+                client.api = Mock(return_value={"jobs": jobs})
+                self.assertEqual(client.state(run, "tapdemo"), "waiting_build")
+        job = dict(name="TestFlight (tapdemo)", status="in_progress", steps=[])
+        client.api = Mock(return_value={"jobs": [job]})
+        self.assertEqual(client.state(run, "tapdemo"), "building")
+        job["steps"] = [dict(name="Upload build", conclusion="success")]
+        self.assertEqual(client.state(run, "tapdemo"), "processing")
 
     def test_candidate_publication_rebases_and_runs_trusted_validation(self):
         with tempfile.TemporaryDirectory() as folder:
