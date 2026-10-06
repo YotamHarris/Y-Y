@@ -9,11 +9,11 @@ python studio/fe_docs.py show D64
 python studio/fe_docs.py category design
 ```
 
-8 entries: 8 active.
+10 entries: 8 active, 2 amended.
 
 | category | file | entries | covers |
 |---|---|---|---|
-| Design | [design.md](decisions/design.md) | 6, 6 holding | game rules, touch interaction, look and feel |
+| Design | [design.md](decisions/design.md) | 8, 8 holding | game rules, touch interaction, look and feel |
 | Engine | [engine.md](decisions/engine.md) | 1, 1 holding | C++20, SDL3, iOS and deterministic simulation |
 | Process | [process.md](decisions/process.md) | 1, 1 holding | Agent Studio, Discord and TestFlight delivery |
 
@@ -21,16 +21,21 @@ python studio/fe_docs.py category design
 
 ## Design
 
-6 entries: 6 active. [decisions/design.md](decisions/design.md)
+8 entries: 6 active, 2 amended. [decisions/design.md](decisions/design.md)
 
 #### Active — the current rules
 
-- **D8** (2026-10-06) Garden Pop draws damage as materials and keeps hit effects outside the model
+- **D10** (2026-10-06) Breaking the goal plays a celebration, presentation only
+- **D9** (2026-10-06) TapDemo has one look, Garden Pop, and ignores a saved colour scheme
 - **D6** (2026-10-06) Level seeds are picked by a simulated player against each level's experience
 - **D5** (2026-10-06) Ten fixed levels in order; a level's seed decides it and every retry
 - **D4** (2026-10-06) Wider bombs kept off the walls, longer lightning, one-hit power-ups and snapped straight shots
 - **D3** (2026-10-06) Debug sets the grid size, glow rate and power-up mix, applied on restart
-- **D2** (2026-10-05) Fog has brightness and texture contrast in every colour scheme
+
+#### Amended — still apply, with a later entry changing part
+
+- **D8** (2026-10-06) Garden Pop draws damage as materials and keeps hit effects outside the model → D9 — Garden Pop is the only look, on every launch
+- **D2** (2026-10-05) Fog has brightness and texture contrast in every colour scheme → D9 — only Garden Pop remains; the four other schemes and COLORS are removed
 
 ## Engine
 

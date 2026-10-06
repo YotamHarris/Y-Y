@@ -52,7 +52,10 @@ inline bool goalShows(const Model& m) {
 }
 
 // Plays level `level` as `table` sets it up with bot seed `botSeed` and returns how it went.
-inline Result play(int level, const tapdemo::Level& table, std::uint32_t botSeed, Style style={}, bool touch=false) {
+// With `shots` (and `touch`) each launched shot's press and release, in screen units, is appended to it:
+// the same shots replayed on a game reproduce the round.
+struct Shot { yy::Vec2 press, release; };
+inline Result play(int level, const tapdemo::Level& table, std::uint32_t botSeed, Style style={}, bool touch=false, std::vector<Shot>* shots=nullptr) {
   Model m; m.play(level,table);
   tapdemo::Touch finger(m); finger.instructions=false;
   Random random(botSeed);
@@ -87,6 +90,7 @@ inline Result play(int level, const tapdemo::Level& table, std::uint32_t botSeed
     if(touch) {
       const yy::Vec2 press=finger.camera.toScreen(at), release=finger.camera.toScreen({at.x+pull.x,at.y+pull.y});
       finger.down(1,press); finger.move(1,release); launched=finger.up(1,release);
+      if(launched && shots) shots->push_back({press,release});
     } else launched=m.launch(at,pull);
     if(!launched) break;
     const bool last=m.ballsLeft==0;

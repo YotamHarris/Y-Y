@@ -391,3 +391,23 @@ for Garden Pop stays 0.382868 against the 0.08 rule.
 
 **Open:** none known; desktop captures only, no device measurement (not a
 performance change).
+
+### V11 Breaking the goal plays a festive, Peggle-style celebration (D10)
+
+**Status:** active
+
+Every goal win slows time and pushes the camera in on the ball as it heads for the goal, bursts the goal with
+confetti and a rising tune and a strong haptic, eases the camera back, shows a big "GOAL!" and then the Garden
+Pop win card counting the balls left up from 0; about 3.5 s, and one tap skips to the card without advancing.
+The model, levels, Ghost landings and touch rules are unchanged.
+
+**Validation.** `scripts/build.ps1 -Smoke`: CTest 1/1, smoke 120 frames. `celebrationChecks` replays bot
+rounds through touch: the look-ahead sees the break at exactly the update it comes (a plain win, a win through a
+power-up and a win through a Ghost landing) and never on a lost shot; the same winning shot played through the
+game with the slow motion ends with the same balls left as on a bare model; a tap during the approach or during
+GOAL! shows the card without advancing and the next tap advances; pausing mid-show leaves the camera at the field.
+Desktop captures of each beat through `fe_manager.py gpu` (`tests/capture_celebration.py`) are in
+`docs/figures/celebration/`.
+
+**Open:** desktop captures and tests only; the feel of the slow motion, the haptic and the tune on a phone is the
+owner's TestFlight check. No device measurement: the confetti is under 200 small shapes (not a performance task).

@@ -2,12 +2,15 @@
 #include <tapdemo/touch.hpp>
 #include <tapdemo/palette.hpp>
 #include <tapdemo/garden.hpp>
+#include <tapdemo/celebration.hpp>
 #include <yy/runtime.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <cstdint>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,7 +31,13 @@ constexpr yy::Rect plusButton(int row) { return {320,stepperTops[row],44,38}; }
 constexpr yy::Rect restartButton{40,746,150,44}, closeButton{200,746,150,44};
 constexpr const char* progressFile="progress.txt"; // the reached level, in yy::Storage
 constexpr const char* debugFile="debug.txt";       // every debug panel setting, in yy::Storage
-constexpr yy::Rect overlay{24,340,342,156};
+constexpr yy::Rect overlay{24,340,342,156};          // the OUT OF BALLS card
+constexpr yy::Rect winCard{24,250,342,348};          // the win card: the instructions card's art, cut short
+constexpr float cardArtWidth=1098, cardArtHeight=2232; // garden/card.bmp, in pixels
+// The goal's tune: four short notes rising and a long last one. The audio queues them one after another.
+constexpr float goalTune[][2]{{523.25f,0.1f},{659.25f,0.1f},{783.99f,0.1f},{1046.5f,0.1f},{1318.5f,0.4f}};
+constexpr float petalGravity=420, petalDrag=1.6f;      // confetti, in logical units per second
+constexpr float focusZoom=2.2f;                        // the camera's zoom on the ball and the goal
 // Drawing code lets Power::None stand for the goal: its colour, name and flag icon.
 constexpr const char* powerNames[]{"GOAL","BOMB","ELECTRICITY","PING","GHOST","SPEED UP"};
 constexpr const char* weightNames[]{"","BOMB","ELECTRIC","PING","GHOST","SPEED"};
@@ -128,10 +137,120 @@ class TapGame final: public yy::Game {
   std::vector<Pop> pops; // cosmetic only: never part of Model, input or the shot clock
   std::vector<int> lastBricks;
   float clock{};             // seconds, for glow pulses and sparks
+  // The goal celebration (celebration.hpp): presentation only. The model always steps by the real frame's dt,
+  // on the frames the scaled clock crosses a step, so slow motion cannot change where a ball goes.
+  Celebration celebration;
+  std::optional<Camera> framing; // the camera as the player left it, while the celebration has it
+  yy::Vec2 focusWorld{}; bool focused{};
+  float timeDebt{};          // game time earned by the scaled clock but not yet stepped
+  float frameSeconds{1.0f/60};
+  struct Petal { yy::Vec2 at, velocity; float size, spin, age, life; yy::Color color; bool leaf; };
+  std::vector<Petal> petals; // confetti and falling petals, in screen units
+  std::uint32_t petalState{20251006};
+  float rainDebt{};          // petals still to fall from the top
+  int countedBalls{};        // the win card's count-up
+  bool cheered{};            // GOAL!'s haptic has played
   bool renderTest{};         // YY_TAPDEMO_SCENE=render-test: the renderer's own checks over the field
-  bool frozenPopScene{}; // only the explicitly staged mid-hit screenshot, never ordinary play
+  bool frozenScene{}; // only an explicitly staged screenshot (mid-hit, a celebration beat), never ordinary play
 
-  void reset(bool instructions) { bursts.clear(); pops.clear(); frozenPopScene=false; lastBricks=model.bricks; touch.refit(); touch.instructions=instructions; }
+  void reset(bool instructions) {
+    bursts.clear(); pops.clear(); petals.clear(); frozenScene=false; lastBricks=model.bricks; touch.refit(); touch.instructions=instructions;
+    celebration.reset(); framing.reset(); focused=false; timeDebt=0; rainDebt=0; countedBalls=0; cheered=false;
+  }
+  float unit() { petalState=petalState*1664525u+1013904223u; return static_cast<float>(petalState>>8)*(1.0f/16777216.0f); }
+  yy::Vec2 goalCentre() const { return {(model.goal%model.columns+0.5f)*Model::cell,(model.goal/model.columns+0.5f)*Model::cell}; }
+  // Where a flying ball is drawn: the model's position, plus the slow clock's share of the next step.
+  yy::Vec2 shown(const Ball& b) const {
+    if(timeDebt<=0) return b.position;
+    const yy::Vec2 next{b.position.x+b.velocity.x*timeDebt,b.position.y+b.velocity.y*timeDebt};
+    return model.canPlace(next) ? next : b.position;
+  }
+  // One frame of the model at the celebration's time scale. A frame that earns less than a step steps nothing.
+  void stepModel(float seconds) {
+    model.hits={};
+    timeDebt+=seconds*celebration.scale();
+    if(timeDebt>=seconds) { timeDebt-=seconds; model.update(seconds); }
+  }
+  void releaseCamera() {
+    if(framing) { touch.camera=*framing; framing.reset(); }
+    focused=false;
+  }
+  // Takes the camera while the celebration is engaged: the player's framing blended toward the ball, then the goal.
+  void steer(const Anticipation& ahead, float seconds) {
+    if(!celebration.engaged()) { releaseCamera(); return; }
+    Camera& cam=touch.camera;
+    if(!framing) framing=cam;
+    const yy::Vec2 goalAt=goalCentre();
+    yy::Vec2 target=focused ? focusWorld : goalAt;
+    if(celebration.phase()==Celebration::Phase::Hit) target=goalAt;
+    else if(ahead.hit && !model.balls.empty()) {
+      const Ball* near=&model.balls.front(); float best=-1;
+      for(const auto& b: model.balls) {
+        const float d=std::hypot(b.position.x-goalAt.x,b.position.y-goalAt.y);
+        if(best<0 || d<best) { near=&b; best=d; }
+      }
+      const yy::Vec2 ball=shown(*near);
+      const float close=std::clamp(1-ahead.seconds/Celebration::window,0.0f,1.0f), mixed=close*close;
+      target={ball.x+(goalAt.x-ball.x)*mixed,ball.y+(goalAt.y-ball.y)*mixed};
+    }
+    const float follow=focused ? 1-std::exp(-12*seconds) : 1;
+    focusWorld={focusWorld.x+(target.x-focusWorld.x)*follow,focusWorld.y+(target.y-focusWorld.y)*follow};
+    focused=true;
+    const float k=celebration.focus();
+    const yy::Vec2 centre{cam.view.x+cam.view.w/2,cam.view.y+cam.view.h/2}, from=framing->toWorld(centre);
+    cam.hold({from.x+(focusWorld.x-from.x)*k,from.y+(focusWorld.y-from.y)*k},centre,
+             framing->zoom*std::pow(std::max(1.0f,focusZoom/framing->zoom),k));
+  }
+  // The break: a bigger burst on the goal, confetti, the tune and a strong haptic.
+  void celebrate() {
+    bursts.push_back({{Power::None,model.goal,-1},0});
+    timeDebt=0; cheered=false;
+    const auto at=touch.camera.toScreen(goalCentre());
+    const yy::Color white=garden.white;
+    for(int i=0; i<80; ++i) {
+      const float angle=unit()*6.2831853f, speed=140+unit()*460;
+      const int pick=static_cast<int>(unit()*7);
+      petals.push_back({at,{std::cos(angle)*speed,std::sin(angle)*speed-140},3+unit()*3.5f,unit()*6.2831853f,0,1.5f+unit()*1.0f,
+                        pick<6 ? garden.glows[pick] : white,unit()<0.45f});
+    }
+    if(haptics) { haptics->thump(); haptics->impact(1); }
+    if(audio) for(const auto& note: goalTune) audio->tone(note[0],note[1]);
+  }
+  // Petals fall across the screen for a while after the break.
+  void rain(float seconds) {
+    if(celebration.phase()!=Celebration::Phase::Hit || celebration.time()>1.4f) return;
+    rainDebt+=seconds*55;
+    const auto& view=touch.camera.view;
+    for(; rainDebt>=1; --rainDebt) {
+      const int pick=static_cast<int>(unit()*7);
+      petals.push_back({{unit()*view.w,view.y-8},{(unit()-0.5f)*60,20+unit()*80},3+unit()*3.5f,unit()*6.2831853f,0,2.4f+unit()*1.2f,
+                        pick<6 ? garden.glows[pick] : garden.white,unit()<0.6f});
+    }
+  }
+  // A tap during the celebration: the shot still in flight finishes unseen, by the steps it would have taken, and the card shows.
+  void skipCelebration() {
+    if(!model.over()) {
+      for(int i=0, n=static_cast<int>(Celebration::window*2/frameSeconds)+1; i<n && !model.over(); ++i) model.update(frameSeconds);
+      lastBricks=model.bricks; pops.clear(); bursts.clear();
+      if(!model.won()) { celebration.reset(); timeDebt=0; releaseCamera(); return; }
+    }
+    celebration.skip(); petals.clear(); timeDebt=0; countedBalls=0; releaseCamera();
+  }
+  // The app is pausing: leave no time scale or zoom behind. A celebration past the break goes to the card.
+  void settle() {
+    if(celebration.phase()==Celebration::Phase::Hit) { celebration.skip(); petals.clear(); countedBalls=0; }
+    else celebration.reset();
+    timeDebt=0; releaseCamera();
+  }
+  // The win card shows once the celebration has reached it; the loss card shows at once.
+  bool cardShows() const { return model.over() && celebration.phase()!=Celebration::Phase::Hit; }
+  yy::Rect cardRect() const { return model.won() ? winCard : overlay; }
+  // Balls counted so far on the win card: after a short beat, one per step, a whole count within a second.
+  int counted() const {
+    if(!celebration.card()) return model.ballsLeft;
+    const float step=std::min(0.2f,1.0f/std::max(1,model.ballsLeft));
+    return std::min(model.ballsLeft,static_cast<int>(std::max(0.0f,celebration.time()-0.25f)/step));
+  }
   // Opens a level on its instructions card; `save` records it as the reached level.
   void enter(int level, bool save=true) {
     touch.cancel(); model.play(level); reset(true);
@@ -191,7 +310,7 @@ class TapGame final: public yy::Game {
   // field (the opening field with the card dismissed, untouched), header (one ball flying), aim, snap (an aim 3 degrees off horizontal), debug, play, zoom, icons (one of each power-up and the goal
   // beside the pocket) or glow (the same close up), breaks (four launches), electric (a launch
   // into that power-up), pingin or pingout (a launch into a Ping brick with the goal inside or
-  // outside the ping radius), won (a launch into the goal), lost (the last ball, spent on a brick), palette / palette-fit /
+  // outside the ping radius), won (a launch into the goal; won-approach, won-burst, won-goal and won-card freeze its celebration at a beat), lost (the last ball, spent on a brick), palette / palette-fit /
   // palette-max (all icons, a real Ping revealing fogged bricks, frozen at activation),
   // grid-min or grid-max (the debug steppers pick free play and the smallest or largest grid, then RESTART),
   // render-test (the opening field under soft-edged cutouts, a cropped sheet cell and baked-font text).
@@ -244,7 +363,7 @@ class TapGame final: public yy::Game {
         update(0.075f);
         const auto at=touch.camera.toScreen(below);
         pointerDown(9,at); pointerMove(9,{at.x+40,at.y+70});
-        frozenPopScene=true;
+        frozenScene=true;
       }
       return;
     }
@@ -299,6 +418,22 @@ class TapGame final: public yy::Game {
       return;
     }
     if(std::strcmp(scene,"won")==0) { setGoal(column,pocket.row-1); sling(touch.camera.toScreen(below),{0,40}); return; }
+    // The celebration's beats, each frozen where the screenshot is taken. The goal is eight cells up the pocket's column with
+    // the cells between cleared, so the ball is seen for the whole look-ahead before the hit; the shot is a real sling.
+    if(std::strncmp(scene,"won-",4)==0) {
+      const int goalRow=std::max(1,pocket.row-9);
+      for(int row=goalRow+1; row<pocket.row; ++row) model.bricks[row*model.columns+column]=0;
+      setGoal(column,goalRow); lastBricks=model.bricks;
+      sling(touch.camera.toScreen(below),{0,40});
+      const std::string beat=scene+4;
+      const auto runTo=[&](auto reached) { for(int i=0; i<1800 && !reached(); ++i) update(1.0f/60); frozenScene=true; };
+      using Phase=Celebration::Phase;
+      if(beat=="approach") runTo([&]{ return celebration.focus()>0.8f && celebration.scale()<=0.26f; });
+      else if(beat=="burst") runTo([&]{ return celebration.phase()==Phase::Hit && celebration.time()>=0.25f; });
+      else if(beat=="goal") runTo([&]{ return celebration.phase()==Phase::Hit && celebration.time()>=1.5f; });
+      else if(beat=="card") runTo([&]{ return celebration.card() && celebration.time()>=1.2f; });
+      return;
+    }
     const bool pingIn=std::strcmp(scene,"pingin")==0, pingOut=std::strcmp(scene,"pingout")==0;
     if(pingIn || pingOut || std::strcmp(scene,"electric")==0) {
       const int row=pocket.row-1;
@@ -350,8 +485,14 @@ public: void initialize(yy::Services& services) override {
     lastBricks=model.bricks;
   }
   void update(float seconds) override {
-    if(frozenPopScene) return;
-    model.update(seconds); touch.update(seconds);
+    if(frozenScene) return;
+    frameSeconds=seconds;
+    // A copy of the model runs ahead: when it sees the goal break, time slows and the camera pushes in.
+    const Anticipation ahead=model.over() ? Anticipation{} : lookAhead(model,seconds,Celebration::window);
+    const bool playing=celebration.playing();
+    celebration.step(seconds,ahead.hit);
+    if(!playing && celebration.playing()) touch.cancel(); // a held aim gives way to the show
+    stepModel(seconds); touch.update(seconds);
     for(auto& p: pops) p.age+=seconds;
     std::erase_if(pops,[](const Pop& p){ return p.age>=popSeconds; });
     if(lastBricks.size()==model.bricks.size()) for(std::size_t i=0; i<lastBricks.size(); ++i) {
@@ -365,13 +506,10 @@ public: void initialize(yy::Services& services) override {
     clock+=seconds;
     for(auto& b: bursts) b.age+=seconds;
     bursts.erase(std::remove_if(bursts.begin(),bursts.end(),[](const Burst& b){ return b.age>1.2f; }),bursts.end());
-    // The goal's fanfare, or a power-up's thump and tone, stands in for the plain break's tap that frame.
+    // The goal's celebration, or a power-up's thump and tone, stands in for the plain break's tap that frame.
     for(const auto& f: model.hits.fired) bursts.push_back({f,0});
-    if(model.hits.goalBroken) {
-      bursts.push_back({{Power::None,model.goal,-1},0});
-      if(haptics) { haptics->thump(); haptics->impact(1); }
-      if(audio) for(float hz: {660.0f,880.0f,1320.0f}) audio->tone(hz,0.12f);
-    } else if(!model.hits.fired.empty()) {
+    if(model.hits.goalBroken) { celebration.hit(); celebrate(); }
+    else if(!model.hits.fired.empty()) {
       const auto& tone=powerTones[static_cast<int>(model.hits.fired.front().power)];
       if(haptics) haptics->thump();
       if(audio) audio->tone(tone[0],tone[1]);
@@ -379,23 +517,48 @@ public: void initialize(yy::Services& services) override {
       if(haptics) haptics->impact(std::min(1.0f,0.55f+0.15f*(model.hits.bricksBroken-1)));
       if(audio) audio->tone(660.0f,0.05f);
     }
+    rain(seconds);
+    for(auto& p: petals) {
+      p.age+=seconds; p.velocity.y+=petalGravity*seconds;
+      const float drag=std::max(0.0f,1-petalDrag*seconds);
+      p.velocity.x*=drag; p.velocity.y*=drag;
+      p.at.x+=(p.velocity.x+std::sin(p.age*4+p.spin)*28)*seconds; p.at.y+=p.velocity.y*seconds;
+    }
+    std::erase_if(petals,[](const Petal& p){ return p.age>=p.life; });
+    if(celebration.phase()==Celebration::Phase::Hit && !cheered && celebration.time()>=Celebration::goalTextAt) {
+      cheered=true;
+      if(haptics) haptics->impact(0.8f);
+    }
+    if(celebration.card()) {
+      const int count=counted();
+      if(count>countedBalls) {
+        countedBalls=count;
+        if(audio) audio->tone(660+60.0f*count,0.05f);
+        if(haptics) haptics->impact(0.4f);
+      }
+    }
+    steer(ahead,seconds);
   }
-  void pause(bool value) override { model.pause(value); if(value) touch.cancel(); }
+  void pause(bool value) override { model.pause(value); if(value) { touch.cancel(); settle(); } }
   void shutdown() override { touch.cancel(); touch.haptics=nullptr; audio=nullptr; haptics=nullptr; }
   void tap(yy::Vec2) override {}
   void pointerDown(int id, yy::Vec2 p) override {
     if(debugOpen) { uiFinger=id; pressDebug(p); return; }
     if(inside(debugButton,p)) { uiFinger=id; openDebug(); return; }
-    if(model.over() && inside(overlay,p)) { uiFinger=id; advance(); return; }
+    // One tap anywhere skips the celebration to the card; that finger does nothing more.
+    if(celebration.playing()) { uiFinger=id; skipCelebration(); return; }
+    // An anticipation that came to nothing, still easing back, gives way to the player.
+    if(celebration.engaged()) { celebration.reset(); timeDebt=0; releaseCamera(); }
+    if(cardShows() && inside(cardRect(),p)) { uiFinger=id; advance(); return; }
     touch.down(id,p);
   }
-  void pointerMove(int id, yy::Vec2 p) override { if(id!=uiFinger) touch.move(id,p); }
+  void pointerMove(int id, yy::Vec2 p) override { if(id!=uiFinger && !celebration.engaged()) touch.move(id,p); }
   void pointerUp(int id, yy::Vec2 p) override {
     if(id==uiFinger) { uiFinger=-1; return; }
     touch.up(id,p);
   }
   void zoom(yy::Vec2 at, float steps) override {
-    if(!debugOpen && !touch.instructions && touch.camera.contains(at)) touch.camera.zoomAt(at,touch.camera.zoom*std::pow(1.15f,steps));
+    if(!debugOpen && !touch.instructions && !celebration.engaged() && touch.camera.contains(at)) touch.camera.zoomAt(at,touch.camera.zoom*std::pow(1.15f,steps));
   }
   void render(yy::Renderer& r) override {
     using yy::Color;
@@ -502,7 +665,9 @@ public: void initialize(yy::Services& services) override {
     }
     // Power-up bursts: a growing ring on the brick that fired, and on a ghost's arrival.
     for(const auto& b: bursts) {
-      const float t=b.age/1.2f, reach=(b.fired.power==Power::Bomb ? model.bombSize*0.5f+0.1f : 0.9f)*Model::cell*z*(0.4f+t);
+      const float t=b.age/1.2f;
+      if(b.fired.power==Power::None) { drawGoalBurst(r,palette,b.age); continue; }
+      const float reach=(b.fired.power==Power::Bomb ? model.bombSize*0.5f+0.1f : 0.9f)*Model::cell*z*(0.4f+t);
       const Color c=mix(glow(palette,b.fired.power),field,t);
       for(int index: {b.fired.cell,b.fired.to}) {
         if(index<0) continue;
@@ -516,9 +681,10 @@ public: void initialize(yy::Services& services) override {
     const float ballSize=Model::ballRadius*z;
     const Color spark=glow(palette,Power::Electricity), streak=glow(palette,Power::Speed);
     for(const auto& b: model.balls) {
-      const auto p=cam.toScreen(b.position);
+      const auto at=shown(b);
+      const auto p=cam.toScreen(at);
       if(b.fast) for(int i=3; i>=1; --i)
-        r.circle(cam.toScreen({b.position.x-b.velocity.x*0.012f*i,b.position.y-b.velocity.y*0.012f*i}),ballSize*(1-0.2f*i),mix(streak,field,0.25f*i));
+        r.circle(cam.toScreen({at.x-b.velocity.x*0.012f*i,at.y-b.velocity.y*0.012f*i}),ballSize*(1-0.2f*i),mix(streak,field,0.25f*i));
       if(b.electric>0) {
         // An aura at the zap radius and flickering arcs to every brick it reaches.
         const float reach=model.electricRadius*Model::cell;
@@ -586,15 +752,17 @@ public: void initialize(yy::Services& services) override {
       const yy::Rect card{12,cam.view.y+10,cam.view.w-24,cam.view.h-20};
       drawGardenCard(r,card);
     }
-    if(model.over()) {
-      r.rectangle(overlay,palette.card);
-      r.text({58,367}, model.won() ? "GOAL FOUND" : "OUT OF BALLS",model.won() ? glow(palette,Power::None) : white,2.5f);
-      if(model.won()) r.text({58,410}, "BALLS LEFT " + std::to_string(model.ballsLeft),teal);
-      else r.text({58,410}, "THE GOAL STAYED HIDDEN",teal,1.5f);
-      const int level=model.level(), next=level>0 ? nextLevel(level,model.won()) : 0;
-      const char* action=level==0 ? "TAP TO RESTART" : next==0 ? "TAP FOR FREE PLAY" : next==level ? "TAP TO RETRY" : "TAP FOR NEXT LEVEL";
-      r.text({58,450},action,model.won() && level>0 ? white : muted);
+    if(cardShows()) {
+      if(model.won()) drawWinCard(r);
+      else {
+        r.rectangle(overlay,palette.card);
+        r.text({58,367},"OUT OF BALLS",white,2.5f);
+        r.text({58,410},"THE GOAL STAYED HIDDEN",teal,1.5f);
+        r.text({58,450},model.level()==0 ? "TAP TO RESTART" : "TAP TO RETRY",muted);
+      }
     }
+    drawPetals(r);
+    if(celebration.goalText()>0) drawGoalText(r,cam.view);
     if(debugOpen) {
       r.rectangle(panel,palette.card);
       r.rectangle({panel.x,panel.y,panel.w,2},teal);
@@ -627,6 +795,70 @@ public: void initialize(yy::Services& services) override {
       r.rectangle(closeButton,palette.button); r.text({closeButton.x+35,closeButton.y+14},"CLOSE",white);
     }
     if(renderTest) drawRenderTest(r);
+  }
+  // The goal brick's burst, bigger than a power-up's: a flash, a gold glow and three rings.
+  void drawGoalBurst(yy::Renderer& r, const Palette& palette, float age) const {
+    const Camera& cam=touch.camera;
+    const auto at=cam.toScreen(goalCentre());
+    const float cell=Model::cell*cam.zoom;
+    const yy::Color gold=glow(palette,Power::Electricity), pink=glow(palette,Power::None);
+    if(age<0.45f) {
+      const float fade=1-age/0.45f;
+      yy::Color halo=gold; halo.a=static_cast<unsigned char>(150*fade);
+      r.circle(at,cell*(1.2f+3.2f*age/0.45f),halo);
+      gardenSprite(r,age<0.1f ? GardenSprite::Flash : GardenSprite::Burst,{at.x-cell*2,at.y-cell*2,cell*4,cell*4});
+    }
+    for(int ring=0; ring<3; ++ring) {
+      const float lag=ring*0.12f, u=std::clamp((age-lag)/(1.2f-lag),0.0f,1.0f);
+      if(u<=0 || u>=1) continue;
+      yy::Color c=mix(ring==1 ? pink : gold,palette.white,0.25f); c.a=static_cast<unsigned char>(255*(1-u));
+      const float reach=cell*(0.8f+4.5f*u), dot=std::max(2.0f,cell*0.14f*(1-u));
+      for(int i=0; i<28; ++i) {
+        const float a=i*6.2831853f/28+ring*0.2f;
+        r.circle({at.x+std::cos(a)*reach,at.y+std::sin(a)*reach},dot,c);
+      }
+    }
+  }
+  // Confetti is little rectangles that flip as they fall and rounded petals, fading out at the end of their life.
+  void drawPetals(yy::Renderer& r) const {
+    for(const auto& p: petals) {
+      yy::Color c=p.color; c.a=static_cast<unsigned char>(255*std::clamp((p.life-p.age)/0.4f,0.0f,1.0f));
+      if(p.leaf) {
+        const float s=p.size*(0.7f+0.3f*std::fabs(std::sin(p.spin+p.age*5)));
+        r.circle(p.at,s,c);
+        r.circle({p.at.x+std::cos(p.spin+p.age*3)*s*0.8f,p.at.y+std::sin(p.spin+p.age*3)*s*0.8f},s*0.75f,c);
+      } else {
+        const float w=std::max(1.0f,p.size*2*std::fabs(std::cos(p.spin+p.age*8))), h=p.size*1.3f;
+        r.rectangle({p.at.x-w/2,p.at.y-h/2,w,h},c);
+      }
+    }
+  }
+  // A big GOAL! that pops in over the field once the camera starts back.
+  void drawGoalText(yy::Renderer& r, yy::Rect view) const {
+    const float p=celebration.goalText(), back=1.70158f;
+    const float pop=1+(back+1)*std::pow(p-1,3)+back*std::pow(p-1,2); // ease out with a little overshoot
+    const float size=100*pop*(1+0.02f*std::sin(celebration.time()*9));
+    const yy::Vec2 at{195,view.y+view.h*0.36f-size*0.62f};
+    const auto& palette=garden;
+    gardenLabel(r,{at.x,at.y+9},"GOAL!",size,palette.dark,yy::Align::Center);
+    gardenLabel(r,{at.x,at.y+5},"GOAL!",size,glow(palette,Power::None),yy::Align::Center);
+    gardenLabel(r,at,"GOAL!",size,glow(palette,Power::Electricity),yy::Align::Center);
+  }
+  // The win card, in the instructions card's art cut to a short card at the same scale: the title, the
+  // balls left counting up from 0, and the action.
+  void drawWinCard(yy::Renderer& r) const {
+    constexpr yy::Color green{46,122,48}, mutedInk{88,105,66};
+    const float scale=winCard.w/cardArtWidth, slice=winCard.h/2, source=slice/scale;
+    r.sprite("garden/card.bmp",{0,0,cardArtWidth,source},{winCard.x,winCard.y,winCard.w,slice});
+    r.sprite("garden/card.bmp",{0,cardArtHeight-source,cardArtWidth,source},{winCard.x,winCard.y+slice,winCard.w,slice});
+    const float cx=winCard.x+winCard.w/2, y=winCard.y;
+    gardenLabel(r,{cx,y+34},"GOAL FOUND",36,green,yy::Align::Center);
+    gardenLabel(r,{cx,y+80},model.level()>0 ? "LEVEL "+std::to_string(model.level()) : "FREE PLAY",17,mutedInk,yy::Align::Center);
+    gardenSprite(r,GardenSprite::Ball,{cx-104,y+122,64,64});
+    gardenLabel(r,{cx+22,y+104},std::to_string(counted()),88,green,yy::Align::Center);
+    gardenLabel(r,{cx,y+206},"BALLS LEFT",18,mutedInk,yy::Align::Center);
+    const int level=model.level(), next=level>0 ? nextLevel(level,true) : 0;
+    gardenLabel(r,{cx,y+248},level==0 ? "TAP TO RESTART" : next==0 ? "TAP FOR FREE PLAY" : "TAP FOR NEXT LEVEL",24,green,yy::Align::Center);
   }
   // The level's expected win rate, as the simulated player measured it (T11, docs/levels.md).
   std::string expectedWins() const { return "EXPECTED WINS "+std::to_string(levels[model.level()-1].expectedWins)+"%"; }

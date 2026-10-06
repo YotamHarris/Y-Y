@@ -2,6 +2,9 @@
 #include <tapdemo/garden.hpp>
 #include <tapdemo/model.hpp>
 #include <tapdemo/touch.hpp>
+#include <tapdemo/celebration.hpp>
+#include "level_bot.hpp"
+#include <optional>
 #include <yy/runtime.hpp>
 #include <algorithm>
 #include <cmath>
@@ -149,12 +152,12 @@ struct MemoryStorage final: yy::Storage {
   bool write(std::string_view name, std::string_view text) override { file(name)=text; ++writes; return true; }
 };
 struct Quiet final: yy::Audio, yy::Haptics {
-  std::vector<float> tones;
+  std::vector<float> tones, impacts; int thumps{};
   void tone(float hz, float) override { tones.push_back(hz); }
-  void impact(float) override {}
+  void impact(float strength) override { impacts.push_back(strength); }
   void humStart(float) override {}
   void humStop() override {}
-  void thump() override {}
+  void thump() override { ++thumps; }
 };
 void setVariable(const char* name, const char* value) {
 #ifdef _WIN32
@@ -389,4 +392,230 @@ void levelFlowChecks() {
     check(last.canvas.has("FREE PLAY"),"after the last level the game plays free");
   }
   std::cout<<"Level flow: opens at the save, win opens and saves the next, loss retries the same field, debug picks levels\n";
+}
+
+namespace {
+// One round of a level played by the bot through touch, kept as its shots: replayed on a bare Model it
+// shows where the goal broke; replayed on the game it must end the same way.
+struct Round {
+  int level{}; std::vector<levelbot::Shot> shots;
+  std::vector<int> flights;      // updates each shot's flight takes, up to its end or the break
+  int ballsLeft{}; bool chain{}, ghost{};
+};
+constexpr float step=1.0f/60;
+// Replays `shots` on a bare model with a look-ahead before every update, and checks the look-ahead against what
+// really happens: no hit seen on a shot that does not break the goal, and on the shot that does, a hit seen at
+// exactly the number of updates the break then takes, from the window's edge on.
+Round replayRound(int level, const std::vector<levelbot::Shot>& shots) {
+  using namespace tapdemo;
+  Round round; round.level=level; round.shots=shots;
+  Model m; m.play(level,levels[level-1]);
+  Touch finger(m); finger.instructions=false;
+  for(const auto& shot: shots) {
+    finger.down(1,shot.press); finger.move(1,shot.release);
+    check(finger.up(1,shot.release),"a recorded shot launches again");
+    std::vector<Anticipation> seen; int updates=0;
+    while(!m.balls.empty() && !m.over() && updates<60*120) {
+      seen.push_back(lookAhead(m,step,Celebration::window));
+      bool electric=false;
+      for(const auto& b: m.balls) electric|=b.electric>0;
+      m.update(step); ++updates;
+      if(m.hits.goalBroken) {
+        round.chain=electric || !m.hits.fired.empty();
+        for(const auto& f: m.hits.fired) round.ghost|=f.power==Power::Ghost && f.to>=0;
+      }
+    }
+    round.flights.push_back(updates);
+    const int count=static_cast<int>(seen.size());
+    for(int i=0; i<count; ++i) {
+      const float left=(count-i)*step; // game seconds from this look-ahead to the update that ended the flight
+      if(m.won()) {
+        if(left<=Celebration::window-step) check(seen[i].hit && std::abs(seen[i].seconds-left)<step/2,"the look-ahead sees the goal break at the very update it breaks");
+        else if(left>Celebration::window+step) check(!seen[i].hit,"the look-ahead sees nothing beyond its window");
+      } else check(!seen[i].hit,"the look-ahead sees no goal break on a shot that does not break it");
+    }
+    m.balls.clear();
+    if(m.won()) break;
+  }
+  check(m.won(),"the replayed round wins");
+  round.ballsLeft=m.ballsLeft;
+  return round;
+}
+// A round the bot wins through touch, in the first level and bot seed that has `want` (any win when null).
+std::optional<Round> findRound(bool Round::*want, int minShots=1) {
+  using namespace tapdemo;
+  for(int level=1; level<=levelCount; ++level) for(std::uint32_t seed=1; seed<=400; ++seed) {
+    std::vector<levelbot::Shot> shots;
+    const auto result=levelbot::play(level,levels[level-1],seed,{},true,&shots);
+    if(!result.won || static_cast<int>(shots.size())<minShots) continue;
+    Round round=replayRound(level,shots);
+    if(!want || round.*want) return round;
+  }
+  return std::nullopt;
+}
+bool hasNumber(const Canvas& canvas, int value) {
+  return std::any_of(canvas.texts.begin(),canvas.texts.end(),[&](const auto& t){ return t.at.y>250 && t.at.y<600 && t.value==std::to_string(value); });
+}
+bool hasTune(const std::vector<float>& tones) {
+  const float tune[]{523.25f,659.25f,783.99f,1046.5f,1318.5f};
+  return std::search(tones.begin(),tones.end(),std::begin(tune),std::end(tune))!=tones.end();
+}
+// The game on `round`'s level with every shot but the winning one played out; the winning shot is pressed,
+// dragged and released, and no frame has followed it yet.
+struct Play {
+  Session session; const Round& round; float fit{}; std::size_t impactsBefore{};
+  explicit Play(const Round& r): session("",std::to_string(r.level).c_str()), round(r) {
+    session.tap({195,600}); // the instructions card
+    fit=session.canvas.fieldWidth;
+    for(std::size_t i=0; i<round.shots.size(); ++i) {
+      if(i+1==round.shots.size()) impactsBefore=session.quiet.impacts.size();
+      const auto& shot=round.shots[i];
+      session.game->pointerDown(1,shot.press); session.game->pointerMove(1,shot.release); session.game->pointerUp(1,shot.release);
+      session.canvas.read(*session.game);
+      if(i+1<round.shots.size()) session.play(round.flights[i]);
+    }
+  }
+  bool zoomed() const { return session.canvas.fieldWidth>fit*1.1f; }
+  bool atFit() const { return std::abs(session.canvas.fieldWidth-fit)<0.01f; }
+  bool cardShows() const { return session.canvas.has("TAP FOR NEXT LEVEL") || session.canvas.has("TAP FOR FREE PLAY"); }
+  // Frames until `done`, one at a time; false when 20 s pass first.
+  template<class F> bool until(F done) { for(int i=0; i<1200; ++i) { if(done()) return true; session.play(1); } return done(); }
+};
+// Reads the next level's field the way the game fits it, and presses in its first pocket.
+yy::Vec2 pocketPress(int level) {
+  using namespace tapdemo;
+  Model m; m.play(level); Camera camera; camera.world={m.width(),m.height()}; camera.fit();
+  const auto& p=m.pockets.front();
+  return camera.toScreen({(p.column+p.columns/2+0.5f)*Model::cell,(p.row+p.rows/2.0f)*Model::cell});
+}
+}
+
+// The goal celebration (T20): the look-ahead, the clock, and the whole show through the game's touch path.
+void celebrationChecks() {
+  using namespace tapdemo;
+  {
+    // The clock alone: a coming hit slows time to a quarter and pushes the camera in, a hit that does not come eases both back
+    // with nothing broken, and a real hit runs on to the card in the time it promises.
+    Celebration c;
+    check(c.phase()==Celebration::Phase::Idle && c.scale()==1 && c.focus()==0 && !c.engaged(),"the celebration starts idle");
+    for(int i=0; i<60; ++i) c.step(step,true);
+    check(c.playing() && std::abs(c.scale()-Celebration::slowScale)<1e-4f && c.focus()==1,"a coming hit slows time to a quarter and pushes the camera all the way in");
+    for(int i=0; i<90; ++i) c.step(step,false);
+    check(c.phase()==Celebration::Phase::Idle && c.scale()==1 && c.focus()==0 && !c.engaged(),"a hit that does not come eases time and the camera back to normal");
+    for(int i=0; i<40; ++i) c.step(step,true);
+    c.hit();
+    check(c.phase()==Celebration::Phase::Hit && c.scale()==1 && c.playing(),"the hit returns time to normal");
+    int frames=0;
+    while(c.phase()==Celebration::Phase::Hit && frames<600) {
+      c.step(step,true); ++frames;
+      if(frames*step<Celebration::goalTextAt-step) check(c.goalText()==0,"GOAL! waits for the camera to start back");
+    }
+    check(std::abs(frames*step-Celebration::totalSeconds)<=2*step && c.card() && c.focus()==0,"the break reaches the card in the promised time with the camera back");
+    c.reset(); c.step(step,true); c.skip();
+    check(c.card() && c.scale()==1 && c.focus()==0 && !c.engaged(),"a skip lands on the card with time and camera normal");
+  }
+  {
+    // The won scene's own shot: the look-ahead sees the goal hit before it happens, and at the very update it comes.
+    Model m; m.play(1);
+    const auto& p=m.pockets.front(); const int column=p.column+p.columns/2;
+    m.bricks[(p.row-1)*m.columns+column]=1; m.powers[(p.row-1)*m.columns+column]=Power::None; m.goal=(p.row-1)*m.columns+column; m.refreshFog();
+    const yy::Vec2 below{(column+0.5f)*Model::cell,(p.row+p.rows/2.0f)*Model::cell};
+    check(m.launch(below,{0,40}),"the won scene's shot launches");
+    const auto seen=lookAhead(m,step,Celebration::window);
+    check(seen.hit && seen.seconds>0 && seen.seconds<0.3f,"the look-ahead predicts the won scene's goal hit");
+    int updates=0; while(!m.won() && updates<120) { m.update(step); ++updates; }
+    check(std::abs(updates*step-seen.seconds)<step/2,"and at the very update it comes");
+    check(!lookAhead(m,step,Celebration::window).hit,"nothing is predicted once the round is won");
+  }
+  // The look-ahead against real rounds, in a level where the goal breaks plainly and in ones where a power-up or a Ghost landing breaks it.
+  const auto plain=findRound(nullptr,2);
+  const auto chain=findRound(&Round::chain);
+  const auto ghost=findRound(&Round::ghost);
+  check(plain && chain,"the bot wins a plain round and a round through a power-up");
+  std::cout<<"Look-ahead: plain win on level "<<plain->level<<" ("<<plain->shots.size()<<" shots), through a power-up on level "<<chain->level
+    <<", through a Ghost landing "<<(ghost ? "on level "+std::to_string(ghost->level) : std::string("not found"))<<'\n';
+  std::vector<const Round*> rounds{&*plain,&*chain};
+  if(ghost) rounds.push_back(&*ghost);
+  for(const Round* round: rounds) {
+    {
+      // The whole show: the same shot wins with the slow motion as without it, and the card ends it.
+      Play play(*round);
+      const int breakFrames=round->flights.back();
+      int frames=0, firstZoom=-1; float widest=play.fit; bool goalShown=false, cardWithGoal=false;
+      while(!play.cardShows() && frames<1200) {
+        play.session.play(1); ++frames;
+        if(play.zoomed() && firstZoom<0) firstZoom=frames;
+        widest=std::max(widest,play.session.canvas.fieldWidth);
+        if(play.session.canvas.has("GOAL!")) { goalShown=true; cardWithGoal|=play.session.canvas.has("GOAL FOUND"); }
+      }
+      check(frames<1200 && widest>play.fit*1.5f,"the camera pushes in on the way to the goal");
+      check(goalShown && !cardWithGoal,"GOAL! shows before the win card, never with it");
+      check(breakFrames<6 || frames>breakFrames+Celebration::totalSeconds*60+5,"the slow motion makes the winning flight last longer than it does at full speed");
+      check(firstZoom>=0 && (frames-firstZoom)*step>=1.0f && (frames-firstZoom)*step<=4.2f,"the celebration takes a few seconds from the push-in to the card");
+      check(play.atFit(),"the camera is back on the field at the card");
+      check(play.session.canvas.has("GOAL FOUND") && play.session.canvas.has("BALLS LEFT"),"the win card shows");
+      check(round->ballsLeft==0 || hasNumber(play.session.canvas,0),"the card opens counting from 0");
+      play.session.play(90);
+      check(hasNumber(play.session.canvas,round->ballsLeft),"the card counts up to the balls left the bare model ends with");
+      check(hasTune(play.session.quiet.tones),"the goal plays its rising tune");
+      check(std::count(play.session.quiet.impacts.begin()+static_cast<std::ptrdiff_t>(play.impactsBefore),play.session.quiet.impacts.end(),1.0f)>=1,"and a strong haptic");
+      play.session.tap({195,420});
+      check(play.session.canvas.has("TAP TO START") && !play.session.canvas.has("GOAL FOUND"),"the next tap advances to the next level");
+      if(round->level<levelCount) {
+        play.session.tap({195,600}); // the next card
+        const auto press=pocketPress(round->level+1);
+        play.session.game->pointerDown(3,press); play.session.game->pointerMove(3,{press.x,press.y+40}); play.session.game->pointerUp(3,{press.x,press.y+40});
+        play.session.canvas.read(*play.session.game);
+        const std::string left=std::to_string(levels[round->level].balls-1);
+        check(std::any_of(play.session.canvas.texts.begin(),play.session.canvas.texts.end(),[&](const auto& t){ return t.at.x==62 && t.at.y==13 && t.value==left; }),"aiming and shooting work as usual on the next level");
+      }
+    }
+    {
+      // One tap in the middle of the slow-motion approach jumps to the card without advancing past it.
+      Play play(*round);
+      check(play.until([&]{ return play.zoomed(); }) || round->flights.back()<6,"the approach starts");
+      play.session.tap({195,420});
+      check(play.cardShows() && play.session.canvas.has("GOAL FOUND") && !play.session.canvas.has("TAP TO START"),"a tap during the approach shows the card and does not advance");
+      check(play.atFit(),"and the camera is back on the field");
+      play.session.play(90);
+      check(hasNumber(play.session.canvas,round->ballsLeft),"the skipped shot ended in the same win");
+      // The camera works at once: two fingers spread to zoom.
+      play.session.game->pointerDown(4,{145,650}); play.session.game->pointerDown(5,{245,650});
+      play.session.game->pointerMove(4,{95,650}); play.session.game->pointerMove(5,{295,650}); play.session.canvas.read(*play.session.game);
+      check(play.zoomed(),"pinch zoom works right after a skip");
+      play.session.game->pointerUp(4,{95,650}); play.session.game->pointerUp(5,{295,650});
+      play.session.tap({195,420});
+      check(play.session.canvas.has("TAP TO START"),"the second tap advances");
+    }
+    {
+      // A tap after the break, while GOAL! shows, does the same.
+      Play play(*round);
+      check(play.until([&]{ return play.session.canvas.has("GOAL!"); }),"GOAL! shows");
+      play.session.tap({195,420});
+      check(play.cardShows() && play.atFit() && !play.session.canvas.has("TAP TO START"),"a tap during GOAL! shows the card without advancing");
+      play.session.tap({195,420});
+      check(play.session.canvas.has("TAP TO START"),"and the next tap advances");
+    }
+    {
+      // Pausing the app mid-approach or mid-celebration leaves no zoom or time scale behind.
+      Play play(*round);
+      check(play.until([&]{ return play.zoomed(); }) || round->flights.back()<6,"the approach starts");
+      play.session.game->pause(true); play.session.canvas.read(*play.session.game);
+      check(play.atFit(),"pausing during the approach puts the camera back");
+      play.session.game->pause(false);
+      check(play.until([&]{ return play.cardShows(); }) && play.atFit(),"the shot still wins after the pause");
+      play.session.play(90);
+      check(hasNumber(play.session.canvas,round->ballsLeft),"the same win, the same balls left");
+    }
+    {
+      Play play(*round);
+      check(play.until([&]{ return play.session.canvas.has("GOAL!"); }),"GOAL! shows again");
+      play.session.game->pause(true); play.session.canvas.read(*play.session.game);
+      check(play.cardShows() && play.atFit(),"pausing during GOAL! settles on the card with the camera back");
+      play.session.game->pause(false);
+      play.session.play(60);
+      check(play.cardShows() && play.atFit() && hasNumber(play.session.canvas,round->ballsLeft),"and it stays there");
+    }
+  }
+  std::cout<<"Goal celebration: look-ahead exact, same win with slow motion, skip, pause and next tap passed\n";
 }

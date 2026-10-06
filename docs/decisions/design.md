@@ -193,3 +193,17 @@ checks, live touch tests and nine inspected runtime/mockup pairs at 390 wide.
 **Why.** One look is what the owner asked for, and it removes the drawing paths nobody can reach, which had to be kept in step with every rendering change.
 
 **Evidence.** V10, `tests/palette_tests.cpp` (old saves with `scheme 0` and `scheme 3` through the real Game, no COLORS button) and `tests/core_tests.cpp`.
+
+### D10 — Breaking the goal plays a celebration, presentation only (2026-10-06)
+
+**Status:** active
+
+**What happened.** Yotam: "add a festive goal celebration maybe a zoomed in as in peggle game". His choices: slow motion and zoom just before the ball hits the goal, like Peggle; about 3–4 seconds before the win card, and a tap skips it; the same full celebration on every goal. Breaking the goal gave a small burst, three beeps and the plain "GOAL FOUND" card at once.
+
+**Decision.** Every goal win, in a level or in free play, plays the same celebration, in the game's render and update code only (`celebration.hpp`, `game.cpp`); the model, levels, Ghost landings and touch rules are unchanged. While a ball flies, a copy of the `Model` runs 0.4 s of game time ahead by the real frame's step (its random state copied, so a power-up chain or a Ghost landing is part of the copy). If the goal breaks inside that window, time eases to 0.25x and the camera eases to 2.2x onto the ball, then the goal. The model always steps by the real frame's dt, on the frames the scaled clock earns a step, so slow motion never changes where a ball goes (the balls are drawn a little ahead of the model between steps). The break plays a bigger burst on the goal, confetti and petals in the Garden Pop palette, a five-note rising tune and a strong haptic; 0.55 s later the camera eases back to the framing the player left, "GOAL!" pops in, and at 2.0 s after the break the win card shows (Garden Pop card art) with the balls left counting up from 0; the whole show is about 3.5 s. One tap at any point from the push-in to the card jumps to the card (a shot still in flight finishes unseen by the same steps) and does not also advance; the next tap advances. A look-ahead that sees a hit which does not come eases back with nothing broken. Pausing the app settles the show: the camera and time scale are put back, and a celebration past the break goes to the card. The OUT OF BALLS card is unchanged.
+
+**Why.** The moment the goal breaks is the game's payoff; the slow push-in makes the last half second readable and the card no longer cuts it off. Keeping the model's steps identical is what lets the slow motion promise the same shot wins.
+
+**Evidence.** V11, `tests/palette_tests.cpp` (`celebrationChecks`: the look-ahead exact on a plain win, a win through a power-up and a win through a Ghost landing, none on lost shots; the same winning shot through the game's touch path with the slow motion ends with the balls left the bare model ends with; skip, pause and next tap) and `docs/figures/celebration/`.
+
+---
