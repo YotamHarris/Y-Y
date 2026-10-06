@@ -638,7 +638,11 @@ public: void initialize(yy::Services& services) override {
       r.rectangle(card,palette.card);
       r.rectangle({card.x,card.y,card.w,2},glow(palette,Power::None));
       float y=card.y+20;
-      if(model.level()>0) { r.text({24,y},"LEVEL "+std::to_string(model.level()),teal,2); y+=34; }
+      if(model.level()>0) {
+        r.text({24,y},"LEVEL "+std::to_string(model.level()),teal,2);
+        r.text({150,y+3},expectedWins(),muted,1.5f);
+        y+=34;
+      }
       r.rectangle({24,y,40,40},tile); icon(r,palette,Power::None,{44,y+20},34);
       r.text({76,y+10},"FIND THE GOAL",glow(palette,Power::None),2.5f);
       y+=58;
@@ -715,11 +719,14 @@ public: void initialize(yy::Services& services) override {
     }
     if(renderTest) drawRenderTest(r);
   }
+  // The level's expected win rate, as the simulated player measured it (T11, docs/levels.md).
+  std::string expectedWins() const { return "EXPECTED WINS "+std::to_string(levels[model.level()-1].expectedWins)+"%"; }
   void drawGardenCard(yy::Renderer& r, yy::Rect card) {
     constexpr yy::Color ink{47,75,35}, green{46,122,48}, mutedInk{88,105,66};
     r.sprite("garden/card.bmp",card);
     float y=card.y+16;
     gardenLabel(r,{26,y},model.level()>0 ? "LEVEL "+std::to_string(model.level()) : "FREE PLAY",21,green);
+    if(model.level()>0) gardenLabel(r,{140,y+3},expectedWins(),15,mutedInk); // left of the corner leaf
     y+=34;
     iconBrick(r,garden,Power::None,{26,y,40,40},0);
     gardenLabel(r,{78,y+4},"FIND THE GOAL",25,green);

@@ -203,7 +203,9 @@ T11 adds a headless bot (`tests/level_bot.hpp`), a seed search tool
 `field` smoke scene (the opening field, card dismissed). It writes ten new
 seeds into the level table. Yotam: "all levels should have the same amount of
 balls", so every level gives 4 (`levelBalls`); levels 6 and 7 get 25 and 20 bounces. The report is
-`docs/levels.md`.
+`docs/levels.md`. Each level's card shows the bot's 2,000-game win rate as
+EXPECTED WINS N% (Yotam), from `Level::expectedWins` (captures:
+`docs/figures/levels/card-02.png`, `card-10.png`).
 
 | Level | Feel | Seed | Balls | Bot wins (2,000 games) | Experience metric |
 | ---: | --- | ---: | ---: | ---: | --- |

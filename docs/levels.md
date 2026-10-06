@@ -85,3 +85,14 @@ bounces, level 10 also 3,001 to 10,000).
 `YY_TAPDEMO_LEVEL=N YY_TAPDEMO_SCENE=field TapDemo.exe --smoke 30` with
 `YY_SCREENSHOT_PATH` set captures each level's field as it opens, the card
 dismissed: `docs/figures/levels/level-01.png` to `level-10.png`.
+
+## On the level's card
+
+Yotam asked for each level's expected win rate in the game. Each level's card
+shows EXPECTED WINS N% beside LEVEL N. N is the bot's win rate over 2,000
+games, rounded (`Level::expectedWins` in the level table; the Wins column
+above). The band test fails if the figure leaves the level's feel band, or if it
+differs from the 200 test games by more than 7 points (two widths of their
+noise). It is the bot's rate, not a person's. `YY_TAPDEMO_SCENE=instructions`
+captures the card: `docs/figures/levels/card-02.png` (55%) and `card-10.png`
+(44%).

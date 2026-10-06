@@ -335,11 +335,13 @@ void levelFlowChecks() {
   {
     Session fresh("");
     check(fresh.canvas.has("LEVEL 1") && fresh.canvas.has("NEW POWER-UP") && fresh.canvas.has("BOMB") && !fresh.canvas.has("GHOST"),"a new player opens level 1, whose card names the Bomb");
+    check(fresh.canvas.has("EXPECTED WINS 100%"),"level 1's card gives its expected win rate");
     check(fresh.storage.writes==0,"opening the app saves nothing");
   }
   {
     Session third("level 3\n");
     check(third.canvas.has("LEVEL 3") && third.canvas.has("NEW POWER-UP") && third.canvas.has("ELECTRICITY") && !third.canvas.has("BOMB"),"the app opens at the saved level, and its card names only Electricity");
+    check(third.canvas.has("EXPECTED WINS 98%"),"level 3's card gives its own expected win rate");
     const auto before=third.field();
     third.tap({330,40});
     check(third.canvas.valueAt(310,"3"),"the debug level picker shows the current level");

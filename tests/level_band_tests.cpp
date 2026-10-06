@@ -21,6 +21,9 @@ void levelBandChecks() {
     std::cout<<"Level "<<n<<": wins "<<100*m.winRate()<<"%, last ball "<<100*m.lastBallShare()<<"%, chain "<<100*m.chainShare()
       <<"%, near losses "<<100*m.nearShare()<<"%\n";
     check(m.winRate()>=t.minWins && m.winRate()<=t.maxWins,n,"the win rate is outside its feel's band");
+    check(l.expectedWins>=std::lround(100*t.minWins) && l.expectedWins<=std::lround(100*t.maxWins),n,"the card's expected win rate is outside its feel's band");
+    // The card's figure comes from 2000 games; these 200 carry about 3.5 points of noise, so 7 points is two of it.
+    check(std::abs(m.winRate()-l.expectedWins/100.0f)<=0.07f,n,"the card's expected win rate differs from the measured one");
     check(m.lastBallShare()>=t.lastBall,n,"too few wins come on the last ball");
     check(m.chainShare()>=t.chain,n,"too few wins come through a power-up");
     check(m.nearShare()>=t.near,n,"too few losses come near the goal");

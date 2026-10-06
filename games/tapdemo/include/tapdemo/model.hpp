@@ -40,6 +40,7 @@ struct Settings {
 enum class Feel : std::uint8_t { Relief, BuildUp, Fu, FuckYeah };
 // One of the fixed levels: its seed decides the field, the goal and every Ghost landing, so a
 // retry is the same level brick for brick. `introduces` is the power-up it is the first to use.
+// `expectedWins` is the bot's measured win rate in percent (docs/levels.md), shown on the level's card.
 struct Level {
   std::uint32_t seed{};
   Feel feel{};
@@ -47,6 +48,7 @@ struct Level {
   Settings grid;
   int balls{}, bounces{};
   int bombSize{}, electricSeconds{}; float electricRadius{}; int pingRadius{};
+  int expectedWins{};
 };
 constexpr int levelCount=10;
 constexpr int levelBalls=4; // every level gives the same number of balls
