@@ -1,0 +1,44 @@
+{
+  "garden": {
+    "darkest_fog_rgb": [
+      154,
+      177,
+      143
+    ],
+    "brightest_cavity_rgb": [
+      37,
+      57,
+      34
+    ],
+    "luminance_gap": 0.369,
+    "method": "min fog linear-sRGB luminance minus max cavity luminance across normalized generated textures"
+  },
+  "quarry": {
+    "darkest_fog_rgb": [
+      141,
+      172,
+      201
+    ],
+    "brightest_cavity_rgb": [
+      35,
+      46,
+      65
+    ],
+    "luminance_gap": 0.367,
+    "method": "min fog linear-sRGB luminance minus max cavity luminance across normalized generated textures"
+  },
+  "reef": {
+    "darkest_fog_rgb": [
+      127,
+      205,
+      206
+    ],
+    "brightest_cavity_rgb": [
+      19,
+      68,
+      74
+    ],
+    "luminance_gap": 0.479,
+    "method": "min fog linear-sRGB luminance minus max cavity luminance across normalized generated textures"
+  }
+}

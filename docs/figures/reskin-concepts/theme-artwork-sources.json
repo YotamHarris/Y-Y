@@ -1,0 +1,50 @@
+{
+  "created": "2026-10-06",
+  "author": "Codex with built-in imagegen; original concept artwork",
+  "purpose": "T14 owner revision: three thematic alternatives with material damage and proposed hit effects",
+  "capture_basis": "before-aim.png, before-instructions.png and before-glow.png; game checkout c8f85ab, unchanged by subsequent documentation commits",
+  "registration": "Foreground cell kinds, hit points and boxes are recovered from the genuine captures. All three concepts retain the 36-cell aiming geometry. The aim-view goal remains hidden. The glow view is a staged debug fixture.",
+  "atlas_layout": {
+    "width": 1448,
+    "height": 1086,
+    "columns": 4,
+    "rows": 3,
+    "background": "generated transparent alpha, preserved when composing",
+    "cells_in_reading_order": [
+      "three-hit intact material",
+      "two-hit damaged material",
+      "one-hit material",
+      "impact burst study",
+      "blank power holder",
+      "dark cavity texture",
+      "light fog texture",
+      "red ball",
+      "goal flag with small twist",
+      "theme decoration",
+      "blank header frame",
+      "blank card paper and frame"
+    ]
+  },
+  "atlases": [
+    {
+      "file": "garden-atlas.png",
+      "concept": "Garden Pop",
+      "brief": "Chunky tactile garden art: lush grass, cut turf and bare earth; wooden holders, dewy mist, clipping burst and ladybird goal flag.",
+      "style_reference": "Toon Blast, Peak Games; material and readability reference only, not copied artwork"
+    },
+    {
+      "file": "quarry-atlas.png",
+      "concept": "Crystal Quarry",
+      "brief": "Polished ore and brass mining art: solid ore, large glowing fissure and sand; mineral mist, chip burst and star-rivet goal flag.",
+      "style_reference": "Royal Match, Dream Games; depth and framing reference only, not copied artwork"
+    },
+    {
+      "file": "reef-atlas.png",
+      "concept": "Sunken Reef",
+      "brief": "Glossy coral and pearl art: dense coral, broken stubs and sand; aqua haze, bubble pop and three-bubble goal flag.",
+      "style_reference": "Candy Crush Saga, King; material and silhouette reference only, not copied artwork"
+    }
+  ],
+  "composition": "Generated cells are cropped and resized into captured positions. Smooth UI text and existing semantic glyphs are composed separately. Fog and cavity textures are normalized into distinct luminance ranges and mirror-repeated without joins. Card corners are composed with offline nine-slice; delivered panels are whole bitmaps, not a proposed engine nine-slice API.",
+  "limitations": "Static concept studies, not playable skins or tested animations. Generated assets require production cleanup and BMP edge validation. The system-font stand-in requires appropriately licensed implementation typography."
+}

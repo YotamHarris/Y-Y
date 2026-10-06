@@ -1,68 +1,89 @@
 [[figure]]
 id = "comparison"
-file = "comparison.png"
+file = "theme-comparison.jpg"
 kind = "chart"
-caption = "The current aiming screen beside Toy Workshop, Jewel Vault and Sugar Mist. All four retain the same grid and shot."
-source = "YYEngine / Codex, T14 original concept comparison"
+caption = "Current TapDemo beside Garden Pop, Crystal Quarry and Sunken Reef. The same grid and shot now use material damage instead of brick numbers."
+source = "YYEngine / Codex, T14 revision; original imagegen artwork composed onto captured geometry, 6 October 2026"
 
 [[figure]]
 id = "before-aim"
 file = "before-plate.png"
 kind = "capture"
-caption = "Actual TapDemo captures: aiming, instructions and the staged six-icon fixture. Full captures are stored beside this plan."
-source = "YYEngine, current checkout c8f85ab; aim, instructions and glow fixture captures, 6 October 2026"
+caption = "Actual TapDemo: aiming, instructions and the staged six-icon close-up. The goal is hidden in normal aiming; the fixture shows its artwork separately."
+source = "YYEngine checkout c8f85ab; GPU-wrapper aim, instructions and glow captures, 6 October 2026; game unchanged in revision"
 
 [[figure]]
 id = "ref-toon"
 file = "reference-toon-blast.jpg"
 kind = "research"
-caption = "Toon Blast's publisher screenshot: soft cube corners, shallow highlights and vivid colour make a dense grid readable. We borrow that material language."
+caption = "Toon Blast's publisher screenshot: chunky cubes, shallow highlights and bright silhouettes keep a crowded grid tactile and readable."
 source = "Peak Games, Toon Blast, official App Store screenshot"
 link = "https://apps.apple.com/us/app/toon-blast/id1176027022"
 fetched = "2026-10-06"
 
 [[figure]]
-id = "costs"
-file = "costs.png"
+id = "garden-board"
+file = "garden-plate.jpg"
 kind = "chart"
-caption = "Estimated days of engineering and art per skin. Light blue extends the engineering range; roles can overlap, so this is not a calendar schedule."
-source = "YYEngine / Codex, T14 estimates stated in this plan"
+caption = "Garden Pop on our aiming grid, with all six power/goal specimens and the full instructions card. Grass thins into soil; a tiny ladybird marks the goal flag."
+source = "YYEngine / Codex, original imagegen sprites and captured-layout composition, 6 October 2026"
 
 [[figure]]
-id = "toy-board"
-file = "toy-plate.png"
+id = "garden-damage"
+file = "garden-damage.jpg"
 kind = "chart"
-caption = "Toy Workshop: the captured aiming grid, six icon specimens and full instructions card. The stitched goal flag is the only small twist."
-source = "YYEngine / Codex, T14 original mockup and captured layout"
+caption = "Garden damage: lush grass, cut turf, bare soil, open path. Below: proposed contact, clipping burst and settle. Static stills show the intended juice, not tested animation."
+source = "YYEngine / Codex, original imagegen damage/impact assets and composition, 6 October 2026"
 
 [[figure]]
 id = "ref-royal"
 file = "reference-royal-match.jpg"
 kind = "research"
-caption = "Royal Match's publisher screenshot: enamel highlights, gold framing and separate piece shapes give a crowded board a polished toy feel."
+caption = "Royal Match's publisher screenshot: gold framing, rich enamel colour and bright facets give small pieces depth while separating them from the board."
 source = "Dream Games, Royal Match, official App Store screenshot"
 link = "https://apps.apple.com/us/app/royal-match/id1482155847"
 fetched = "2026-10-06"
 
 [[figure]]
-id = "royal-board"
-file = "royal-plate.png"
+id = "quarry-board"
+file = "quarry-plate.jpg"
 kind = "chart"
-caption = "Jewel Vault: the same aiming grid, six icons and instructions card. The goal rings depict the proposed heartbeat halo at its bright moment."
-source = "YYEngine / Codex, T14 original mockup and captured layout"
+caption = "Crystal Quarry keeps our aiming grid, six glyph meanings and card bounds. Ore fractures into sand; the goal flag carries one star rivet."
+source = "YYEngine / Codex, original imagegen sprites and captured-layout composition, 6 October 2026"
+
+[[figure]]
+id = "quarry-damage"
+file = "quarry-damage.jpg"
+kind = "chart"
+caption = "Mining damage: ore, wide fissure, loose sand, open path. The proposed hit flash and chip burst are static studies; the game has not been changed."
+source = "YYEngine / Codex, original imagegen damage/impact assets and composition, 6 October 2026"
 
 [[figure]]
 id = "ref-candy"
 file = "reference-candy-crush.jpg"
 kind = "research"
-caption = "Candy Crush Saga's publisher image: glossy surfaces and rounded, distinct silhouettes make pieces feel touchable against a dark board."
+caption = "Candy Crush Saga's publisher image: glossy rounded surfaces and distinct saturated silhouettes suggest touch and reward. The reef borrows this finish."
 source = "King, Candy Crush Saga, official App Store screenshot"
 link = "https://apps.apple.com/us/app/candy-crush-saga/id553834731"
 fetched = "2026-10-06"
 
 [[figure]]
-id = "sugar-board"
-file = "sugar-plate.png"
+id = "reef-board"
+file = "reef-plate.jpg"
 kind = "chart"
-caption = "Sugar Mist: the same aiming grid, six icons and instructions card. Paired fog scratches are the one small twist."
-source = "YYEngine / Codex, T14 original mockup and captured layout"
+caption = "Sunken Reef keeps our aiming grid, existing power icons and card. Coral breaks down into a sand bed; three tiny goal-flag bubbles are its small twist."
+source = "YYEngine / Codex, original imagegen sprites and captured-layout composition, 6 October 2026"
+
+[[figure]]
+id = "reef-damage"
+file = "reef-damage.jpg"
+kind = "chart"
+caption = "Reef damage: full coral, broken stubs, sand bed, open path. Below: a proposed pearl flash and bubble/coral-fleck pop shown as stills."
+source = "YYEngine / Codex, original imagegen damage/impact assets and composition, 6 October 2026"
+
+[[figure]]
+id = "costs"
+file = "theme-costs.png"
+kind = "chart"
+caption = "Estimated engineering and art days for one theme, including damage states and short effects. Light blue extends the engineering range; roles may overlap."
+source = "YYEngine / Codex, judgement estimates stated in this revised plan"

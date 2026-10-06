@@ -239,7 +239,7 @@ levels 5 and 7 teach them. Device performance is not applicable.
 
 ### V6 Three screen reskin concepts for owner selection (G12)
 
-**Status:** active
+**Status:** superseded by V7 -- the owner requested stronger themes and visible material damage
 
 T14 proposes three static looks in `docs/reskin-concepts.md`: Toy Workshop
 (Toon Blast), Jewel Vault (Royal Match) and Sugar Mist (Candy Crush Saga).
@@ -263,3 +263,37 @@ implementation; another look needs a named change first. Static images do
 not establish animated juice, touch feel, BMP alpha support or iPhone
 performance. Those checks belong to the accepted implementation. Runtime
 tests, player-path and device checks are not applicable to this concept round.
+
+### V7 Themed reskin concepts with material damage and hit-effect studies (G12)
+
+**Status:** active
+
+T14 revises the static concept package after Yotam's feedback that the first
+looks were not interesting or juicy enough. `docs/reskin-concepts.md` now
+proposes Garden Pop, Crystal Quarry and Sunken Reef, using original imagegen
+artwork composed onto the genuine game captures. The same-day Apple charts
+and credited Toon Blast, Royal Match and Candy Crush Saga references remain.
+The game itself is unchanged.
+
+Ordinary-brick numbers disappear in the mockups. Grass becomes cut turf and
+bare earth; ore develops a wide fissure and becomes sand; coral breaks into
+stubs and a sand bed. Each final hit clears the cell, preserving existing hit
+points and collision rules. Each look has one small goal-flag twist and a
+static contact/burst/settle study. Garden Pop is recommended at an estimated
+5-7 engineering days plus 4 art days, including font support and short
+cosmetic hit effects.
+
+**Visual evidence.** All nine 1170 by 2532 gameplay, instructions and staged
+power-fixture PNGs were read at 390 by 844; all three damage studies were read
+at phone width. Every page of the final 18-page, 5.08 MB PDF was inspected
+after `fe_plan.py check`, `pdf` and `shots`. All three retain the captured
+36-cell aiming geometry. Conservative fog-minus-cavity luminance gaps are
+0.369, 0.367 and 0.479, above the 0.08 minimum with independent shape cues.
+The six-icon fixture is a debug scene; the goal stays hidden in normal aiming.
+
+**Open:** Yotam chooses a theme. Accepting the revised plan starts Garden
+Pop's implementation; another theme needs a named change first. The
+180-220 ms hit settle is a proposed target, not a measured animation.
+Damage cues during motion, BMP alpha support and iPhone performance need a
+playable check after acceptance. Runtime tests, player-path and device checks
+are not applicable to this concept round. No game, engine or palette changes.
