@@ -121,6 +121,127 @@ class DiscordGoalsTests(unittest.TestCase):
         self.assertTrue(transport.authorized(self.config, '11', '33', '44'))
         self.assertFalse(transport.authorized(self.config, '22', '33', '44'))
 
+    def test_long_planner_reply_preserves_four_questions_and_puts_buttons_last(self):
+        gid = self.goal()
+        asks = [dict(question=f'Question {n}: ' + 'details ' * 60, options=['Continue', 'Change'])
+                for n in range(1, 5)]
+        result = dict(status='blocked', summary=('A paragraph of context. ' * 35 + '\n\n') * 4, asks=asks)
+        talk.answered(self.b, dict(goal_id=gid, id='longreply'), result)
+        row = dict(self.b.q1("SELECT * FROM pm_outbox WHERE dedup LIKE 'talk:%'"))
+        body = row['body']
+        parts = transport.message_parts(body)
+        self.assertEqual(''.join(parts), body)
+        self.assertGreater(len(parts), 1)
+        self.assertTrue(all(len(p) <= 4096 for p in parts))
+        for n, ask in enumerate(asks, 1):
+            question = f'**{n}.** ' + brief.ask_line(ask)
+            self.assertTrue(any(question in p for p in parts), question)
+        async def exercise():
+            client = transport.build_client(self.config, asyncio.Event())
+            channel = Mock(send=AsyncMock(side_effect=[Mock(id=i) for i in range(len(parts))]))
+            client.destination = AsyncMock(return_value=channel)
+            await client.deliver_row(row)
+            calls = channel.send.await_args_list
+            self.assertEqual(''.join(c.kwargs['embed'].description for c in calls), body)
+            self.assertEqual([bool(c.kwargs['view'].children) for c in calls], [False] * (len(parts) - 1) + [True])
+            labels = [c.label for c in calls[-1].kwargs['view'].children]
+            self.assertIn('4a. Continue', labels)
+            self.assertIn('Answer in my own words', labels)
+            self.assertEqual(calls[0].kwargs['content'], '<@22>')
+            self.assertTrue(all(c.kwargs['content'] is None for c in calls[1:]))
+            # A crash after all but the last part resumes with just the final part.
+            async def history(**kw):
+                for i, call in enumerate(calls[:-1]):
+                    yield Mock(author=Mock(id=777), embeds=[call.kwargs['embed']], id=i)
+            channel.history = history
+            channel.send = AsyncMock(return_value=Mock(id=len(parts) - 1))
+            client._connection.user = Mock(id=777)
+            row['attempts'] = 1
+            await client.deliver_row(row)
+            self.assertEqual(channel.send.await_count, 1)
+            self.assertTrue(channel.send.await_args.kwargs['view'].children)
+            self.assertEqual(json.loads(self.b.q1('SELECT sent FROM pm_outbox WHERE id=?', row['id'])[0]),
+                             [str(i) for i in range(len(parts))])
+            await client.close()
+        asyncio.run(exercise())
+
+    def test_message_parts_preserves_boundaries_long_lines_and_unicode(self):
+        for body in ('', 'short', 'x' * 4096, 'x' * 4097, 'a\r\n\r\nb\n', '\n' * 9000,
+                     '😀שלום ' * 2000, ('line\n' * 1200),
+                     '**1.** First\n\n   **a.** Choice\n**2.** Second\n   **a.** Choice'):
+            parts = transport.message_parts(body)
+            self.assertEqual(''.join(parts), body or 'Update')
+            self.assertTrue(all(0 < len(p) <= 4096 for p in parts))
+
+    def test_plan_proposal_and_review_controls_are_on_the_last_part(self):
+        gid = self.goal()
+        tasks = [dict(title='Change game', body='Update game', reasoning='Why: improve play', depends=[])]
+        talk.answered(self.b, dict(goal_id=gid, id='plan123'),
+                      dict(status='planned', summary='Context.\n\n' * 1000, tasks=tasks))
+        plan = dict(self.b.q1("SELECT * FROM pm_outbox WHERE dedup LIKE 'plan:%'"))
+        tid = store.plan_tasks(self.b, gid, tasks, approved=False, key='proposal')[0]
+        store.notify(self.b, 'proposal:test', 'Context.\n\n' * 1000, task=tid)
+        proposal = dict(self.b.q1("SELECT * FROM pm_outbox WHERE dedup='proposal:test'"))
+        store.notify(self.b, 'landed:test:' + 'a' * 40, 'Context.\n\n' * 1000, task=tid)
+        review = dict(self.b.q1("SELECT * FROM pm_outbox WHERE dedup LIKE 'landed:%'"))
+        async def exercise():
+            client = transport.build_client(self.config, asyncio.Event())
+            client._connection.user = Mock(id=777)
+            channel = Mock(send=AsyncMock(return_value=Mock(id=1)))
+            client.destination = AsyncMock(return_value=channel)
+            for row, labels in ((plan, ['Approve plan', 'Pause']),
+                                (proposal, ['Approve', 'Edit reasoning', 'Drop', 'Pause']),
+                                (review, ['Accept', 'Request changes', 'Pause'])):
+                channel.send.reset_mock()
+                await client.deliver_row(row)
+                calls = list(channel.send.await_args_list)
+                self.assertGreater(len(calls), 1)
+                self.assertTrue(all(not c.kwargs['view'].children for c in calls[:-1]))
+                self.assertEqual([c.label for c in calls[-1].kwargs['view'].children], labels)
+                async def history(**kw):
+                    for call in calls:
+                        yield Mock(author=Mock(id=777), embeds=[call.kwargs['embed']], id=1)
+                channel.history = history
+                channel.send.reset_mock()
+                row['attempts'] = 1
+                await client.deliver_row(row)
+                channel.send.assert_not_awaited()
+            await client.close()
+        asyncio.run(exercise())
+
+    def test_controls_follow_overflow_attachments_and_retry_keeps_them_last(self):
+        gid = self.goal()
+        paths = []
+        for n in range(11):
+            p = board.files_dir() / f'{n}.txt'
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text('Evidence', encoding='utf-8')
+            paths.append(str(p))
+        store.notify(self.b, 'attachment-chain', 'Context.\n\n' * 1000, goal=gid, ping=True, files=paths)
+        row = dict(self.b.q1('SELECT * FROM pm_outbox WHERE dedup=?', 'attachment-chain'))
+        async def exercise():
+            client = transport.build_client(self.config, asyncio.Event())
+            client._connection.user = Mock(id=777)
+            channel = Mock(send=AsyncMock(return_value=Mock(id=1)), guild=Mock(filesize_limit=100000))
+            client.destination = AsyncMock(return_value=channel)
+            await client.deliver_row(row)
+            calls = channel.send.await_args_list
+            self.assertTrue(all(not c.kwargs['view'].children for c in calls[:-1]))
+            self.assertEqual([c.label for c in calls[-1].kwargs['view'].children], ['Pause'])
+            self.assertEqual(len(calls[0].kwargs['files']), 10)
+            self.assertEqual(len(calls[-1].kwargs['files']), 1)
+            async def history(**kw):
+                for call in calls[:-1]:
+                    yield Mock(author=Mock(id=777), embeds=[call.kwargs['embed']], id=1)
+            channel.history = history
+            channel.send = AsyncMock(return_value=Mock(id=2))
+            row['attempts'] = 1
+            await client.deliver_row(row)
+            self.assertEqual(channel.send.await_count, 1)
+            self.assertEqual([c.label for c in channel.send.await_args.kwargs['view'].children], ['Pause'])
+            await client.close()
+        asyncio.run(exercise())
+
 
 if __name__ == '__main__':
     unittest.main()

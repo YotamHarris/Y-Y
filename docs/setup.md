@@ -58,6 +58,11 @@ their planning or task threads. Goal and task pings mention those participants w
 remain in the developer allowlist. Older goals and manager-wide alerts keep the
 configured owner fallback.
 
+Long manager replies preserve their full text, keep questions with their options
+when they fit in one message, and place controls on the final message in the chain.
+The ping and first attachment batch remain on the first message; excess attachments
+follow before the controls. Delivery retries retain the per-message footer markers.
+
 The board is http://127.0.0.1:45320 and is bound to loopback. Double-click MobileStudio.cmd
 to open it. Discord works independently of browser access and needs no incoming public port.
 The board's native server has no login. Optional sharing uses a protected Cloudflare Quick

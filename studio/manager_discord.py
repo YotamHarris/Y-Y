@@ -4,6 +4,7 @@ import datetime
 import json
 import logging
 from pathlib import Path
+import re
 import time
 
 import fe_board
@@ -16,6 +17,46 @@ import studio_config
 
 LOG = logging.getLogger(__name__)
 MAX_ATTACHMENTS = 10  # Discord's limit for one message (error 50035 "Must be 10 or fewer")
+EMBED_LIMIT = 4096
+
+
+def message_parts(body, limit=EMBED_LIMIT):
+    """Preserve every character; keep paragraphs and numbered questions together when they fit."""
+    if not body:
+        return ['Update']
+    blocks, block, question = [], '', False
+    for line in body.splitlines(keepends=True):
+        numbered = bool(re.match(r'^\s*(?:\*\*)?\d+[.)](?:\*\*)?\s', line))
+        if question and block.endswith(('\n\n', '\r\n\r\n')) and line.strip() and not line[0].isspace():
+            blocks.append(block)
+            block, question = '', False
+        if numbered and block:
+            blocks.append(block)
+            block = ''
+        if numbered:
+            question = True
+        block += line
+        if not line.strip() and not question:
+            blocks.append(block)
+            block = ''
+    if block:
+        blocks.append(block)
+    parts, part = [], ''
+    for block in blocks:
+        # An oversized paragraph/question must break at lines. Only an oversized
+        # single line needs a hard cut. Normal questions remain indivisible.
+        units = [block] if len(block) <= limit else block.splitlines(keepends=True)
+        for unit in units:
+            if part and len(part) + len(unit) > limit:
+                parts.append(part)
+                part = ''
+            while len(unit) > limit:
+                parts.append(unit[:limit])
+                unit = unit[limit:]
+            part += unit
+    if part:
+        parts.append(part)
+    return parts
 
 
 def authorized(config, user, guild, channel, parent=None, known_threads=()):
@@ -561,7 +602,7 @@ def build_client(config, wake):
                             footer = embed.footer.text or ''
                             if footer.startswith(marker):
                                 delivered[footer] = str(msg.id)
-            chunks = [row['body'][i:i+3500] for i in range(0, len(row['body']), 3500)] or ['Update']
+            chunks = message_parts(row['body'])
             ids = []
             kind, _, rest = row['dedup'].partition(':')
             review_head = rest.partition(':')[2] if row['task_id'] and kind in ('landed', 'accept-control') else None
@@ -576,37 +617,35 @@ def build_client(config, wake):
                         oversize.append(p.name)
             # Discord takes ten attachments to a message: the rest follow in messages of their own.
             batches = [paths[n:n + MAX_ATTACHMENTS] for n in range(0, len(paths), MAX_ATTACHMENTS)]
+            final_view = None
             for i, chunk in enumerate(chunks):
                 key = marker + str(i)
-                if key in delivered:
-                    ids.append(delivered[key])
-                    continue
                 embed = discord.Embed(description=chunk)
                 embed.set_footer(text=key)
                 view = discord.ui.View(timeout=None)
-                if i == 0 and review_head and task and task['status'] not in ('done', 'dropped'):
+                if i == len(chunks) - 1 and review_head and task and task['status'] not in ('done', 'dropped'):
                     # The message is a review of that commit and carries its buttons whenever it is
                     # sent, whatever the task has done since it was queued (D284).
                     for label, action, style in [('Accept', 'accept', discord.ButtonStyle.success),
                                                   ('Request changes', 'changes', discord.ButtonStyle.secondary)]:
                         view.add_item(discord.ui.Button(label=label, style=style,
                                       custom_id=f'pm:{action}:{row["task_id"]}:{review_head[:12]}'))
-                if i == 0 and task and task['status'] == 'idea' and row['dedup'].startswith(('task:', 'proposal:')):
+                if i == len(chunks) - 1 and task and task['status'] == 'idea' and row['dedup'].startswith(('task:', 'proposal:')):
                     # A proposal (D195): nothing starts before Approve.
                     for label, action, style in [('Approve', 'approve', discord.ButtonStyle.success),
                                                   ('Edit reasoning', 'why', discord.ButtonStyle.primary),
                                                   ('Drop', 'drop', discord.ButtonStyle.danger)]:
                         view.add_item(discord.ui.Button(label=label, style=style,
                                                         custom_id=f'pm:{action}:{row["task_id"]}'))
-                if i == 0 and row['dedup'].startswith('plan:') and row.get('goal_id'):
+                if i == len(chunks) - 1 and row['dedup'].startswith('plan:') and row.get('goal_id'):
                     with fe_board.Board() as b:
                         g = b.q1('SELECT plan FROM pm_goals WHERE id=?', row['goal_id'])
-                    key = row['dedup'].rsplit(':', 1)[1]
-                    if g and g[0] and json.loads(g[0])['key'] == key:
+                    plan_key = row['dedup'].rsplit(':', 1)[1]
+                    if g and g[0] and json.loads(g[0])['key'] == plan_key:
                         view.add_item(discord.ui.Button(label='Approve plan', style=discord.ButtonStyle.success,
-                                                        custom_id=f'pm:plan:{row["goal_id"]}:{key}'))
+                                                        custom_id=f'pm:plan:{row["goal_id"]}:{plan_key}'))
                 with fe_board.Board() as b:
-                    ask = b.q1('SELECT * FROM pm_asks WHERE dedup=? AND done=0', row['dedup']) if i == 0 else None
+                    ask = b.q1('SELECT * FROM pm_asks WHERE dedup=? AND done=0', row['dedup']) if i == len(chunks) - 1 else None
                 who = row['task_id'] or f'g{row.get("goal_id")}'  # a planner's question has no task
                 if ask:
                     # D224: a button per option, a row per question (the recommended option first,
@@ -621,11 +660,17 @@ def build_client(config, wake):
                     view.add_item(discord.ui.Button(label='Answer in my own words', row=4,
                                                     style=discord.ButtonStyle.primary,
                                                     custom_id=f'pm:own:{who}:{ask["id"]}'))
-                if i == 0 and not quick.is_answer(row):
+                if i == len(chunks) - 1 and not quick.is_answer(row):
                     view.add_item(discord.ui.Button(label='Pause', custom_id='pm:pause', row=4 if ask else None))
+                if i == len(chunks) - 1:
+                    final_view = view
                 for name in oversize if i == 0 else ():
                     embed.add_field(name='Evidence image too large for Discord', value=name[:200])
-                msg = await self.send_message(channel, row, embed, view, batches[0] if i == 0 and batches else [], i == 0)
+                if key in delivered:
+                    ids.append(delivered[key])
+                    continue
+                text_view = discord.ui.View(timeout=None) if len(batches) > 1 else view
+                msg = await self.send_message(channel, row, embed, text_view, batches[0] if i == 0 and batches else [], i == 0)
                 ids.append(str(msg.id))
             for n, batch in enumerate(batches[1:], 1):
                 fkey = f'{marker}f{n}'
@@ -634,7 +679,8 @@ def build_client(config, wake):
                     continue
                 more = discord.Embed(description=f'Attachments, continued ({n + 1} of {len(batches)})')
                 more.set_footer(text=fkey)
-                msg = await self.send_message(channel, row, more, discord.ui.View(timeout=None), batch, False)
+                view = final_view if n == len(batches) - 1 else discord.ui.View(timeout=None)
+                msg = await self.send_message(channel, row, more, view, batch, False)
                 ids.append(str(msg.id))
             if row['dedup'].startswith('close:') and isinstance(channel, discord.Thread):
                 # The task is closed on the board (D192); the next message to it reopens it.

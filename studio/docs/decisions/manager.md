@@ -590,3 +590,16 @@ that chain was the manager's code, and each failed without a word.
 Discord authentication accepts the configured owner_ids allowlist, defaulting to the single owner_id. Authenticated input retains its author. A new goal retains its requester and everyone who writes or uses a control in its planning or task threads. Pings for that goal and its tasks mention those participants who remain allowed. Manager-wide notices and older goals with no recorded requester retain the owner fallback. Replayed input cannot change its author. Additive tables preserve existing stores.
 
 **Validation:** test_discord_goals.py exercises transport receipt, partial answer buttons, planner replies, task questions, goal completion, allowlist removal, legacy goals and duplicate input without network access.
+
+
+---
+
+### S37 — Long Discord replies keep their text and put controls last (2026-10-06)
+
+**Status:** active
+
+**Origin:** YYEngine G10
+
+Outbox replies pack whole paragraphs and numbered questions with their options into descriptions of at most 4096 characters. Oversized blocks split at lines; only a line beyond the limit needs a hard cut. Joining the descriptions reconstructs the exact body. All controls belong on the final message, after overflow attachment batches when present; the ping and first attachment batch stay on the first message. Existing pm-event footer markers retain retry deduplication.
+
+**Validation:** test_discord_goals.py checks a four-question planner reply, Unicode and line boundaries, approval and review controls, overflow attachments, and send/ack recovery after partial delivery.

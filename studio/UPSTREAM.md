@@ -6,6 +6,7 @@ Imported commit: `89ded6f2d5ce6b4ebc1c2e389e89c1bf4dbe6175`.
 
 Imported manager fix G9: `8e37ae10beff0c576b3318de4ad9063b6b009353`. This pinned upstream change is applied
 to the base snapshot above while preserving YYEngine extensions.
+Imported manager fix G10: `d1dd32b687c60ac4ebdb62bf7e8ea934e6c0ccdc` (message splitting and final controls).
 
 This is a vendored snapshot so YYEngine deployments and worker checkouts get the
 same reviewed manager and board. There is no dependency on a moving branch.
