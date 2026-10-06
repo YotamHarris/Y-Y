@@ -63,7 +63,7 @@ public:
   yy::Haptics* haptics{};
   Camera camera;
   std::optional<Aim> aim;
-  bool instructions{true}; // shown when the game opens and after each restart
+  bool instructions{true}; // shown when the game opens and a level or free play starts; a retry skips it
   yy::Vec2 rejected{}; float rejectTime{}; // where a press could not hold a ball, while the ring shows
   explicit Touch(Model& m): model(m) { refit(); }
   // Shows the whole grid, sized as the model's grid is now (after a restart).

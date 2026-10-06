@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace tapdemo {
@@ -34,6 +36,27 @@ struct Settings {
   // The settings within their ranges.
   Settings clamped() const;
 };
+// The experience a level is built for, from a breather to a payoff.
+enum class Feel : std::uint8_t { Relief, BuildUp, Fu, FuckYeah };
+// One of the fixed levels: its seed decides the field, the goal and every Ghost landing, so a
+// retry is the same level brick for brick. `introduces` is the power-up it is the first to use.
+struct Level {
+  std::uint32_t seed{};
+  Feel feel{};
+  Power introduces{};
+  Settings grid;
+  int balls{}, bounces{};
+  int bombSize{}, electricSeconds{}; float electricRadius{}; int pingRadius{};
+};
+constexpr int levelCount=10;
+// levels[0] is level 1.
+extern const std::array<Level,levelCount> levels;
+// The level an end-of-round tap opens: the next one after a win, the same one after a loss.
+// Winning the last level leads to free play (0).
+constexpr int nextLevel(int level, bool won) { return !won ? level : level<levelCount ? level+1 : 0; }
+// The reached level as saved on the device, and back; a missing or damaged save reads as level 1.
+std::string saveProgress(int level);
+int loadProgress(std::string_view text);
 // A power-up that fired: its brick's cell, and for Ghost the cell its ball reappeared at (else -1).
 struct Fired { Power power{}; int cell{-1}, to{-1}; };
 // What the last update did, so the game can play sounds and haptics.
@@ -50,6 +73,7 @@ struct Hits { int bricksHit{}, bricksBroken{}, bounces{}, ballsSpent{}; std::vec
 // glowing bricks and the goal within `pingRadius` cells of the pinged brick.
 class Model {
   std::uint32_t randomState;
+  int level_{}; // 1..levelCount, or 0 in free play
   bool paused_{};
   std::vector<int> fog_; // straight steps from each cell to the nearest empty cell
   std::vector<Fired> pending;
@@ -94,11 +118,16 @@ public:
   int goal{-1}; // the goal brick's cell
   Hits hits;
   explicit Model(std::uint32_t seed=42);
-  // A new grid with a new goal; balls and bounces are clamped to 1..maxSetting and the
-  // settings to their ranges.
+  // Free play: a new grid with a new goal from the advancing random state; balls and bounces
+  // are clamped to 1..maxSetting and the settings to their ranges.
   void restart(int balls, int bounces, const Settings& grid);
   void restart(int balls, int bounces) { restart(balls, bounces, settings); }
-  void restart() { restart(ballCount, bouncesPerBall); }
+  // Plays the level again from its seed, or a new free-play grid with the same settings.
+  void restart();
+  // Starts level 1..levelCount (clamped) from its seed with its table's settings, including the
+  // bomb size, lightning and ping radius; snapDegrees is left alone.
+  void play(int level);
+  int level() const { return level_; }
   float width() const { return columns*cell; }
   float height() const { return rows*cell; }
   int brick(int column, int row) const;

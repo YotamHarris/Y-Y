@@ -3,6 +3,8 @@
 #include <array>
 #include <cstdlib>
 #include <fstream>
+#include <iterator>
+#include <string>
 #include <unordered_map>
 #include <vector>
 #ifdef _WIN32
@@ -102,6 +104,32 @@ public:
   void humStop() override {}
   void thump() override {}
 };
+// Each name is a file in the app's preference folder; a write goes to a temporary file first and
+// replaces the old one by rename, so a crash mid-write leaves the previous text.
+class PreferenceStorage final: public Storage {
+  std::string folder;
+public:
+  PreferenceStorage() {
+    const char* appName=SDL_GetAppMetadataProperty(SDL_PROP_APP_METADATA_NAME_STRING);
+    char* path=SDL_GetPrefPath("YYEngine",appName ? appName : "Game");
+    if(path) { folder=path; SDL_free(path); }
+  }
+  std::string read(std::string_view name) override {
+    if(folder.empty()) return {};
+    std::ifstream in(folder+std::string(name),std::ios::binary);
+    return {std::istreambuf_iterator<char>(in),std::istreambuf_iterator<char>()};
+  }
+  bool write(std::string_view name, std::string_view text) override {
+    if(folder.empty()) return false;
+    const std::string path=folder+std::string(name), temporary=path+".tmp";
+    {
+      std::ofstream out(temporary,std::ios::binary|std::ios::trunc);
+      out.write(text.data(),static_cast<std::streamsize>(text.size()));
+      if(!out.flush()) return false;
+    }
+    return SDL_RenamePath(temporary.c_str(),path.c_str());
+  }
+};
 #if defined(__APPLE__) && TARGET_OS_IOS
 using PlatformHaptics=AppleHaptics;
 #else
@@ -114,6 +142,7 @@ struct Runtime::Impl {
   SDLRenderer renderer;
   SDLAudio audio;
   std::unique_ptr<Haptics> haptics;
+  std::unique_ptr<Storage> storage;
   PointerTracker pointers;
   FixedClock clock;
   std::uint64_t previous{}, frames{};
@@ -197,7 +226,8 @@ bool Runtime::initialize() {
   if(!impl->renderer.handle) { SDL_Log("Renderer: %s",SDL_GetError()); return false; }
   SDL_SetRenderVSync(impl->renderer.handle,1);
   impl->audio.initialize(); impl->viewport(); impl->haptics=std::make_unique<PlatformHaptics>();
-  Services services{impl->renderer,impl->audio,*impl->haptics}; impl->game->initialize(services);
+  impl->storage=std::make_unique<PreferenceStorage>();
+  Services services{impl->renderer,impl->audio,*impl->haptics,*impl->storage}; impl->game->initialize(services);
   impl->previous=SDL_GetTicksNS(); impl->initialized=true; return true;
 }
 bool Runtime::event(const void* raw) {

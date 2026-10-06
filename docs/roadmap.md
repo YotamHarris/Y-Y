@@ -130,3 +130,65 @@ run exactly horizontal while the band to the finger keeps its slight tilt.
 **Open:** Yotam's phone review of the numbers and of tapping the denser panel.
 A bomb near the wall can still exist when the bomb size is raised after the
 grid was generated. Device performance is not applicable.
+
+### V4 Ten fixed levels, retries on the same field (D5)
+
+**Status:** active
+
+T10 adds the level table, `Model::play`, saved progress through the new
+`yy::Storage` service, the LEVEL header, the next-level and retry overlays, a
+level card that names the new power-up and lists only the level's own, and
+DEBUG's LEVEL row (FREE, 1 to 10). DEBUG now has fifteen 44 by 38 stepper pairs
+on a 42-point pitch (APPLY NOW at 66; APPLY ON RESTART at 298: level, balls,
+bounces, grid size, glowing; FREE PLAY WEIGHTS at 530), COLORS at 746 (310 by
+38), RESTART and CLOSE at 792.
+
+| Level | Feel | Power-ups | Grid | Balls / bounces | Random player wins |
+| --- | --- | --- | --- | --- | ---: |
+| 1 | relief | Bomb (new) | 12x20 | 8 / 15 | 99% |
+| 2 | build-up | Bomb, 12% glow | 12x20 | 5 / 12 | 66% |
+| 3 | relief | Electricity (new) | 12x20 | 8 / 15 | 86% |
+| 4 | fu | Electricity, 4% glow | 18x30 | 5 / 10 | 19% |
+| 5 | build-up | Speed (new) | 18x30 | 7 / 15 | 64% |
+| 6 | fuck yeah | Bomb + Electricity, 15% | 18x30 | 8 / 15 | 100% |
+| 7 | relief | Ping (new) | 18x30 | 8 / 15 | 78% |
+| 8 | build-up | Ping + Bomb | 24x40 | 7 / 15 | 59% |
+| 9 | fu | Ghost (new), 3% glow | 24x40 | 5 / 12 | 14% |
+| 10 | fuck yeah | all five, 15% | 30x50 | 10 / 15 | 99% |
+
+The seeds are placeholders picked by hand with a throwaway bot (one ball at a
+time from a random open cell in a random direction, 200 tries per seed) so
+that every level is winnable; T11 tunes them.
+
+**Tests.** `scripts/build.ps1` runs `yy_tests`. For every level: the grid,
+balls, bounces, tuning, glow and weights match the table; the goal is plain
+and fogged; only the level's kinds glow; the field is the same from two models
+with different histories; five shots flown out, a restart, and the same five
+shots give identical bricks, powers, goal, balls left and fired power-ups with
+Ghost landings. A Ghost brick placed above level 9's pocket lands the ball on
+the same cell on three tries. Power-ups are introduced Bomb, Electricity,
+Speed, Ping, Ghost, each alone and before any use. A win advances (10 leads to
+free play), a loss keeps the level, and `level N` saves round-trip; damaged
+saves open level 1. Through the real Game with an in-memory storage: a new
+player opens level 1 with the Bomb card; a save of level 3 opens level 3 with
+only Electricity listed; DEBUG RESTART of level 3 draws the identical field;
+the picker steps to 4 (opened and saved), to FREE (a 24x40 field, save kept)
+and stops at 10; the `won` scene on level 1 shows TAP FOR NEXT LEVEL and the
+tap opens level 2 on its card and saves it; the new `lost` scene on level 2
+shows TAP TO RETRY and the tap redraws level 2's field colour for colour, with
+no card and no save; winning level 10 leads to FREE PLAY. Making `play` skip
+the seed reset fails the tests.
+
+**Visual evidence.** `scripts/build.ps1 -Smoke` then `TapDemo.exe --smoke 150`
+with `YY_TAPDEMO_LEVEL` (new: pins a level without saving) and
+`YY_TAPDEMO_SCENE`: level 3 card, `header`, `debug`; level 1 `won`; level 2
+`lost`; level 10 `won`; free play `grid-min`. Inspected 390 by 844 captures:
+LEVEL 3 and LEVEL 10 fit between the ball counter and DEBUG; the card names
+ELECTRICITY under NEW POWER-UP; the overlays read TAP FOR NEXT LEVEL, TAP TO
+RETRY and TAP FOR FREE PLAY; every debug row is on screen with the free-play
+rows muted while a level is picked.
+
+**Open:** the player path on a phone or simulator (play level 1 to a win, see
+level 2, lose, retry) is Yotam's TestFlight check; the Windows tests drive the
+same Game handlers. Seeds and numbers are T11's. Debug settings other than the
+level are still session-only (T9). Device performance is not applicable.

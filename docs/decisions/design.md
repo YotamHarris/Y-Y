@@ -88,3 +88,33 @@ angle keeps every other aim exact.
 **Evidence.** V3.
 
 ---
+
+### D5 — Ten fixed levels in order; a level's seed decides it and every retry (2026-10-06)
+
+**Status:** active
+
+**What happened.** Yotam: "level shouldn't randomize so the player will have a more info as he retries the level", and the first levels should focus "on the uniqueness of one powerup and gradually pilling up". Power-up order is Yotam's: Bomb, Electricity, Speed, Ping, Ghost. The feel of each level (relief, build-up, fu, fuck yeah) is the planner's starting plan, which T11 retunes.
+
+**Decision.** TapDemo plays ten fixed levels from a table in the model
+(`tapdemo::levels`). Each holds a seed, its feel, the power-up it introduces,
+the grid scale, glow share and weights, balls, bounces, bomb size, lightning
+seconds and reach, and ping radius. `Model::play(n)` resets the random state
+to the seed before building the field, so the bricks, the goal and every Ghost
+landing repeat on a retry. A level that introduces a power-up weights only that
+kind; later levels stack them. Grids grow from 12 by 20 (levels 1 to 3) to 30
+by 50 (level 10).
+
+A new player starts at level 1. A win offers the next level, a loss a retry
+(straight back into play, no card); winning level 10 leads to free play. Free
+play is the old random field from the advancing random state with the debug
+grid settings. The reached level is saved as `level N` in `progress.txt` in the
+app's preference folder (a new `yy::Storage` engine service, written through a
+temporary file and a rename), and the app opens at it. DEBUG's LEVEL row picks
+1 to 10 or FREE; balls, bounces, grid, glow and weights apply to free play only.
+
+**Why.** A field that stays the same lets a retry use what the last try
+revealed. One new power-up per level teaches each before they combine.
+
+**Evidence.** V4.
+
+---

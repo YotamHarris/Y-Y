@@ -11,6 +11,7 @@
 #include <vector>
 
 void paletteChecks();
+void levelFlowChecks();
 
 static void check(bool condition, const char* label) { if(!condition) { std::cerr<<label<<'\n'; std::exit(1); } }
 
@@ -675,6 +676,101 @@ static void tapdemoChecks() {
     check(near(t.camera.zoom,t.camera.minZoom()),"zoom stops at the whole grid");
   }
 }
+// The ten levels: each loads its own table, a retry is the same field shot for shot, and progress
+// moves on a win, stays on a loss and survives a save.
+static void levelChecks() {
+  using tapdemo::levels; using tapdemo::levelCount; using tapdemo::Settings; using tapdemo::powerKinds;
+  // A level's state: every cell, power, the goal, the pockets and the balls left.
+  const auto snapshot=[](const Model& m) {
+    std::vector<int> s(m.bricks.begin(),m.bricks.end());
+    for(Power p: m.powers) s.push_back(static_cast<int>(p));
+    s.push_back(m.goal); s.push_back(m.ballsLeft); s.push_back(m.columns);
+    for(const auto& p: m.pockets) { s.push_back(p.column); s.push_back(p.row); s.push_back(p.columns); s.push_back(p.rows); }
+    return s;
+  };
+  // The same five shots from the first pocket, each flown out; every power-up fired, with
+  // Ghost's landing cell, is recorded.
+  const auto play=[&](Model& m) {
+    std::vector<int> fired;
+    const yy::Vec2 at=pocketCentre(m);
+    for(yy::Vec2 pull: {yy::Vec2{20,40},{-40,15},{5,-40},{40,-10},{-25,-30}}) {
+      if(m.over() || !m.launch(at,pull)) continue;
+      for(int t=0; t<60*40 && !m.balls.empty() && !m.over(); ++t) {
+        m.update(1.0f/60);
+        for(const auto& f: m.hits.fired) { fired.push_back(static_cast<int>(f.power)); fired.push_back(f.cell); fired.push_back(f.to); }
+      }
+    }
+    auto s=snapshot(m); s.insert(s.end(),fired.begin(),fired.end());
+    return s;
+  };
+  Power seen[powerKinds+1]{}; int order=0;
+  const Power introductions[]{Power::Bomb,Power::Electricity,Power::Speed,Power::Ping,Power::Ghost};
+  int previousColumns=0;
+  for(int n=1; n<=levelCount; ++n) {
+    const auto& l=levels[n-1];
+    Model a(1), b(777);
+    a.play(n); b.play(n);
+    check(a.level()==n && a.columns==Settings::shapeColumns*l.grid.gridScale && a.rows==Settings::shapeRows*l.grid.gridScale,"a level builds its own grid size");
+    check(a.ballCount==l.balls && a.bouncesPerBall==l.bounces && a.ballsLeft==l.balls,"a level brings its balls and bounces");
+    check(a.bombSize==l.bombSize && a.electricSeconds==l.electricSeconds && near(a.electricRadius,l.electricRadius) && a.pingRadius==l.pingRadius,"a level brings its power-up tuning");
+    check(a.settings.glow==l.grid.glow && a.settings.weights==l.grid.weights,"a level brings its glow share and weights");
+    check(a.columns>=previousColumns,"the grids never shrink from one level to the next");
+    previousColumns=a.columns;
+    check(a.goal>=0 && a.power(a.goal%a.columns,a.goal/a.columns)==Power::None && !a.visible(a.goal%a.columns,a.goal/a.columns),"every level hides a plain goal in the fog");
+    for(Power p: a.powers) check(p==Power::None || l.grid.weights[static_cast<int>(p)-1]>0,"a level glows only with its own power-ups");
+    check(snapshot(a)==snapshot(b),"a level's field does not depend on what came before it");
+    const auto first=play(a);
+    a.restart();
+    check(a.level()==n && snapshot(a)==snapshot(b),"a retry restores the level's field");
+    check(play(a)==first && play(b)==first,"the same shots on a retry break the same bricks, fire the same power-ups and land Ghost in the same place");
+    // Each power-up is introduced by the first level that weights it, and alone.
+    if(l.introduces!=Power::None) {
+      check(order<5 && l.introduces==introductions[order++],"power-ups arrive Bomb, Electricity, Speed, Ping, Ghost");
+      check(seen[static_cast<int>(l.introduces)]==Power::None,"a power-up is introduced once");
+      for(int k=1; k<=powerKinds; ++k) check((l.grid.weights[k-1]>0)==(k==static_cast<int>(l.introduces)),"a level introducing a power-up weights only that kind");
+    }
+    for(int k=1; k<=powerKinds; ++k) if(l.grid.weights[k-1]>0) {
+      check(seen[k]!=Power::None || l.introduces==static_cast<Power>(k),"no level uses a power-up before it is introduced");
+      seen[k]=static_cast<Power>(k);
+    }
+  }
+  check(order==5,"all five power-ups are introduced");
+  check(levels[0].grid.gridScale==Settings::minScale,"level 1 is the smallest grid, 12x20");
+  {
+    // Ghost on level 9: a Ghost brick above the pocket sends the ball to the same cell on every try.
+    std::vector<int> landings;
+    for(int attempt=0; attempt<3; ++attempt) {
+      Model m(attempt+5); m.play(9);
+      const auto& p=m.pockets.front();
+      const int column=p.column+p.columns/2;
+      m.bricks[(p.row-1)*m.columns+column]=1; m.powers[(p.row-1)*m.columns+column]=Power::Ghost; m.refreshFog();
+      m.launch({(column+0.5f)*Model::cell,pocketCentre(m).y},{0,40});
+      int to=-1;
+      for(int t=0; t<120 && to<0; ++t) { m.update(1.0f/60); for(const auto& f: m.hits.fired) if(f.power==Power::Ghost) to=f.to; }
+      check(to>=0,"the ball breaks the Ghost brick");
+      landings.push_back(to);
+    }
+    check(landings[0]==landings[1] && landings[1]==landings[2],"Ghost lands in the same cell on every try");
+  }
+  {
+    // Free play keeps today's advancing random state and its own settings.
+    Model m(3); m.play(2);
+    Settings s; s.gridScale=3;
+    m.restart(4,6,s);
+    check(m.level()==0 && m.columns==18 && m.ballCount==4,"free play leaves the level and uses the settings it is given");
+    const auto once=snapshot(m);
+    m.restart();
+    check(m.level()==0 && snapshot(m)!=once,"a free-play restart builds a new field");
+  }
+  for(int n=1; n<=levelCount; ++n) {
+    check(tapdemo::nextLevel(n,false)==n,"a loss keeps the level");
+    check(tapdemo::nextLevel(n,true)==(n<levelCount ? n+1 : 0),"a win advances, and the last leads to free play");
+    check(tapdemo::loadProgress(tapdemo::saveProgress(n))==n,"saved progress round-trips");
+  }
+  for(const char* bad: {"","level ","level 0","level 11","level x","lvl 4","level -3"}) check(tapdemo::loadProgress(bad)==1,"a missing or damaged save opens level 1");
+  check(tapdemo::loadProgress("level 7\n")==7 && tapdemo::saveProgress(7)=="level 7\n","the save is one plain line");
+  std::cout<<"Levels: ten tables load, retries repeat shot for shot, progress round-trips\n";
+}
 int main() {
   yy::Viewport v{{10,40,780,1688}};
   auto point=v.map({400,884});
@@ -713,6 +809,8 @@ int main() {
   settingsChecks();
   glowChecks();
   snapChecks();
+  levelChecks();
   paletteChecks();
+  levelFlowChecks();
   std::cout<<"Engine and TapDemo checks passed\n";
 }

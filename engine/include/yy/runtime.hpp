@@ -29,7 +29,14 @@ public:
   virtual void humStop() = 0;
   virtual void thump() = 0;                   // firm release
 };
-struct Services { Renderer& renderer; Audio& audio; Haptics& haptics; };
+// Small named text files kept on the device between runs, in SDL's preference folder.
+class Storage {
+public:
+  virtual ~Storage() = default;
+  virtual std::string read(std::string_view name) = 0; // empty when nothing was written
+  virtual bool write(std::string_view name, std::string_view text) = 0; // replaces the whole file
+};
+struct Services { Renderer& renderer; Audio& audio; Haptics& haptics; Storage& storage; };
 class Game {
 public:
   virtual ~Game() = default;

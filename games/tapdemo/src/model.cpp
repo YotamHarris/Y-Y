@@ -1,6 +1,7 @@
 #include <tapdemo/model.hpp>
 #include <algorithm>
 #include <cmath>
+#include <charconv>
 #include <deque>
 
 namespace tapdemo {
@@ -25,6 +26,43 @@ yy::Vec2 snapPull(yy::Vec2 pull, float degrees) {
   return pull;
 }
 Model::Model(std::uint32_t seed): randomState(seed ? seed : 42) { restart(); }
+
+// Bomb, Electricity, Speed, Ping, then Ghost, each brought in alone and then stacked. The seeds
+// are hand-picked placeholders that a random player wins (one ball at a time, from a random open
+// cell in a random direction: 99, 66, 86, 19, 64, 100, 78, 59, 14 and 99% of 200 tries); task T11
+// tunes them and the numbers.
+// Weights run Bomb, Electricity, Ping, Ghost, Speed.
+const std::array<Level,levelCount> levels{{
+  {.seed=901188, .feel=Feel::Relief, .introduces=Power::Bomb, .grid={.gridScale=2,.glow=16,.weights={1,0,0,0,0}},
+   .balls=8, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6},
+  {.seed=201838, .feel=Feel::BuildUp, .introduces=Power::None, .grid={.gridScale=2,.glow=24,.weights={1,0,0,0,0}},
+   .balls=5, .bounces=12, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6},
+  {.seed=979312, .feel=Feel::Relief, .introduces=Power::Electricity, .grid={.gridScale=2,.glow=16,.weights={0,1,0,0,0}},
+   .balls=8, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6},
+  {.seed=201838, .feel=Feel::Fu, .introduces=Power::None, .grid={.gridScale=3,.glow=8,.weights={0,1,0,0,0}},
+   .balls=5, .bounces=10, .bombSize=5, .electricSeconds=5, .electricRadius=2, .pingRadius=6},
+  {.seed=901188, .feel=Feel::BuildUp, .introduces=Power::Speed, .grid={.gridScale=3,.glow=16,.weights={0,0,0,0,1}},
+   .balls=7, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6},
+  {.seed=328984, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=3,.glow=30,.weights={1,1,0,0,0}},
+   .balls=8, .bounces=15, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=6},
+  {.seed=901188, .feel=Feel::Relief, .introduces=Power::Ping, .grid={.gridScale=3,.glow=16,.weights={0,0,1,0,0}},
+   .balls=8, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=7},
+  {.seed=604740, .feel=Feel::BuildUp, .introduces=Power::None, .grid={.gridScale=4,.glow=16,.weights={1,0,1,0,0}},
+   .balls=7, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6},
+  {.seed=176941, .feel=Feel::Fu, .introduces=Power::Ghost, .grid={.gridScale=4,.glow=6,.weights={0,0,0,1,0}},
+   .balls=5, .bounces=12, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6},
+  {.seed=103022, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=5,.glow=30,.weights={1,1,1,1,1}},
+   .balls=10, .bounces=15, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=8},
+}};
+std::string saveProgress(int level) { return "level "+std::to_string(std::clamp(level,1,levelCount))+'\n'; }
+int loadProgress(std::string_view text) {
+  constexpr std::string_view key="level ";
+  if(text.substr(0,key.size())!=key) return 1;
+  int level=0;
+  const char* first=text.data()+key.size();
+  const auto [end,error]=std::from_chars(first,text.data()+text.size(),level);
+  return error==std::errc{} && end!=first && level>=1 && level<=levelCount ? level : 1;
+}
 
 void Model::generate() {
   bricks.assign(columns*rows, 0);
@@ -74,7 +112,20 @@ void Model::generate() {
   goal=hidden.empty() ? -1 : hidden[std::min(hidden.size()-1,static_cast<std::size_t>(random()*hidden.size()))];
   goalBroken_=false;
 }
+void Model::restart() {
+  if(level_>0) play(level_);
+  else restart(ballCount,bouncesPerBall);
+}
+void Model::play(int level) {
+  level=std::clamp(level,1,levelCount);
+  const Level& l=levels[level-1];
+  randomState=l.seed ? l.seed : 42;
+  setBombSize(l.bombSize); setElectricSeconds(l.electricSeconds); setElectricRadius(l.electricRadius); setPingRadius(l.pingRadius);
+  restart(l.balls,l.bounces,l.grid);
+  level_=level;
+}
 void Model::restart(int balls_, int bounces, const Settings& grid) {
+  level_=0;
   settings=grid.clamped();
   columns=Settings::shapeColumns*settings.gridScale; rows=Settings::shapeRows*settings.gridScale;
   ballCount=std::clamp(balls_,1,maxSetting); bouncesPerBall=std::clamp(bounces,1,maxSetting);

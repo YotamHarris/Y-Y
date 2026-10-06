@@ -13,18 +13,20 @@
 namespace tapdemo {
 namespace {
 bool inside(yy::Rect r, yy::Vec2 p) { return p.x>=r.x && p.y>=r.y && p.x<r.x+r.w && p.y<r.y+r.h; }
-// The header holds only DEBUG and the ball counter; the board starts below it (Camera::view).
+// The header holds the ball counter, the level and DEBUG; the board starts below it (Camera::view).
 constexpr yy::Rect debugButton{286,22,88,36};
-// The debug panel covers the screen: fourteen stepper rows (a label, -, value, +) under three
-// headings (what applies now, what RESTART applies, the weights), then COLORS, RESTART and CLOSE.
+// The debug panel covers the screen: fifteen stepper rows (a label, -, value, +) under three
+// headings (what applies now; what RESTART applies: the level, or free play's settings; free
+// play's weights), then COLORS, RESTART and CLOSE.
 constexpr yy::Rect panel{20,12,350,830};
-enum Stepper { PingRadius, BombSize, ZapSeconds, ZapReach, SnapAngle, Balls, Bounces, GridSize, GlowRate, Weight0, steppers=Weight0+powerKinds };
-constexpr float stepperTops[steppers]{72,116,160,204,248, 316,360,404,448, 516,560,604,648,692};
-constexpr float headingTops[]{54,298,498};
-constexpr yy::Rect minusButton(int row) { return {180,stepperTops[row],44,40}; }
-constexpr yy::Rect plusButton(int row) { return {320,stepperTops[row],44,40}; }
-constexpr yy::Rect colorsButton{40,742,310,40};
-constexpr yy::Rect restartButton{40,790,150,44}, closeButton{200,790,150,44};
+enum Stepper { PingRadius, BombSize, ZapSeconds, ZapReach, SnapAngle, LevelPick, Balls, Bounces, GridSize, GlowRate, Weight0, steppers=Weight0+powerKinds };
+constexpr float stepperTops[steppers]{66,108,150,192,234, 298,340,382,424,466, 530,572,614,656,698};
+constexpr float headingTops[]{50,282,514};
+constexpr yy::Rect minusButton(int row) { return {180,stepperTops[row],44,38}; }
+constexpr yy::Rect plusButton(int row) { return {320,stepperTops[row],44,38}; }
+constexpr yy::Rect colorsButton{40,746,310,38};
+constexpr yy::Rect restartButton{40,792,150,44}, closeButton{200,792,150,44};
+constexpr const char* progressFile="progress.txt"; // the reached level, in yy::Storage
 constexpr yy::Rect overlay{24,340,342,156};
 // Drawing code lets Power::None stand for the goal: its colour, name and flag icon.
 constexpr const char* powerNames[]{"GOAL","BOMB","ELECTRICITY","PING","GHOST","SPEED UP"};
@@ -110,7 +112,11 @@ class TapGame final: public yy::Game {
   yy::Audio* audio{};
   yy::Haptics* haptics{};
   bool debugOpen{};
+  yy::Storage* storage{};
   std::size_t scheme{}; // session preference: restarting a round keeps it
+  int freeBalls{Model::defaultBalls}, freeBounces{Model::defaultBounces};
+  Settings freeGrid; // free play's settings; levels bring their own
+  int debugLevel{}; // the picker: 1..levelCount, or 0 for free play
   int debugBalls{Model::defaultBalls}, debugBounces{Model::defaultBounces};
   Settings debugGrid; // pending until RESTART, like balls and bounces
   int uiFinger{-1}; // a finger the HUD took, kept from the board
@@ -118,12 +124,27 @@ class TapGame final: public yy::Game {
   std::vector<Burst> bursts; // power-ups that just fired, while their rings grow
   float clock{};             // seconds, for glow pulses and sparks
 
-  void restart(int balls, int bounces, const Settings& grid) {
-    touch.cancel(); model.restart(balls,bounces,grid); bursts.clear(); touch.refit(); touch.instructions=true;
+  void reset(bool instructions) { bursts.clear(); touch.refit(); touch.instructions=instructions; }
+  // Opens a level on its instructions card; `save` records it as the reached level.
+  void enter(int level, bool save=true) {
+    touch.cancel(); model.play(level); reset(true);
+    if(save && storage) storage->write(progressFile,saveProgress(model.level()));
   }
-  void openDebug() { touch.cancel(); debugBalls=model.ballCount; debugBounces=model.bouncesPerBall; debugGrid=model.settings; debugOpen=true; }
+  // The same level again, straight into play: the same field, goal and Ghost landings.
+  void retry() { touch.cancel(); model.restart(); reset(false); }
+  void freePlay() { touch.cancel(); model.restart(freeBalls,freeBounces,freeGrid); reset(true); }
+  // The end overlay's tap: the next level after a win, a retry after a loss, free play after
+  // the last level or a free-play round.
+  void advance() {
+    const int next=model.level()>0 ? nextLevel(model.level(),model.won()) : 0;
+    if(next==0) freePlay();
+    else if(next==model.level()) retry();
+    else enter(next);
+  }
+  void openDebug() { touch.cancel(); debugLevel=model.level(); debugBalls=freeBalls; debugBounces=freeBounces; debugGrid=freeGrid; debugOpen=true; }
   void step(int row, int by) {
     switch(row) {
+    case LevelPick: debugLevel=std::clamp(debugLevel+by,0,levelCount); break;
     case Balls: debugBalls=std::clamp(debugBalls+by,1,Model::maxSetting); break;
     case Bounces: debugBounces=std::clamp(debugBounces+by,1,Model::maxSetting); break;
     case PingRadius: model.setPingRadius(model.pingRadius+by); break;
@@ -142,7 +163,11 @@ class TapGame final: public yy::Game {
       if(inside(plusButton(row),p)) { step(row,1); return; }
     }
     if(inside(colorsButton,p)) scheme=(scheme+1)%palettes.size();
-    else if(inside(restartButton,p)) { restart(debugBalls,debugBounces,debugGrid); debugOpen=false; }
+    else if(inside(restartButton,p)) {
+      freeBalls=debugBalls; freeBounces=debugBounces; freeGrid=debugGrid;
+      if(debugLevel>0) enter(debugLevel); else freePlay();
+      debugOpen=false;
+    }
     else if(inside(closeButton,p) || !inside(panel,p)) debugOpen=false;
   }
   void sling(yy::Vec2 at, yy::Vec2 pull) { pointerDown(0,at); pointerMove(0,{at.x+pull.x,at.y+pull.y}); pointerUp(0,{at.x+pull.x,at.y+pull.y}); }
@@ -150,14 +175,16 @@ class TapGame final: public yy::Game {
   // header (one ball flying), aim, snap (an aim 3 degrees off horizontal), debug, play, zoom, icons (one of each power-up and the goal
   // beside the pocket) or glow (the same close up), breaks (four launches), electric (a launch
   // into that power-up), pingin or pingout (a launch into a Ping brick with the goal inside or
-  // outside the ping radius), won (a launch into the goal), palette / palette-fit /
+  // outside the ping radius), won (a launch into the goal), lost (the last ball, spent on a brick), palette / palette-fit /
   // palette-max (all icons, a real Ping revealing fogged bricks, frozen at activation),
-  // grid-min or grid-max (the debug steppers set the smallest or largest grid, then RESTART).
+  // grid-min or grid-max (the debug steppers pick free play and the smallest or largest grid, then RESTART).
+  // YY_TAPDEMO_LEVEL (1..10, or 0 for free play) opens that level instead of the saved one, and saves nothing.
   void stage(const char* scene) {
     if(!scene || model.pockets.empty() || std::strcmp(scene,"instructions")==0) return;
     if(std::strncmp(scene,"grid-",5)==0) {
       const auto press=[&](yy::Rect b) { const yy::Vec2 p{b.x+b.w/2,b.y+b.h/2}; pointerDown(0,p); pointerUp(0,p); };
       press(debugButton);
+      for(int i=0; i<levelCount; ++i) press(minusButton(LevelPick));
       const yy::Rect button=std::strcmp(scene,"grid-min")==0 ? minusButton(GridSize) : plusButton(GridSize);
       for(int i=0; i<Settings::maxScale; ++i) press(button);
       press(restartButton);
@@ -200,6 +227,13 @@ class TapGame final: public yy::Game {
       for(yy::Vec2 pull: {yy::Vec2{20,40},{-40,15},{5,-40},{40,-10}}) sling(at,pull);
       return;
     }
+    if(std::strcmp(scene,"lost")==0) {
+      const int above=(pocket.row-1)*model.columns+column;
+      model.bricks[above]=3; model.powers[above]=Power::None; // takes the hit without breaking
+      model.ballsLeft=1; sling(touch.camera.toScreen(below),{0,40});
+      if(!model.balls.empty()) model.balls.back().bounces=1; // spent on the brick above the pocket
+      return;
+    }
     if(std::strcmp(scene,"won")==0) { setGoal(column,pocket.row-1); sling(touch.camera.toScreen(below),{0,40}); return; }
     const bool pingIn=std::strcmp(scene,"pingin")==0, pingOut=std::strcmp(scene,"pingout")==0;
     if(pingIn || pingOut || std::strcmp(scene,"electric")==0) {
@@ -232,7 +266,10 @@ class TapGame final: public yy::Game {
     if(std::strcmp(scene,"play")==0) pointerUp(0,{at.x+pull.x,at.y+pull.y});
   }
 public: void initialize(yy::Services& services) override {
-    audio=&services.audio; haptics=&services.haptics; touch.haptics=haptics;
+    audio=&services.audio; haptics=&services.haptics; touch.haptics=haptics; storage=&services.storage;
+    // The app opens at the reached level; a smoke run can pin one without touching the save.
+    if(const char* pinned=std::getenv("YY_TAPDEMO_LEVEL")) { if(std::atoi(pinned)>0) enter(std::atoi(pinned),false); }
+    else enter(loadProgress(storage->read(progressFile)),false);
     if(const char* name=std::getenv("YY_TAPDEMO_SCHEME"))
       for(std::size_t i=0; i<palettes.size(); ++i) if(palettes[i].name==name) { scheme=i; break; }
     stage(std::getenv("YY_TAPDEMO_SCENE"));
@@ -263,7 +300,7 @@ public: void initialize(yy::Services& services) override {
   void pointerDown(int id, yy::Vec2 p) override {
     if(debugOpen) { uiFinger=id; pressDebug(p); return; }
     if(inside(debugButton,p)) { uiFinger=id; openDebug(); return; }
-    if(model.over() && inside(overlay,p)) { uiFinger=id; restart(model.ballCount,model.bouncesPerBall,model.settings); return; }
+    if(model.over() && inside(overlay,p)) { uiFinger=id; advance(); return; }
     touch.down(id,p);
   }
   void pointerMove(int id, yy::Vec2 p) override { if(id!=uiFinger) touch.move(id,p); }
@@ -406,6 +443,8 @@ public: void initialize(yy::Services& services) override {
     r.circle({36,40},16,ballRed);
     r.circle({31,35},4.5f,palette.ballHighlight);
     r.text({62,20},std::to_string(model.ballsLeft),white,5);
+    if(model.level()>0) r.text({150,32},"LEVEL "+std::to_string(model.level()),teal,2);
+    else r.text({150,33},"FREE PLAY",teal,1.75f);
     r.rectangle(debugButton,palette.button);
     r.text({debugButton.x+14,debugButton.y+12},"DEBUG",white,1.5f);
 
@@ -414,6 +453,7 @@ public: void initialize(yy::Services& services) override {
       r.rectangle(card,palette.card);
       r.rectangle({card.x,card.y,card.w,2},glow(palette,Power::None));
       float y=card.y+20;
+      if(model.level()>0) { r.text({24,y},"LEVEL "+std::to_string(model.level()),teal,2); y+=34; }
       r.rectangle({24,y,40,40},tile); icon(r,palette,Power::None,{44,y+20},34);
       r.text({76,y+10},"FIND THE GOAL",glow(palette,Power::None),2.5f);
       y+=58;
@@ -423,13 +463,22 @@ public: void initialize(yy::Services& services) override {
         r.text({24,y},line,white,1.5f); y+=20;
       }
       y+=14;
-      r.text({24,y},"POWER-UPS",teal,2); y+=28;
-      for(int k=1; k<=powerKinds; ++k) {
-        const Power power=static_cast<Power>(k);
+      const auto powerRow=[&](Power power) {
+        const int k=static_cast<int>(power);
         r.rectangle({24,y,40,40},tile); icon(r,palette,power,{44,y+20},34);
         r.text({76,y+4},powerNames[k],glow(palette,power),2);
         r.text({76,y+26},power==Power::Bomb ? "BREAKS THE "+square(model.bombSize)+" AROUND IT" : std::string(powerLines[k]),muted,1.25f);
         y+=54;
+      };
+      // A level lists only its own power-ups, the one it introduces first; free play lists all.
+      const Power introduced=model.level()>0 ? levels[model.level()-1].introduces : Power::None;
+      if(introduced!=Power::None) { r.text({24,y},"NEW POWER-UP",glow(palette,introduced),2); y+=28; powerRow(introduced); y+=8; }
+      bool heading=false;
+      for(int k=1; k<=powerKinds; ++k) {
+        const Power power=static_cast<Power>(k);
+        if(power==introduced || (model.level()>0 && model.settings.weights[k-1]==0)) continue;
+        if(!heading) { r.text({24,y},introduced!=Power::None ? "ALSO HERE" : "POWER-UPS",teal,2); y+=28; heading=true; }
+        powerRow(power);
       }
       r.text({75,card.y+card.h-50},"TAP TO START",teal,2.5f);
     }
@@ -438,20 +487,22 @@ public: void initialize(yy::Services& services) override {
       r.text({58,367}, model.won() ? "GOAL FOUND" : "OUT OF BALLS",model.won() ? glow(palette,Power::None) : white,2.5f);
       if(model.won()) r.text({58,410}, "BALLS LEFT " + std::to_string(model.ballsLeft),teal);
       else r.text({58,410}, "THE GOAL STAYED HIDDEN",teal,1.5f);
-      r.text({58,450}, "TAP TO RESTART",muted);
+      const int level=model.level(), next=level>0 ? nextLevel(level,model.won()) : 0;
+      const char* action=level==0 ? "TAP TO RESTART" : next==0 ? "TAP FOR FREE PLAY" : next==level ? "TAP TO RETRY" : "TAP FOR NEXT LEVEL";
+      r.text({58,450},action,model.won() && level>0 ? white : muted);
     }
     if(debugOpen) {
       r.rectangle(panel,palette.card);
       r.rectangle({panel.x,panel.y,panel.w,2},teal);
       r.text({panel.x+20,panel.y+16},"DEBUG",teal);
       r.text({panel.x+150,panel.y+18},"VERSION " YY_GAME_VERSION,muted,1.25f);
-      const char* headings[]{"APPLY NOW","APPLY ON RESTART","POWER-UP WEIGHTS, ON RESTART"};
+      const char* headings[]{"APPLY NOW","APPLY ON RESTART","FREE PLAY WEIGHTS"};
       for(int i=0; i<3; ++i) r.text({panel.x+20,headingTops[i]},headings[i],teal,1.5f);
       const auto row=[&](int index, const std::string& label, Color labelColor, const std::string& value) {
         const yy::Rect minus=minusButton(index), plus=plusButton(index);
         r.text({panel.x+20,minus.y+14},label,labelColor,1.5f);
         r.rectangle(minus,palette.button); r.rectangle(plus,palette.button);
-        r.text({minus.x+14,minus.y+12},"-",white); r.text({plus.x+14,plus.y+12},"+",white);
+        r.text({minus.x+14,minus.y+11},"-",white); r.text({plus.x+14,plus.y+11},"+",white);
         const float centre=(minus.x+minus.w+plus.x)/2, scale=value.size()>5 ? 1.75f : 2; // 60X100 fits between
         r.text({centre-4*scale*value.size(),minus.y+12},value,teal,scale);
       };
@@ -460,15 +511,18 @@ public: void initialize(yy::Services& services) override {
       row(ZapSeconds,"ZAP SECONDS",white,std::to_string(model.electricSeconds));
       row(ZapReach,"ZAP REACH",white,halves(model.electricRadius));
       row(SnapAngle,"SNAP ANGLE",white,model.snapDegrees>0 ? std::to_string(model.snapDegrees)+" DEG" : std::string("OFF"));
-      row(Balls,"BALLS",white,std::to_string(debugBalls));
-      row(Bounces,"BOUNCES",white,std::to_string(debugBounces));
-      row(GridSize,"GRID SIZE",white,std::to_string(Settings::shapeColumns*debugGrid.gridScale)+"X"+std::to_string(Settings::shapeRows*debugGrid.gridScale));
-      row(GlowRate,"GLOWING",white,percent(debugGrid.glow));
-      for(int k=1; k<=powerKinds; ++k) row(Weight0+k-1,weightNames[k],glow(palette,static_cast<Power>(k)),std::to_string(debugGrid.weights[k-1]));
+      row(LevelPick,"LEVEL",white,debugLevel>0 ? std::to_string(debugLevel) : std::string("FREE"));
+      // Free play's settings; with a level picked they wait, muted, for the next free play.
+      const Color freeLabel=debugLevel>0 ? muted : white;
+      row(Balls,"BALLS",freeLabel,std::to_string(debugBalls));
+      row(Bounces,"BOUNCES",freeLabel,std::to_string(debugBounces));
+      row(GridSize,"GRID SIZE",freeLabel,std::to_string(Settings::shapeColumns*debugGrid.gridScale)+"X"+std::to_string(Settings::shapeRows*debugGrid.gridScale));
+      row(GlowRate,"GLOWING",freeLabel,percent(debugGrid.glow));
+      for(int k=1; k<=powerKinds; ++k) row(Weight0+k-1,weightNames[k],debugLevel>0 ? muted : glow(palette,static_cast<Power>(k)),std::to_string(debugGrid.weights[k-1]));
       r.rectangle(colorsButton,palette.button);
-      r.text({colorsButton.x+16,colorsButton.y+12},"COLORS",white);
-      r.text({colorsButton.x+132,colorsButton.y+12},palette.name,teal);
-      r.text({colorsButton.x+278,colorsButton.y+12},">",white);
+      r.text({colorsButton.x+16,colorsButton.y+11},"COLORS",white);
+      r.text({colorsButton.x+132,colorsButton.y+11},palette.name,teal);
+      r.text({colorsButton.x+278,colorsButton.y+11},">",white);
       r.rectangle(restartButton,palette.teal); r.text({restartButton.x+19,restartButton.y+14},"RESTART",dark);
       r.rectangle(closeButton,palette.button); r.text({closeButton.x+35,closeButton.y+14},"CLOSE",white);
     }
