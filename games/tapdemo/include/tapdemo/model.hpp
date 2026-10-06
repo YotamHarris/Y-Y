@@ -49,6 +49,7 @@ struct Level {
   int bombSize{}, electricSeconds{}; float electricRadius{}; int pingRadius{};
 };
 constexpr int levelCount=10;
+constexpr int levelBalls=4; // every level gives the same number of balls
 // What a simulated player's results must show on a level of each feel (T11; docs/levels.md):
 // the win rate's band, and the least share of wins on the last ball and through a power-up
 // chain, and of losses that came near (the goal seen or within fogReach of an open cell).

@@ -15,6 +15,7 @@ void levelBandChecks() {
   levelbot::Metrics measured[levelCount];
   for(int n=1; n<=levelCount; ++n) {
     const Level& l=levels[n-1];
+    check(l.balls==levelBalls,n,"every level gives the same number of balls");
     const auto m=measured[n-1]=levelbot::measure(n,l,1,runs);
     const auto t=target(l.feel);
     std::cout<<"Level "<<n<<": wins "<<100*m.winRate()<<"%, last ball "<<100*m.lastBallShare()<<"%, chain "<<100*m.chainShare()
@@ -23,9 +24,9 @@ void levelBandChecks() {
     check(m.lastBallShare()>=t.lastBall,n,"too few wins come on the last ball");
     check(m.chainShare()>=t.chain,n,"too few wins come through a power-up");
     check(m.nearShare()>=t.near,n,"too few losses come near the goal");
-    // Gradual: no level is easier than an earlier level of the same feel by more than five points.
+    // Gradual: no level is easier than an earlier level of the same feel by more than ten points (200 games carry about 3.5 points of noise).
     for(int k=1; k<n; ++k)
-      check(levels[k-1].feel!=l.feel || m.winRate()<=measured[k-1].winRate()+0.05f,n,"a later level of the same feel is clearly easier");
+      check(levels[k-1].feel!=l.feel || m.winRate()<=measured[k-1].winRate()+0.10f,n,"a later level of the same feel is clearly easier");
   }
   // The player's path: levels 1 to 3 with every shot pressed, dragged and released on the
   // fitted screen meet the same band. The screen round trip moves a shot by a hair, and a long

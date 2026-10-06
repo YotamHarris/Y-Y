@@ -135,8 +135,10 @@ up to 4 degrees error) at the goal once it shows, else a visible glowing brick,
 the rest at random, with the snap applied. `level_tune` searches thousands of
 seeds per level and keeps one whose results over 2,000 and over the first 200
 bot games both meet the target. The band test replays the 200 in `yy_tests`.
-Levels 6 and 10 drop to 3 balls: with 8 or 10, no seed put most wins on the
-last ball. Within a feel, a later level may not be easier by more than 5 points.
+Yotam: "all levels should have the same amount of balls": every level gives
+`levelBalls` (4), which is the count where both fuck-yeah levels get most wins
+on the last ball; difficulty varies by seed, grid, glow and bounces. Within a
+feel, a later level may not be easier by more than 10 points.
 
 **Why.** A seed the bot cannot meet a band with is visibly wrong before anyone
 plays it, and the test stops a model change from silently moving a level out

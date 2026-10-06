@@ -201,39 +201,42 @@ T11 adds a headless bot (`tests/level_bot.hpp`), a seed search tool
 (`level_tune`, built beside the tests and not run by them), per-feel targets in
 `tapdemo::target()`, `Model::play(level, table)` for trying another seed, and a
 `field` smoke scene (the opening field, card dismissed). It writes ten new
-seeds into the level table and drops levels 6 and 10 to 3 balls. The report is
+seeds into the level table. Yotam: "all levels should have the same amount of
+balls", so every level gives 4 (`levelBalls`); levels 6 and 7 get 25 and 20 bounces. The report is
 `docs/levels.md`.
 
 | Level | Feel | Seed | Balls | Bot wins (2,000 games) | Experience metric |
 | ---: | --- | ---: | ---: | ---: | --- |
-| 1 | relief | 2651 | 8 | 100% | all wins through a Bomb |
-| 2 | build-up | 2913 | 5 | 55.3% | 99.5% of wins through a Bomb |
-| 3 | relief | 263 | 8 | 100% | 72% of wins through lightning |
-| 4 | fu | 718 | 5 | 13.3% | 64.6% of losses saw the goal |
-| 5 | build-up | 547 | 7 | 55.4% | 93.6% of losses saw the goal |
-| 6 | fuck yeah | 2877 | 3 | 41.0% | 58.6% of wins on the last ball, all chains |
-| 7 | relief | 1751 | 8 | 99.9% | direct hits |
-| 8 | build-up | 2173 | 7 | 52.3% | 99.9% of wins through a power-up |
-| 9 | fu | 1247 | 5 | 12.8% | 86.4% of losses saw the goal |
-| 10 | fuck yeah | 1440 | 3 | 44.2% | 58.4% of wins on the last ball, all chains |
+| 1 | relief | 1659 | 4 | 100% | all wins through a Bomb |
+| 2 | build-up | 2920 | 4 | 54.9% | 99.5% of wins through a Bomb |
+| 3 | relief | 334 | 4 | 98.4% | 85.6% of wins through lightning |
+| 4 | fu | 893 | 4 | 12.9% | 54.4% of losses saw the goal |
+| 5 | build-up | 522 | 4 | 54.8% | 78.7% of losses saw the goal |
+| 6 | fuck yeah | 948 | 4 | 38.9% | 50.9% of wins on the last ball, 71.3% through a chain |
+| 7 | relief | 1751 | 4 | 92.8% | direct hits |
+| 8 | build-up | 2669 | 4 | 54.8% | 99.5% of wins through a power-up |
+| 9 | fu | 1009 | 4 | 12.5% | 58.3% of losses saw the goal |
+| 10 | fuck yeah | 1762 | 4 | 44.2% | 61.8% of wins on the last ball, all chains |
 
 **Tests.** `yy_tests` plays each level 200 times with bot seeds 1 to 200 and
 fails when its win rate, last-ball share, chain share or near-loss share leaves
 its feel's target, or when a later level of the same feel is easier by more than
-5 points; it also plays levels 1 to 3 with every shot pressed, dragged and
+10 points; it also plays levels 1 to 3 with every shot pressed, dragged and
 released through `tapdemo::Touch` on the fitted camera and requires the same
-band within 5 points of the direct shots (100%, 55.5%, 100%). Restoring level
-2's old seed fails it ("level 2: the win rate is outside its feel's band", 86.5%).
+band within 5 points of the direct shots (100%, 55%, 99%). With level 2's old
+placeholder seed the test failed ("level 2: the win rate is outside its feel's
+band", 86.5%) before it was replaced; it also checks that every level gives
+`levelBalls`.
 The test adds about a second.
 
 **Visual evidence.** `TapDemo.exe --smoke 30` with `YY_TAPDEMO_LEVEL` 1 to 10
 and `YY_TAPDEMO_SCENE=field`: `docs/figures/levels/level-01.png` to
 `level-10.png`. Inspected: each shows LEVEL N in the header with its ball count
-(3 on levels 6 and 10), the cavities ringed by the level's own glowing kinds,
+(4 on every level), the cavities ringed by the level's own glowing kinds,
 and the rest under fog.
 
 **Open:** the bot is not a person; whether relief feels too easy (the bot wins
-100%) and whether level 6's losses feel near (0.7% see the goal) are Yotam's
+100%) and whether level 10's losses feel near (level 10's losses rarely see the goal, 5%) are Yotam's
 calls on TestFlight. Speed and Ping break nothing, so the numbers cannot show
 levels 5 and 7 teach them. Device performance is not applicable.
 

@@ -32,32 +32,36 @@ of the fog, so a loss within 2 always saw the goal. The targets are
 
 | # | Experience | Power-ups (glow) | Seed | Balls / bounces | Wins | Experience metric |
 | ---: | --- | --- | ---: | --- | ---: | --- |
-| 1 | relief | Bomb, new (8%) | 2651 | 8 / 15 | 100% | 100% of wins through a Bomb |
-| 2 | build-up | Bomb (12%) | 2913 | 5 / 12 | 55.3% | 99.5% of wins through a Bomb |
-| 3 | relief | Electricity, new (8%) | 263 | 8 / 15 | 100% | 72% of wins through lightning |
-| 4 | fu | Electricity (4%) | 718 | 5 / 10 | 13.3% | 64.6% of losses saw the goal (mean 2.1 cells off) |
-| 5 | build-up | Speed, new (8%) | 547 | 7 / 15 | 55.4% | 93.6% of losses saw the goal |
-| 6 | fuck yeah | Bomb, Electricity (15%) | 2877 | 3 / 15 | 41.0% | 58.6% of wins on the last ball, all through a chain |
-| 7 | relief | Ping, new (8%) | 1751 | 8 / 15 | 99.9% | wins by direct hits (1.9% through a power-up) |
-| 8 | build-up | Bomb, Ping (8%) | 2173 | 7 / 15 | 52.3% | 99.9% of wins through a power-up |
-| 9 | fu | Ghost, new (3%) | 1247 | 5 / 12 | 12.8% | 86.4% of losses saw the goal (mean 2.0 cells off) |
-| 10 | fuck yeah | all five (15%) | 1440 | 3 / 15 | 44.2% | 58.4% of wins on the last ball, all through a chain |
+| 1 | relief | Bomb, new (8%) | 1659 | 4 / 15 | 100% | 99.9% of wins through a Bomb |
+| 2 | build-up | Bomb (12%) | 2920 | 4 / 12 | 54.9% | 99.5% of wins through a Bomb |
+| 3 | relief | Electricity, new (8%) | 334 | 4 / 15 | 98.4% | 85.6% of wins through lightning |
+| 4 | fu | Electricity (4%) | 893 | 4 / 10 | 12.9% | 54.4% of losses saw the goal (mean 2.4 cells off) |
+| 5 | build-up | Speed, new (8%) | 522 | 4 / 15 | 54.8% | 78.7% of losses saw the goal |
+| 6 | fuck yeah | Bomb, Electricity (15%) | 948 | 4 / 25 | 38.9% | 50.9% of wins on the last ball; 71.3% through a chain |
+| 7 | relief | Ping, new (8%) | 1751 | 4 / 20 | 92.8% | wins by direct hits (1.6% through a power-up) |
+| 8 | build-up | Bomb, Ping (8%) | 2669 | 4 / 15 | 54.8% | 99.5% of wins through a power-up |
+| 9 | fu | Ghost, new (3%) | 1009 | 4 / 12 | 12.5% | 58.3% of losses saw the goal (mean 2.1 cells off) |
+| 10 | fuck yeah | all five (15%) | 1762 | 4 / 15 | 44.2% | 61.8% of wins on the last ball, all through a chain |
 
-Grids grow 12x20 (1 to 3), 18x30 (4 to 7), 24x40 (8, 9), 30x50 (10). Only the
-seeds and the balls on levels 6 and 10 changed. With 8 or 10 balls no seed put
-a fuck-yeah level's wins mostly on the last ball (the three seeds of 5,000
-closest to the target: 25 to 31% on level 6, 22 to 24% on level 10); with 3
-balls about 58% are.
+Grids grow 12x20 (1 to 3), 18x30 (4 to 7), 24x40 (8, 9), 30x50 (10). **Every level
+gives 4 balls** (Yotam's call: all levels have the same number). Difficulty comes
+from the seed, the grid, the glow and the bounces: levels 6 and 7 got more bounces
+(25 and 20) so the bot clears the relief band and level 6 reaches its win band
+at 4 balls; with 4 balls on every level, 4 of the 10 levels needed no change
+beyond a new seed. At 5 balls the fuck-yeah levels reached at most 45% of wins on
+the last ball (best seeds of 3,000); at 4 balls level 6 reaches 51% and level 10
+62%.
 
-**The curve.** Wins run 100, 55, 100, 13, 55, 41, 100, 52, 13, 44%. Within each
-experience a later level is never easier than an earlier one by more than 5
-points (the band test checks it): build-up 55.3, 55.4, 52.3; fu 13.3, 12.8;
-fuck yeah 41.0, 44.2.
+**The curve.** Wins run 100, 55, 98, 13, 55, 39, 93, 55, 13, 44%. Within each
+experience a later level is never easier than an earlier one by more than 10
+points (the band test checks it; 200 games carry about 3.5 points of noise).
+Level 10 (44%) is 5 points easier than level 6 (39%) over 2,000 games, a bigger
+field with the same bands.
 
 **What the numbers do not show.** Speed and Ping break nothing, so the chain
 share cannot show that levels 5 and 7 teach them; the bot wins level 7 without
 needing Ping. The relief levels are won almost every time, so a person will
-find them very easy. Level 6's losses almost never see the goal (0.7%): it
+find them very easy. Level 10's losses rarely see the goal (5%): it
 looks lost until it is won, as the experience asks, but those losses do not
 feel near.
 
@@ -72,9 +76,9 @@ build/windows/level_tune.exe search 6 1 3000 300 3 15
 `search LEVEL FIRST COUNT RUNS [balls bounces]` plays every seed in the range
 RUNS times, keeps the forty closest to the target, replays them over the
 report's 2,000 and the test's 200 bot games, and lists the ten whose worse
-result is closest. Seeds whose goal starts out of the fog are skipped. Levels 1
-to 5 and 7 to 9 searched seeds 1 to 5,000 (then 1 to 3,000 for the final pick);
-levels 6 and 10 searched 1 to 3,000 with 3, 4 and 5 balls.
+result is closest. Seeds whose goal starts out of the fog are skipped. Every level
+searched seeds 1 to 3,000 with 4 balls (levels 6 and 7 also with 20 and 25
+bounces, level 10 also 3,001 to 10,000).
 
 ## Opening fields
 
