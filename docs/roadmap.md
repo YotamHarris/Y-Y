@@ -236,3 +236,30 @@ and the rest under fog.
 100%) and whether level 6's losses feel near (0.7% see the goal) are Yotam's
 calls on TestFlight. Speed and Ping break nothing, so the numbers cannot show
 levels 5 and 7 teach them. Device performance is not applicable.
+
+### V6 Three screen reskin concepts for owner selection (G12)
+
+**Status:** active
+
+T14 proposes three static looks in `docs/reskin-concepts.md`: Toy Workshop
+(Toon Blast), Jewel Vault (Royal Match) and Sugar Mist (Candy Crush Saga).
+The 6 October 2026 Apple US games free and grossing chart snapshots and
+credited publisher screenshots are stored beside the original artwork in
+`docs/figures/reskin-concepts/`. Each look keeps the captured grid, hit points,
+fog boundary, cavity, ball, aim line, header and instructions card, with one
+small named twist. Toy Workshop is recommended at an estimated 3-4
+engineering days plus 2 art days, including real font support.
+
+**Visual evidence.** The plan PDF compares the current aiming screen with all
+three looks. Each has full 1170 by 2532 aiming, instructions and six-icon
+fixture PNGs, reviewed at 390 by 844. Every page of the final 14-page PDF was
+read at phone size after `fe_plan.py check`, `pdf` and `shots`. The six-icon
+fixture is a debug scene, not a normal level. Calculated fog-minus-cavity
+luminance gaps are 0.424, 0.388 and 0.470, all above the palette rule's 0.08
+minimum and accompanied by a shape cue. No game, engine or palette changes.
+
+**Open:** Yotam chooses a look. Accepting the plan starts Toy Workshop's
+implementation; another look needs a named change first. Static images do
+not establish animated juice, touch feel, BMP alpha support or iPhone
+performance. Those checks belong to the accepted implementation. Runtime
+tests, player-path and device checks are not applicable to this concept round.

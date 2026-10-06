@@ -1,0 +1,68 @@
+[[figure]]
+id = "comparison"
+file = "comparison.png"
+kind = "chart"
+caption = "The current aiming screen beside Toy Workshop, Jewel Vault and Sugar Mist. All four retain the same grid and shot."
+source = "YYEngine / Codex, T14 original concept comparison"
+
+[[figure]]
+id = "before-aim"
+file = "before-plate.png"
+kind = "capture"
+caption = "Actual TapDemo captures: aiming, instructions and the staged six-icon fixture. Full captures are stored beside this plan."
+source = "YYEngine, current checkout c8f85ab; aim, instructions and glow fixture captures, 6 October 2026"
+
+[[figure]]
+id = "ref-toon"
+file = "reference-toon-blast.jpg"
+kind = "research"
+caption = "Toon Blast's publisher screenshot: soft cube corners, shallow highlights and vivid colour make a dense grid readable. We borrow that material language."
+source = "Peak Games, Toon Blast, official App Store screenshot"
+link = "https://apps.apple.com/us/app/toon-blast/id1176027022"
+fetched = "2026-10-06"
+
+[[figure]]
+id = "costs"
+file = "costs.png"
+kind = "chart"
+caption = "Estimated days of engineering and art per skin. Light blue extends the engineering range; roles can overlap, so this is not a calendar schedule."
+source = "YYEngine / Codex, T14 estimates stated in this plan"
+
+[[figure]]
+id = "toy-board"
+file = "toy-plate.png"
+kind = "chart"
+caption = "Toy Workshop: the captured aiming grid, six icon specimens and full instructions card. The stitched goal flag is the only small twist."
+source = "YYEngine / Codex, T14 original mockup and captured layout"
+
+[[figure]]
+id = "ref-royal"
+file = "reference-royal-match.jpg"
+kind = "research"
+caption = "Royal Match's publisher screenshot: enamel highlights, gold framing and separate piece shapes give a crowded board a polished toy feel."
+source = "Dream Games, Royal Match, official App Store screenshot"
+link = "https://apps.apple.com/us/app/royal-match/id1482155847"
+fetched = "2026-10-06"
+
+[[figure]]
+id = "royal-board"
+file = "royal-plate.png"
+kind = "chart"
+caption = "Jewel Vault: the same aiming grid, six icons and instructions card. The goal rings depict the proposed heartbeat halo at its bright moment."
+source = "YYEngine / Codex, T14 original mockup and captured layout"
+
+[[figure]]
+id = "ref-candy"
+file = "reference-candy-crush.jpg"
+kind = "research"
+caption = "Candy Crush Saga's publisher image: glossy surfaces and rounded, distinct silhouettes make pieces feel touchable against a dark board."
+source = "King, Candy Crush Saga, official App Store screenshot"
+link = "https://apps.apple.com/us/app/candy-crush-saga/id553834731"
+fetched = "2026-10-06"
+
+[[figure]]
+id = "sugar-board"
+file = "sugar-plate.png"
+kind = "chart"
+caption = "Sugar Mist: the same aiming grid, six icons and instructions card. Paired fog scratches are the one small twist."
+source = "YYEngine / Codex, T14 original mockup and captured layout"

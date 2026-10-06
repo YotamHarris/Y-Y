@@ -1,0 +1,1020 @@
+{
+  "fetched": "2026-10-06",
+  "region": "US",
+  "category": "Games (6014)",
+  "platform": "iPhone",
+  "feeds": {
+    "free": {
+      "url": "https://itunes.apple.com/us/rss/topfreeapplications/limit=100/genre=6014/json",
+      "updated": "2026-10-06T04:54:18-07:00",
+      "entries": [
+        {
+          "rank": 1,
+          "name": "Meowdoku!",
+          "app_id": "6761760135"
+        },
+        {
+          "rank": 2,
+          "name": "Block Out! - Color Sort Puzzle",
+          "app_id": "6752672568"
+        },
+        {
+          "rank": 3,
+          "name": "Rotate Rings",
+          "app_id": "6793924927"
+        },
+        {
+          "rank": 4,
+          "name": "Magic Sort!",
+          "app_id": "6499209744"
+        },
+        {
+          "rank": 5,
+          "name": "CubeAway - 3DPuzzle",
+          "app_id": "6760325543"
+        },
+        {
+          "rank": 6,
+          "name": "Vita Mahjong",
+          "app_id": "6468921495"
+        },
+        {
+          "rank": 7,
+          "name": "Smash Fest!",
+          "app_id": "6748084174"
+        },
+        {
+          "rank": 8,
+          "name": "Bus Fever Party!",
+          "app_id": "6746743297"
+        },
+        {
+          "rank": 9,
+          "name": "Colony Flow!",
+          "app_id": "6779167923"
+        },
+        {
+          "rank": 10,
+          "name": "Brain Puzzle 3: Crazy Mind",
+          "app_id": "6756482832"
+        },
+        {
+          "rank": 11,
+          "name": "Roblox",
+          "app_id": "431946152"
+        },
+        {
+          "rank": 12,
+          "name": "Block Blast！",
+          "app_id": "1617391485"
+        },
+        {
+          "rank": 13,
+          "name": "Township",
+          "app_id": "638689075"
+        },
+        {
+          "rank": 14,
+          "name": "Amaze GO!",
+          "app_id": "6758326278"
+        },
+        {
+          "rank": 15,
+          "name": "Bus Traffic Fever!",
+          "app_id": "6759763476"
+        },
+        {
+          "rank": 16,
+          "name": "Colorever: Gem Art Puzzle",
+          "app_id": "6761757565"
+        },
+        {
+          "rank": 17,
+          "name": "Woodoku Blast: Block Puzzle",
+          "app_id": "6608975929"
+        },
+        {
+          "rank": 18,
+          "name": "Mahjong Blast",
+          "app_id": "6747492600"
+        },
+        {
+          "rank": 19,
+          "name": "Tasty Travels: Merge Game",
+          "app_id": "6471045672"
+        },
+        {
+          "rank": 20,
+          "name": "Gossip Harbor®: Merge & Story",
+          "app_id": "1623318294"
+        },
+        {
+          "rank": 21,
+          "name": "Car Evolve",
+          "app_id": "6754464806"
+        },
+        {
+          "rank": 22,
+          "name": "Disney Solitaire",
+          "app_id": "6475757306"
+        },
+        {
+          "rank": 23,
+          "name": "Whiteout Survival",
+          "app_id": "6443575749"
+        },
+        {
+          "rank": 24,
+          "name": "MONOPOLY GO!",
+          "app_id": "1621328561"
+        },
+        {
+          "rank": 25,
+          "name": "Fortnite",
+          "app_id": "6483539426"
+        },
+        {
+          "rank": 26,
+          "name": "Solitaire Associations Journey",
+          "app_id": "6748950306"
+        },
+        {
+          "rank": 27,
+          "name": "Royal Smash! - Physics Puzzle",
+          "app_id": "6780891673"
+        },
+        {
+          "rank": 28,
+          "name": "Magic Tiles 3™: Piano Game",
+          "app_id": "1443446174"
+        },
+        {
+          "rank": 29,
+          "name": "Sled Surfers",
+          "app_id": "6744975195"
+        },
+        {
+          "rank": 30,
+          "name": "Triumph Arcade",
+          "app_id": "1608987929"
+        },
+        {
+          "rank": 31,
+          "name": "Royal Match",
+          "app_id": "1482155847"
+        },
+        {
+          "rank": 32,
+          "name": "Tang Luck: Casino Slots",
+          "app_id": "6746437378"
+        },
+        {
+          "rank": 33,
+          "name": "Food Hunt: Pixel Puzzle",
+          "app_id": "6769314786"
+        },
+        {
+          "rank": 34,
+          "name": "Warline: Sniper Strike",
+          "app_id": "6742809194"
+        },
+        {
+          "rank": 35,
+          "name": "Word Search Explorer®",
+          "app_id": "1602508478"
+        },
+        {
+          "rank": 36,
+          "name": "Kingshot",
+          "app_id": "6739554056"
+        },
+        {
+          "rank": 37,
+          "name": "Sudoku.com - Number Games",
+          "app_id": "1193508329"
+        },
+        {
+          "rank": 38,
+          "name": "Subway Surfers",
+          "app_id": "512939461"
+        },
+        {
+          "rank": 39,
+          "name": "Arrows – Puzzle Escape",
+          "app_id": "6748397500"
+        },
+        {
+          "rank": 40,
+          "name": "Paper.io 2",
+          "app_id": "1423046460"
+        },
+        {
+          "rank": 41,
+          "name": "Castle Busters",
+          "app_id": "6746328263"
+        },
+        {
+          "rank": 42,
+          "name": "Sand Blocks: Drop Puzzle",
+          "app_id": "6757140488"
+        },
+        {
+          "rank": 43,
+          "name": "Fish Sort Puzzle - Bubble Jam",
+          "app_id": "6771681639"
+        },
+        {
+          "rank": 44,
+          "name": "Word Tiles - Relaxing Puzzle",
+          "app_id": "6783815362"
+        },
+        {
+          "rank": 45,
+          "name": "Mob Control",
+          "app_id": "1562817072"
+        },
+        {
+          "rank": 46,
+          "name": "Brain Puzzle 2: Logic Twist",
+          "app_id": "6747063674"
+        },
+        {
+          "rank": 47,
+          "name": "CrownCards - Trading Cards",
+          "app_id": "6762010774"
+        },
+        {
+          "rank": 48,
+          "name": "Jigsaw Drop: Solitaire Puzzle",
+          "app_id": "6767091927"
+        },
+        {
+          "rank": 49,
+          "name": "Mahjong Rumble: Win Real Cash",
+          "app_id": "6760377931"
+        },
+        {
+          "rank": 50,
+          "name": "Call of Duty®: Mobile",
+          "app_id": "1287282214"
+        },
+        {
+          "rank": 51,
+          "name": "Glow Fashion Idol",
+          "app_id": "6446197181"
+        },
+        {
+          "rank": 52,
+          "name": "Royal Kingdom",
+          "app_id": "1606549505"
+        },
+        {
+          "rank": 53,
+          "name": "8 Ball Pool™",
+          "app_id": "543186831"
+        },
+        {
+          "rank": 54,
+          "name": "Among Us!",
+          "app_id": "1351168404"
+        },
+        {
+          "rank": 55,
+          "name": "Jam Bus:Sandfall",
+          "app_id": "6797530374"
+        },
+        {
+          "rank": 56,
+          "name": "Candy Crush Saga",
+          "app_id": "553834731"
+        },
+        {
+          "rank": 57,
+          "name": "Yarn Loop: Knit Puzzle",
+          "app_id": "6755183085"
+        },
+        {
+          "rank": 58,
+          "name": "Hotel Legacy: Merge Game",
+          "app_id": "6752886832"
+        },
+        {
+          "rank": 59,
+          "name": "Jackpot Nights",
+          "app_id": "6754009969"
+        },
+        {
+          "rank": 60,
+          "name": "Chess.com - Play and Learn",
+          "app_id": "329218549"
+        },
+        {
+          "rank": 61,
+          "name": "Jigsawcard Solitaire Puzzle",
+          "app_id": "6754900673"
+        },
+        {
+          "rank": 62,
+          "name": "Pixel Flow!",
+          "app_id": "6751056652"
+        },
+        {
+          "rank": 63,
+          "name": "Z Route: Redemption",
+          "app_id": "6762268182"
+        },
+        {
+          "rank": 64,
+          "name": "Everyday Puzzles: Mini Games",
+          "app_id": "1580601028"
+        },
+        {
+          "rank": 65,
+          "name": "Cider Casino - Real Money",
+          "app_id": "6744304405"
+        },
+        {
+          "rank": 66,
+          "name": "82-0.com",
+          "app_id": "6780195090"
+        },
+        {
+          "rank": 67,
+          "name": "Hole.io",
+          "app_id": "1389111413"
+        },
+        {
+          "rank": 68,
+          "name": "Solitaire Cash: Win Real Money",
+          "app_id": "1446254576"
+        },
+        {
+          "rank": 69,
+          "name": "EA College Football Mobile 27",
+          "app_id": "6759412341"
+        },
+        {
+          "rank": 70,
+          "name": "WhoLiked? - Guess Who Reposted",
+          "app_id": "6742410648"
+        },
+        {
+          "rank": 71,
+          "name": "NYT Games: Wordle & Crossword",
+          "app_id": "307569751"
+        },
+        {
+          "rank": 72,
+          "name": "Coin Master",
+          "app_id": "406889139"
+        },
+        {
+          "rank": 73,
+          "name": "Playtest Pro by BestPlay",
+          "app_id": "6503697761"
+        },
+        {
+          "rank": 74,
+          "name": "Find The Cat 2 - Spot It!",
+          "app_id": "6758662578"
+        },
+        {
+          "rank": 75,
+          "name": "Mahjong Clash: Win Real Cash",
+          "app_id": "6760530627"
+        },
+        {
+          "rank": 76,
+          "name": "Dice Dreams™",
+          "app_id": "1484468651"
+        },
+        {
+          "rank": 77,
+          "name": "Toon Blast",
+          "app_id": "1176027022"
+        },
+        {
+          "rank": 78,
+          "name": "Block Crush！",
+          "app_id": "1638139403"
+        },
+        {
+          "rank": 79,
+          "name": "Grand Fortune Club",
+          "app_id": "6762178742"
+        },
+        {
+          "rank": 80,
+          "name": "Cash Avalanche:Casino Slot",
+          "app_id": "6751794501"
+        },
+        {
+          "rank": 81,
+          "name": "Songless.fm ~ Guess the Song!",
+          "app_id": "6804464432"
+        },
+        {
+          "rank": 82,
+          "name": "Bingo Cash - Win Real Money",
+          "app_id": "1522266397"
+        },
+        {
+          "rank": 83,
+          "name": "Cube Land Puzzle Game",
+          "app_id": "6757154335"
+        },
+        {
+          "rank": 84,
+          "name": "Pokémon GO",
+          "app_id": "1094591345"
+        },
+        {
+          "rank": 85,
+          "name": "Double Tile!",
+          "app_id": "6754014472"
+        },
+        {
+          "rank": 86,
+          "name": "Jelly Busters: Puzzle Game",
+          "app_id": "6756058501"
+        },
+        {
+          "rank": 87,
+          "name": "Victory Blast Casino",
+          "app_id": "6761896313"
+        },
+        {
+          "rank": 88,
+          "name": "Hollywood Merge",
+          "app_id": "6755455500"
+        },
+        {
+          "rank": 89,
+          "name": "We Are Cooking",
+          "app_id": "6498920694"
+        },
+        {
+          "rank": 90,
+          "name": "Jewel Coloring",
+          "app_id": "6759081967"
+        },
+        {
+          "rank": 91,
+          "name": "Search It - Hidden Objects",
+          "app_id": "6756185760"
+        },
+        {
+          "rank": 92,
+          "name": "Match Factory!",
+          "app_id": "6449094229"
+        },
+        {
+          "rank": 93,
+          "name": "Picture Blast Solitaire",
+          "app_id": "6758704957"
+        },
+        {
+          "rank": 94,
+          "name": "My Sticker Room - Decor Game",
+          "app_id": "6743738094"
+        },
+        {
+          "rank": 95,
+          "name": "Wordscapes - Word Game",
+          "app_id": "1207472156"
+        },
+        {
+          "rank": 96,
+          "name": "Goods Puzzle: Sort Challenge™",
+          "app_id": "6482849843"
+        },
+        {
+          "rank": 97,
+          "name": "NoomiClone",
+          "app_id": "1546690510"
+        },
+        {
+          "rank": 98,
+          "name": "Dark War:Survival",
+          "app_id": "6670441558"
+        },
+        {
+          "rank": 99,
+          "name": "Police Chief",
+          "app_id": "6757350661"
+        },
+        {
+          "rank": 100,
+          "name": "Find Hidden Objects - Spot It!",
+          "app_id": "6474133872"
+        }
+      ]
+    },
+    "grossing": {
+      "url": "https://itunes.apple.com/us/rss/topgrossingapplications/limit=100/genre=6014/json",
+      "updated": "2026-10-06T04:51:31-07:00",
+      "entries": [
+        {
+          "rank": 1,
+          "name": "Gossip Harbor®: Merge & Story",
+          "app_id": "1623318294"
+        },
+        {
+          "rank": 2,
+          "name": "Roblox",
+          "app_id": "431946152"
+        },
+        {
+          "rank": 3,
+          "name": "Royal Match",
+          "app_id": "1482155847"
+        },
+        {
+          "rank": 4,
+          "name": "MONOPOLY GO!",
+          "app_id": "1621328561"
+        },
+        {
+          "rank": 5,
+          "name": "Candy Crush Saga",
+          "app_id": "553834731"
+        },
+        {
+          "rank": 6,
+          "name": "Kingshot",
+          "app_id": "6739554056"
+        },
+        {
+          "rank": 7,
+          "name": "Whiteout Survival",
+          "app_id": "6443575749"
+        },
+        {
+          "rank": 8,
+          "name": "Royal Kingdom",
+          "app_id": "1606549505"
+        },
+        {
+          "rank": 9,
+          "name": "Last War:Survival",
+          "app_id": "6448786147"
+        },
+        {
+          "rank": 10,
+          "name": "Toon Blast",
+          "app_id": "1176027022"
+        },
+        {
+          "rank": 11,
+          "name": "Pokémon GO",
+          "app_id": "1094591345"
+        },
+        {
+          "rank": 12,
+          "name": "Tasty Travels: Merge Game",
+          "app_id": "6471045672"
+        },
+        {
+          "rank": 13,
+          "name": "Township",
+          "app_id": "638689075"
+        },
+        {
+          "rank": 14,
+          "name": "Match Factory!",
+          "app_id": "6449094229"
+        },
+        {
+          "rank": 15,
+          "name": "Clash Royale",
+          "app_id": "1053012308"
+        },
+        {
+          "rank": 16,
+          "name": "Last Z: Survival Shooter",
+          "app_id": "6503272652"
+        },
+        {
+          "rank": 17,
+          "name": "Gardenscapes",
+          "app_id": "1105855019"
+        },
+        {
+          "rank": 18,
+          "name": "Block Out! - Color Sort Puzzle",
+          "app_id": "6752672568"
+        },
+        {
+          "rank": 19,
+          "name": "Free Fire x NARUTO SHIPPUDEN",
+          "app_id": "1300146617"
+        },
+        {
+          "rank": 20,
+          "name": "Pixel Flow!",
+          "app_id": "6751056652"
+        },
+        {
+          "rank": 21,
+          "name": "Colony Flow!",
+          "app_id": "6779167923"
+        },
+        {
+          "rank": 22,
+          "name": "Coin Master",
+          "app_id": "406889139"
+        },
+        {
+          "rank": 23,
+          "name": "Jelly Busters: Puzzle Game",
+          "app_id": "6756058501"
+        },
+        {
+          "rank": 24,
+          "name": "Homescapes: Match 3 Games",
+          "app_id": "1195621598"
+        },
+        {
+          "rank": 25,
+          "name": "Fishdom",
+          "app_id": "664575829"
+        },
+        {
+          "rank": 26,
+          "name": "Screwdom",
+          "app_id": "6740043080"
+        },
+        {
+          "rank": 27,
+          "name": "Lightning Link Casino Slots",
+          "app_id": "1243005112"
+        },
+        {
+          "rank": 28,
+          "name": "Magic Sort!",
+          "app_id": "6499209744"
+        },
+        {
+          "rank": 29,
+          "name": "Evony",
+          "app_id": "1098157959"
+        },
+        {
+          "rank": 30,
+          "name": "Merge Cooking®",
+          "app_id": "1643509748"
+        },
+        {
+          "rank": 31,
+          "name": "Cashman Casino Slots Games",
+          "app_id": "1123582513"
+        },
+        {
+          "rank": 32,
+          "name": "Call of Duty®: Mobile",
+          "app_id": "1287282214"
+        },
+        {
+          "rank": 33,
+          "name": "Clash of Clans",
+          "app_id": "529479190"
+        },
+        {
+          "rank": 34,
+          "name": "Dark War:Survival",
+          "app_id": "6670441558"
+        },
+        {
+          "rank": 35,
+          "name": "Bus Traffic Fever!",
+          "app_id": "6759763476"
+        },
+        {
+          "rank": 36,
+          "name": "Jackpot Party - Casino Slots",
+          "app_id": "575980917"
+        },
+        {
+          "rank": 37,
+          "name": "Disney Solitaire",
+          "app_id": "6475757306"
+        },
+        {
+          "rank": 38,
+          "name": "EA SPORTS FC Soccer Mobile 27",
+          "app_id": "1094930513"
+        },
+        {
+          "rank": 39,
+          "name": "Total Battle: War Strategy",
+          "app_id": "1274132545"
+        },
+        {
+          "rank": 40,
+          "name": "Solitaire Associations Journey",
+          "app_id": "6748950306"
+        },
+        {
+          "rank": 41,
+          "name": "Yarn Loop: Knit Puzzle",
+          "app_id": "6755183085"
+        },
+        {
+          "rank": 42,
+          "name": "Pokémon TCG Pocket",
+          "app_id": "6479970832"
+        },
+        {
+          "rank": 43,
+          "name": "DRAGON BALL Z DOKKAN BATTLE",
+          "app_id": "951627425"
+        },
+        {
+          "rank": 44,
+          "name": "Color Block Jam",
+          "app_id": "6504332779"
+        },
+        {
+          "rank": 45,
+          "name": "Candy Crush Soda Saga",
+          "app_id": "850417475"
+        },
+        {
+          "rank": 46,
+          "name": "Flambé®: Merge and Cook",
+          "app_id": "6618142292"
+        },
+        {
+          "rank": 47,
+          "name": "All in Hole: Black Hole Games",
+          "app_id": "6503284107"
+        },
+        {
+          "rank": 48,
+          "name": "NYT Games: Wordle & Crossword",
+          "app_id": "307569751"
+        },
+        {
+          "rank": 49,
+          "name": "Fortnite",
+          "app_id": "6483539426"
+        },
+        {
+          "rank": 50,
+          "name": "Travel Town - Merge Adventure",
+          "app_id": "1521236603"
+        },
+        {
+          "rank": 51,
+          "name": "Quick Hit Casino - Vegas Slots",
+          "app_id": "945621521"
+        },
+        {
+          "rank": 52,
+          "name": "Sword x Staff",
+          "app_id": "6751270546"
+        },
+        {
+          "rank": 53,
+          "name": "Mystery Town: Merge Games",
+          "app_id": "6503603603"
+        },
+        {
+          "rank": 54,
+          "name": "Last Asylum: Plague",
+          "app_id": "6756989323"
+        },
+        {
+          "rank": 55,
+          "name": "Hay Day",
+          "app_id": "506627515"
+        },
+        {
+          "rank": 56,
+          "name": "Lordrush",
+          "app_id": "6759788962"
+        },
+        {
+          "rank": 57,
+          "name": "Food Hunt: Pixel Puzzle",
+          "app_id": "6769314786"
+        },
+        {
+          "rank": 58,
+          "name": "Age of Origins:Tower Defense",
+          "app_id": "1376515087"
+        },
+        {
+          "rank": 59,
+          "name": "Cube Land Puzzle Game",
+          "app_id": "6757154335"
+        },
+        {
+          "rank": 60,
+          "name": "Toy Blast",
+          "app_id": "890378044"
+        },
+        {
+          "rank": 61,
+          "name": "Matching Story - Merge & Match",
+          "app_id": "1558803930"
+        },
+        {
+          "rank": 62,
+          "name": "Bingo Voyage: Live Bingo Games",
+          "app_id": "6615077767"
+        },
+        {
+          "rank": 63,
+          "name": "Magic: The Gathering Arena",
+          "app_id": "1496227521"
+        },
+        {
+          "rank": 64,
+          "name": "Bingo Blitz™ - BINGO Games",
+          "app_id": "529996768"
+        },
+        {
+          "rank": 65,
+          "name": "Puzzles & Survival",
+          "app_id": "1517980891"
+        },
+        {
+          "rank": 66,
+          "name": "eFootball™",
+          "app_id": "1117270703"
+        },
+        {
+          "rank": 67,
+          "name": "Dice Dreams™",
+          "app_id": "1484468651"
+        },
+        {
+          "rank": 68,
+          "name": "Sunday City: Life Simulator",
+          "app_id": "6450834358"
+        },
+        {
+          "rank": 69,
+          "name": "Words With Friends Word Game",
+          "app_id": "1196764367"
+        },
+        {
+          "rank": 70,
+          "name": "Project Makeover",
+          "app_id": "1483058899"
+        },
+        {
+          "rank": 71,
+          "name": "Foodstars: Merge & Cook",
+          "app_id": "6753862216"
+        },
+        {
+          "rank": 72,
+          "name": "Seaside Escape®: Merge & Story",
+          "app_id": "6443755785"
+        },
+        {
+          "rank": 73,
+          "name": "Hotel Legacy: Merge Game",
+          "app_id": "6752886832"
+        },
+        {
+          "rank": 74,
+          "name": "Free Fire MAX x NARUTO",
+          "app_id": "1480516829"
+        },
+        {
+          "rank": 75,
+          "name": "Triple Match 3D",
+          "app_id": "1607122287"
+        },
+        {
+          "rank": 76,
+          "name": "X-Clash: Survival Challenge",
+          "app_id": "6744812012"
+        },
+        {
+          "rank": 77,
+          "name": "Sand Blocks: Drop Puzzle",
+          "app_id": "6757140488"
+        },
+        {
+          "rank": 78,
+          "name": "Minecraft: Play with Friends!",
+          "app_id": "479516143"
+        },
+        {
+          "rank": 79,
+          "name": "Game of Thrones: Dragonfire",
+          "app_id": "1642607669"
+        },
+        {
+          "rank": 80,
+          "name": "Z Route: Redemption",
+          "app_id": "6762268182"
+        },
+        {
+          "rank": 81,
+          "name": "Merge Mansion: Puzzles & Story",
+          "app_id": "1484442152"
+        },
+        {
+          "rank": 82,
+          "name": "Heart of Vegas - Casino Slots",
+          "app_id": "785537179"
+        },
+        {
+          "rank": 83,
+          "name": "Brawl Stars",
+          "app_id": "1229016807"
+        },
+        {
+          "rank": 84,
+          "name": "Cash Frenzy™ - Slots Casino",
+          "app_id": "1404165333"
+        },
+        {
+          "rank": 85,
+          "name": "Top Lords",
+          "app_id": "6767834940"
+        },
+        {
+          "rank": 86,
+          "name": "Hunting Sniper",
+          "app_id": "6446005634"
+        },
+        {
+          "rank": 87,
+          "name": "Big Fish Casino: Slots Games",
+          "app_id": "538212549"
+        },
+        {
+          "rank": 88,
+          "name": "Triple Match City",
+          "app_id": "6450110217"
+        },
+        {
+          "rank": 89,
+          "name": "Lotsa Slots™ Casino Slots Game",
+          "app_id": "1356045010"
+        },
+        {
+          "rank": 90,
+          "name": "Marble Sort! - Color Puzzle",
+          "app_id": "6754558455"
+        },
+        {
+          "rank": 91,
+          "name": "Car Sort: Color Puzzle",
+          "app_id": "6758138698"
+        },
+        {
+          "rank": 92,
+          "name": "Chess.com - Play and Learn",
+          "app_id": "329218549"
+        },
+        {
+          "rank": 93,
+          "name": "Hole Stars: Puzzle Game",
+          "app_id": "6747028173"
+        },
+        {
+          "rank": 94,
+          "name": "Castle Busters",
+          "app_id": "6746328263"
+        },
+        {
+          "rank": 95,
+          "name": "MONOPOLY Slots Casino: Go Spin",
+          "app_id": "1215145992"
+        },
+        {
+          "rank": 96,
+          "name": "Hollywood Merge",
+          "app_id": "6755455500"
+        },
+        {
+          "rank": 97,
+          "name": "Smash Fest!",
+          "app_id": "6748084174"
+        },
+        {
+          "rank": 98,
+          "name": "PUBG MOBILE",
+          "app_id": "1330123889"
+        },
+        {
+          "rank": 99,
+          "name": "Loop Sort",
+          "app_id": "6751101794"
+        },
+        {
+          "rank": 100,
+          "name": "Rise of Kingdoms",
+          "app_id": "1354260888"
+        }
+      ]
+    }
+  }
+}
