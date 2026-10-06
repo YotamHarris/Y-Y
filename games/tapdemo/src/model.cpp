@@ -54,7 +54,7 @@ const std::array<Level,levelCount> levels{{
   {.seed=1762, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=5,.glow=30,.weights={1,1,1,1,1}},
    .balls=levelBalls, .bounces=15, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=8, .expectedWins=44},
 }};
-DebugSettings DebugSettings::clamped(int schemes) const {
+DebugSettings DebugSettings::clamped() const {
   DebugSettings s=*this;
   s.pingRadius=std::clamp(pingRadius,Model::minPingRadius,Model::maxPingRadius);
   s.bombSize=std::clamp(bombSize|1,Model::minBombSize,Model::maxBombSize);
@@ -63,22 +63,21 @@ DebugSettings DebugSettings::clamped(int schemes) const {
   s.snapDegrees=std::clamp(snapDegrees,0,Model::maxSnapDegrees);
   s.balls=std::clamp(balls,1,Model::maxSetting);
   s.bounces=std::clamp(bounces,1,Model::maxSetting);
-  s.scheme=std::clamp(scheme,0,std::max(schemes,1)-1);
   s.grid=grid.clamped();
   return s;
 }
 std::string saveDebug(const DebugSettings& settings) {
-  const DebugSettings s=settings.clamped(std::max(settings.scheme+1,1));
+  const DebugSettings s=settings.clamped();
   std::string text="debug 1\n";
   const auto line=[&](const char* key, int value) { text+=key; text+=' '; text+=std::to_string(value); text+='\n'; };
   line("ping",s.pingRadius); line("bomb",s.bombSize); line("zapSeconds",s.electricSeconds); line("zapHalves",s.electricHalves);
   line("snap",s.snapDegrees); line("balls",s.balls); line("bounces",s.bounces); line("grid",s.grid.gridScale);
-  line("glow",s.grid.glow); line("scheme",s.scheme);
+  line("glow",s.grid.glow);
   text+="weights";
   for(int w: s.grid.weights) { text+=' '; text+=std::to_string(w); }
   return text+'\n';
 }
-DebugSettings loadDebug(std::string_view text, int schemes) {
+DebugSettings loadDebug(std::string_view text) {
   DebugSettings s;
   const auto next=[&]() { // the next line, without its newline
     const auto end=text.find('\n');
@@ -86,7 +85,7 @@ DebugSettings loadDebug(std::string_view text, int schemes) {
     text=end==std::string_view::npos ? std::string_view{} : text.substr(end+1);
     return line;
   };
-  if(next()!="debug 1") return s.clamped(schemes);
+  if(next()!="debug 1") return s.clamped();
   const auto number=[](std::string_view token, int& out) { // the whole token must be an integer
     int value=0;
     const auto [end,error]=std::from_chars(token.data(),token.data()+token.size(),value);
@@ -107,10 +106,10 @@ DebugSettings loadDebug(std::string_view text, int schemes) {
     struct Field { std::string_view key; int* value; };
     for(const Field& f: {Field{"ping",&s.pingRadius},{"bomb",&s.bombSize},{"zapSeconds",&s.electricSeconds},{"zapHalves",&s.electricHalves},
                          {"snap",&s.snapDegrees},{"balls",&s.balls},{"bounces",&s.bounces},{"grid",&s.grid.gridScale},
-                         {"glow",&s.grid.glow},{"scheme",&s.scheme}})
+                         {"glow",&s.grid.glow}})
       if(f.key==key) number(words[1],*f.value);
   }
-  return s.clamped(schemes);
+  return s.clamped();
 }
 std::string saveProgress(int level) { return "level "+std::to_string(std::clamp(level,1,levelCount))+'\n'; }
 int loadProgress(std::string_view text) {

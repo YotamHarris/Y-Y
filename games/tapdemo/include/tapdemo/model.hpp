@@ -76,16 +76,16 @@ int loadProgress(std::string_view text);
 // Everything the debug panel sets, kept on the device between runs. Zap reach is in half cells.
 struct DebugSettings {
   int pingRadius{6}, bombSize{5}, electricSeconds{6}, electricHalves{5}, snapDegrees{5};
-  int balls{10}, bounces{15}, scheme{};
+  int balls{10}, bounces{15};
   Settings grid;
-  // Every value within its range (bomb size odd); `schemes` is how many colour schemes exist.
-  DebugSettings clamped(int schemes) const;
+  // Every value within its range (bomb size odd).
+  DebugSettings clamped() const;
 };
 // A short versioned text ("debug 1" then one "key value" line each). Loading starts from the
 // defaults: a missing, unknown-version or damaged text gives them all, and a missing, unknown or
-// unreadable line leaves its own setting at the default; numbers are clamped to their ranges.
+// unreadable line leaves its own setting at the default (a saved colour `scheme` line from older builds is ignored); numbers are clamped to their ranges.
 std::string saveDebug(const DebugSettings& settings);
-DebugSettings loadDebug(std::string_view text, int schemes);
+DebugSettings loadDebug(std::string_view text);
 // A power-up that fired: its brick's cell, and for Ghost the cell its ball reappeared at (else -1).
 struct Fired { Power power{}; int cell{-1}, to{-1}; };
 // What the last update did, so the game can play sounds and haptics.

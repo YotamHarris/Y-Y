@@ -5,7 +5,7 @@ line and, while it ships with known gaps, an **Open:** block.
 
 ### V1 Four colour schemes with distinct fog and cavities (D2)
 
-**Status:** active
+**Status:** superseded by V10 -- only Garden Pop remains
 
 T5 adds NAVY, EMBER, FOREST and PLUM, selected immediately through DEBUG's
 COLORS row. RESTART retains the choice within a session. All rendering colours,
@@ -343,7 +343,7 @@ and no ordinary-brick digits. Generated phone-resolution alpha BMPs provide
 wooden power holders, the ladybird goal pennant, pale dewy mist with a stepped
 rim, glossy red ball and wooden/cream UI. Fredoka draws the header and card
 within their original bounds; the card teaches the three damage pictures.
-DEBUG / COLORS keeps all four previous palettes and their saved indices.
+DEBUG / COLORS kept all four previous palettes and their saved indices (removed in V10).
 
 Each hit starts a renderer-only 200 ms squash, flash and clipping sequence.
 The effect stays local and below the aim, without delaying the next shot.
@@ -369,4 +369,25 @@ show material damage without digits and an unobscured aim during the pop.
 **Open:** the captures are desktop SDL at 1x. Phone 3x appearance and the
 200 ms pop's tactile feel remain the owner's TestFlight check. This task has
 no device performance goal. An installation with a saved legacy palette
-keeps it; select GARDEN POP in DEBUG / COLORS to try the new look.
+kept it until V10, which removed the other palettes.
+
+### V10 TapDemo has one look: Garden Pop (D9)
+
+**Status:** active
+
+Every launch, fresh or with any old save, opens in Garden Pop. The NAVY, EMBER,
+FOREST and PLUM palettes, the non-garden brick, fog, header, card and ball
+drawing, DEBUG's COLORS button and `YY_TAPDEMO_SCHEME` are gone, and RESTART and
+CLOSE moved up into the freed space. `DebugSettings` carries no scheme: a
+`scheme N` line in an older save is ignored and the rest of the save loads; a
+save written now has none. Garden Pop's art, colours, fog and gameplay are
+unchanged.
+
+**Validation.** `scripts/build.ps1`: CTest 1/1. `yy_tests` opens the debug
+panel through the real Game from saves with `scheme 0`, `3`, `9` and `-4`: no
+COLORS button, balls, bounces, grid, glow and weights intact, RESTART draws the
+Garden Pop field, and the next save has no scheme line. Fog/cavity luminance gap
+for Garden Pop stays 0.382868 against the 0.08 rule.
+
+**Open:** none known; desktop captures only, no device measurement (not a
+performance change).

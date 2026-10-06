@@ -42,7 +42,6 @@ def main():
         if args.case and name not in args.case: continue
         bmp=raw/(name+'.bmp')
         env=dict(os.environ,YY_TAPDEMO_LEVEL=level,YY_TAPDEMO_SCENE=scene,YY_SCREENSHOT_PATH=str(bmp))
-        env.pop('YY_TAPDEMO_SCHEME',None)
         p=subprocess.run([str(ROOT/'build/windows/TapDemo.exe'),'--smoke','45'],cwd=ROOT/'build/windows',
                          env=env,capture_output=True,text=True,timeout=30,creationflags=0x08000000)
         if p.returncode or not bmp.exists(): raise RuntimeError(f'{name}: exit {p.returncode}: {p.stdout} {p.stderr}')

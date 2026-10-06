@@ -69,45 +69,37 @@ struct Canvas final: yy::Renderer {
 
 void paletteChecks() {
   using namespace tapdemo;
-  for(const auto& p: palettes) {
-    float smallest=1;
-    for(auto fog: p.fog) {
-      const float gap=luminance(fog)-luminance(p.field);
-      check(gap>=minFogLuminanceGap,"every fog shade is clearly lighter than its scheme's cavity");
-      smallest=std::min(smallest,gap);
-    }
-    check(luminance(p.fogTexture)>luminance(p.fog[0]),"fog texture remains visible");
-    std::cout<<p.name<<" minimum fog/cavity luminance gap "<<smallest<<'\n';
+  float smallest=1;
+  for(auto fog: garden.fog) {
+    const float gap=luminance(fog)-luminance(garden.field);
+    check(gap>=minFogLuminanceGap,"every fog shade is clearly lighter than Garden Pop's cavity");
+    smallest=std::min(smallest,gap);
   }
+  std::cout<<"Garden Pop minimum fog/cavity luminance gap "<<smallest<<'\n';
 
   auto game=createGame(); Canvas canvas;
   const auto tap=[&](yy::Vec2 p) { game->pointerDown(7,p); game->pointerUp(7,p); canvas.read(*game); };
   tap({330,40}); // DEBUG works even over the initial instructions.
-  check(canvas.has("COLORS") && canvas.has("GARDEN POP"),"debug opens with the default Garden look");
-  check(canvas.has("BALLS") && canvas.has("BOUNCES") && canvas.has("PING RADIUS"),"existing controls remain beside COLORS");
+  check(canvas.has("DEBUG") && same(canvas.field,garden.field),"debug opens over the Garden Pop field");
+  check(!canvas.has("COLORS") && !canvas.has("NAVY") && !canvas.has("EMBER") && !canvas.has("FOREST") && !canvas.has("PLUM") && !canvas.has("GARDEN POP"),"the debug panel has no COLORS button or scheme name");
+  check(canvas.has("BALLS") && canvas.has("BOUNCES") && canvas.has("PING RADIUS") && canvas.has("RESTART") && canvas.has("CLOSE"),"the other controls remain");
   // Every label and value lies on the 390x844 screen (the debug font is 8 units a character at scale 1).
   check(std::all_of(canvas.texts.begin(),canvas.texts.end(),[](const auto& t){ return t.at.x>=0 && t.at.y>=0 && t.at.y+16<=844; }),"every debug row fits the screen");
   tap({335,85}); // Existing ping control still applies immediately.
   check(canvas.valueAt(78,std::to_string(Model::defaultPingRadius+1)),"ping radius plus still works");
   tap({335,359}); tap({335,401}); // Pending ball/bounce settings.
   check(canvas.valueAt(352,std::to_string(Model::defaultBalls+1)) && canvas.valueAt(394,std::to_string(Model::defaultBounces+1)),"existing pending controls work");
-  for(std::size_t i=1; i<=lookCount; ++i) {
-    const auto& p=lookPalette((gardenScheme+i)%lookCount);
-    tap(i%2 ? yy::Vec2{45,750} : yy::Vec2{345,780}); // opposite edges of the 310x38 touch target
-    check(canvas.has(p.name) && same(canvas.field,p.field),"COLORS changes the label and field immediately, and wraps");
-    check(p.name==garden.name ? canvas.spriteHas(GardenSprite::Mist) : std::find_if(canvas.fills.begin(),canvas.fills.end(),[&](yy::Color c){return same(c,p.fog[0]);})!=canvas.fills.end(),"render uses the selected fog");
-    tap({110,812}); // RESTART
-    check(!canvas.has("COLORS") && canvas.has("TAP TO START") && same(canvas.field,p.field),"restart closes debug and keeps the selected palette");
-    tap({330,40});
-    check(canvas.has(p.name),"reopening debug keeps the selected scheme name");
-    check(canvas.valueAt(78,std::to_string(Model::defaultPingRadius+1)),"restart also keeps the existing ping radius preference");
-    check(canvas.valueAt(352,std::to_string(Model::defaultBalls+1)) && canvas.valueAt(394,std::to_string(Model::defaultBounces+1)),"restart applies the existing pending settings");
-  }
-  tap({195,762}); tap({195,762}); // Garden -> NAVY -> EMBER
-  tap({275,812}); // CLOSE
-  check(!canvas.has("COLORS") && same(canvas.field,palettes[1].field),"CLOSE keeps the scheme");
-  tap({330,40}); check(canvas.has("EMBER"),"scheme survives close and reopen");
-  std::cout<<"Debug touch path: cycle all schemes, wrap, restart, close, reopen passed\n";
+  tap({110,768}); // RESTART, where COLORS used to sit above it
+  check(!canvas.has("CLOSE") && canvas.has("TAP TO START") && same(canvas.field,garden.field) && canvas.spriteHas(GardenSprite::Mist),"restart closes debug and the field is Garden Pop");
+  tap({330,40});
+  check(canvas.valueAt(78,std::to_string(Model::defaultPingRadius+1)),"restart also keeps the existing ping radius preference");
+  check(canvas.valueAt(352,std::to_string(Model::defaultBalls+1)) && canvas.valueAt(394,std::to_string(Model::defaultBounces+1)),"restart applies the existing pending settings");
+  tap({195,725}); // between the last weight row and RESTART: inside the panel, no button
+  check(canvas.has("CLOSE"),"an empty spot in the panel does nothing");
+  tap({275,768}); // CLOSE
+  check(!canvas.has("CLOSE") && same(canvas.field,garden.field),"CLOSE keeps Garden Pop");
+  tap({330,40});
+  std::cout<<"Debug touch path: no COLORS button, restart, close, reopen passed\n";
 
   // The grid settings: the steppers change the pending values and RESTART builds the new board.
   check(canvas.has("GRID SIZE") && canvas.valueAt(436,"24X40") && canvas.valueAt(478,"2%") && canvas.has("FREE PLAY WEIGHTS"),"debug shows the grid size and glow rate");
@@ -121,13 +113,13 @@ void paletteChecks() {
   tap({205,549}); check(canvas.valueAt(542,"0"),"a weight steps down to 0");
   tap({335,717}); check(canvas.valueAt(710,"2"),"a weight steps up");
   check(canvas.columns()==24,"the pending settings leave the board alone");
-  tap({110,812}); // RESTART
+  tap({110,768}); // RESTART
   check(!canvas.has("GRID SIZE") && canvas.columns()==12,"restart builds the 12x20 board, fitted to the play area");
   tap({330,40});
   check(canvas.valueAt(436,"12X20") && canvas.valueAt(478,"8%") && canvas.valueAt(542,"0") && canvas.valueAt(710,"2"),"reopening debug shows the applied settings");
   for(int i=0; i<12; ++i) tap({335,443});
   check(canvas.valueAt(436,"60X100"),"the grid size steps up to 60x100");
-  tap({110,812});
+  tap({110,768});
   check(canvas.columns()==60,"restart builds the 60x100 board");
   std::cout<<"Debug touch path: grid size, glow rate and weights apply on restart passed\n";
 
@@ -144,7 +136,7 @@ void paletteChecks() {
   press({335,211}); check(panel.valueAt(204,"3"),"lightning reach steps by half a cell");
   for(int i=0; i<5; ++i) press({205,253});
   check(panel.valueAt(246,"OFF"),"a snap angle of 0 shows OFF");
-  press({110,812}); press({330,40}); // RESTART, then reopen
+  press({110,768}); press({330,40}); // RESTART, then reopen
   check(panel.valueAt(120,"3X3") && panel.valueAt(162,"7") && panel.valueAt(204,"3") && panel.valueAt(246,"OFF"),"restart keeps the tuning");
   std::cout<<"Debug touch path: bomb size, lightning and snap angle apply at once and survive restart passed\n";
 }
@@ -176,12 +168,12 @@ struct Session {
   Canvas canvas; Quiet quiet; MemoryStorage storage;
   std::unique_ptr<yy::Game> game=tapdemo::createGame();
   int frames{}; // played so far; the glow pulse follows the clock
-  Session(const char* save, const char* level=nullptr, const char* scene=nullptr, const char* debug="", const char* scheme=nullptr) {
+  Session(const char* save, const char* level=nullptr, const char* scene=nullptr, const char* debug="") {
     storage.saved=save; storage.debug=debug;
-    setVariable("YY_TAPDEMO_LEVEL",level); setVariable("YY_TAPDEMO_SCENE",scene); setVariable("YY_TAPDEMO_SCHEME",scheme);
+    setVariable("YY_TAPDEMO_LEVEL",level); setVariable("YY_TAPDEMO_SCENE",scene);
     yy::Services services{canvas,quiet,quiet,storage};
     game->initialize(services);
-    setVariable("YY_TAPDEMO_LEVEL",nullptr); setVariable("YY_TAPDEMO_SCENE",nullptr); setVariable("YY_TAPDEMO_SCHEME",nullptr);
+    setVariable("YY_TAPDEMO_LEVEL",nullptr); setVariable("YY_TAPDEMO_SCENE",nullptr);
     canvas.read(*game);
   }
   void tap(yy::Vec2 p) { game->pointerDown(7,p); game->pointerUp(7,p); canvas.read(*game); }
@@ -234,10 +226,25 @@ void gardenChecks() {
     check(card.canvas.has("EACH HIT STRIPS A LAYER") && card.canvas.has("LAST HIT OPENS THE PATH"),"garden card teaches material damage");
     for(auto kind: {GardenSprite::Grass,GardenSprite::Cut,GardenSprite::Soil,GardenSprite::Flag}) check(card.canvas.spriteHas(kind),"card shows progression pictures and ladybird pennant");
     card.tap({195,600}); check(!card.canvas.has("TAP TO START"),"touch dismisses the card without shooting");
-    card.tap({330,40}); card.tap({110,812}); check(card.canvas.has("TAP TO START"),"debug restart opens the card again");
-    for(int i=0;i<4;++i) {
-      Session saved("",nullptr,nullptr,("debug 1\nscheme "+std::to_string(i)+"\n").c_str());
-      saved.tap({330,40}); check(saved.canvas.has(palettes[i].name),"all four old saved scheme indices retain their palettes");
+    card.tap({330,40}); card.tap({110,768}); check(card.canvas.has("TAP TO START"),"debug restart opens the card again");
+  }
+  {
+    // Saves from before Garden Pop was the only look carry a scheme line: any value, in or out of range,
+    // is ignored; everything else in the save is kept and the game opens in Garden Pop.
+    for(const char* scheme: {"0","3","9","-4"}) {
+      const std::string text=std::string("debug 1\nballs 12\nbounces 9\ngrid 3\nglow 12\nscheme ")+scheme+"\nweights 0 4 2 5 3\n";
+      Session old("",nullptr,nullptr,text.c_str());
+      check(same(old.canvas.field,garden.field) || old.canvas.has("TAP TO START"),"an old save opens in Garden Pop");
+      old.tap({330,40});
+      check(!old.canvas.has("COLORS") && !old.canvas.has("NAVY") && !old.canvas.has("GARDEN POP"),"the debug panel of an old save has no COLORS button");
+      check(old.canvas.valueAt(352,"12") && old.canvas.valueAt(394,"9") && old.canvas.valueAt(436,"18X30") && old.canvas.valueAt(478,"6%"),"an old save keeps its balls, bounces, grid and glow");
+      check(old.canvas.valueAt(542,"0") && old.canvas.valueAt(584,"4") && old.canvas.valueAt(626,"2") && old.canvas.valueAt(668,"5") && old.canvas.valueAt(710,"3"),"an old save keeps its weights");
+      check(old.storage.debug==text,"opening the debug panel on an old save rewrites nothing until a setting changes");
+      old.tap({205,317}); // LEVEL -: free play, which uses the saved grid
+      old.tap({110,768}); // RESTART
+      check(same(old.canvas.field,garden.field) && old.canvas.spriteHas(GardenSprite::Mist) && old.canvas.spriteHas(GardenSprite::Grass) && old.canvas.columns()==18,"an old save restarts into a Garden Pop field of its own grid");
+      old.tap({330,40}); old.tap({335,127});
+      check(old.storage.debug.find("scheme")==std::string::npos && old.storage.debug.find("balls 12\n")!=std::string::npos,"the next save has no scheme line and keeps the other settings");
     }
   }
   {
@@ -292,7 +299,7 @@ void gardenChecks() {
 }
 
 // The debug panel survives a relaunch: every change is saved as it is made, the next session opens
-// with it, and a pinned scheme or scene neither reads nor writes the save.
+// with it, and a pinned level or scene neither reads nor writes the save.
 void debugPersistenceChecks() {
   std::string saved;
   {
@@ -300,21 +307,20 @@ void debugPersistenceChecks() {
     first.tap({330,40});
     first.tap({335,127}); first.tap({335,359}); first.tap({335,443}); first.tap({335,549}); // bomb, balls, grid, bomb weight
     check(first.storage.writes==4 && first.storage.debug.rfind("debug 1\n",0)==0,"each debug change is saved as it is made");
-    first.tap({195,762}); first.tap({195,762});
-    check(first.storage.writes==6,"cycling the colours saves too");
+    check(first.storage.debug.find("scheme")==std::string::npos,"a save has no scheme line");
     saved=first.storage.debug;
   }
   {
     Session second("",nullptr,nullptr,saved.c_str());
     check(second.storage.writes==0,"opening the app does not rewrite the settings");
     second.tap({330,40});
-    check(second.canvas.has("EMBER") && second.canvas.valueAt(120,"7X7") && second.canvas.valueAt(352,"11") && second.canvas.valueAt(436,"30X50") && second.canvas.valueAt(542,"2"),
+    check(second.canvas.valueAt(120,"7X7") && second.canvas.valueAt(352,"11") && second.canvas.valueAt(436,"30X50") && second.canvas.valueAt(542,"2"),
           "a relaunch brings the debug settings back");
   }
   {
-    Session pinned("",nullptr,nullptr,saved.c_str(),"PLUM");
+    Session pinned("","1",nullptr,saved.c_str());
     pinned.tap({330,40}); pinned.tap({335,127});
-    check(pinned.canvas.has("PLUM") && pinned.canvas.valueAt(120,"9X9") && pinned.storage.writes==0 && pinned.storage.debug==saved,"a pinned scheme overrides the saved one and saves nothing");
+    check(pinned.canvas.valueAt(120,"7X7") && pinned.storage.writes==0 && pinned.storage.debug==saved,"a pinned level uses the defaults and saves nothing");
     Session scene("",nullptr,"debug",saved.c_str());
     scene.tap({335,127});
     check(scene.canvas.valueAt(120,"7X7") && scene.storage.writes==0 && scene.storage.debug==saved,"a scene uses the defaults and saves nothing");
@@ -322,7 +328,7 @@ void debugPersistenceChecks() {
   {
     Session damaged("",nullptr,nullptr,"debug 1\nballs 12\nscheme 99\nbomb\n\x01");
     damaged.tap({330,40});
-    check(damaged.canvas.valueAt(352,"12") && damaged.canvas.valueAt(120,"5X5") && damaged.canvas.has("GARDEN POP"),"a damaged save still opens, clamped and defaulted");
+    check(damaged.canvas.valueAt(352,"12") && damaged.canvas.valueAt(120,"5X5") && !damaged.canvas.has("COLORS") && same(damaged.canvas.field,tapdemo::garden.field),"a damaged save still opens, clamped and defaulted");
   }
   std::cout<<"Debug touch path: settings survive a relaunch, pins neither read nor write them passed\n";
 }
@@ -345,16 +351,16 @@ void levelFlowChecks() {
     const auto before=third.field();
     third.tap({330,40});
     check(third.canvas.valueAt(310,"3"),"the debug level picker shows the current level");
-    third.tap({110,812}); // RESTART on level 3
+    third.tap({110,768}); // RESTART on level 3
     check(third.canvas.has("LEVEL 3") && sameFills(third.field(),before),"restarting a level from debug rebuilds the identical field");
     third.tap({330,40}); third.tap({335,317}); // LEVEL +
     check(third.canvas.valueAt(310,"4"),"the picker steps to the next level");
-    third.tap({110,812});
+    third.tap({110,768});
     check(third.canvas.has("LEVEL 4") && third.storage.saved=="level 4\n","a picked level opens and is saved");
     third.tap({330,40});
     for(int i=0; i<levelCount; ++i) third.tap({205,317});
     check(third.canvas.valueAt(310,"FREE"),"the picker's lowest entry is free play");
-    third.tap({110,812});
+    third.tap({110,768});
     check(third.canvas.has("FREE PLAY") && third.canvas.columns()==24 && third.storage.saved=="level 4\n","free play opens today's random 24x40 field and keeps the saved level");
     third.tap({330,40});
     for(int i=0; i<levelCount; ++i) third.tap({335,317});

@@ -792,35 +792,40 @@ static void debugSettingsChecks() {
   using tapdemo::DebugSettings; using tapdemo::Settings;
   const auto same=[](const DebugSettings& a, const DebugSettings& b) {
     return a.pingRadius==b.pingRadius && a.bombSize==b.bombSize && a.electricSeconds==b.electricSeconds && a.electricHalves==b.electricHalves &&
-           a.snapDegrees==b.snapDegrees && a.balls==b.balls && a.bounces==b.bounces && a.scheme==b.scheme &&
+           a.snapDegrees==b.snapDegrees && a.balls==b.balls && a.bounces==b.bounces &&
            a.grid.gridScale==b.grid.gridScale && a.grid.glow==b.grid.glow && a.grid.weights==b.grid.weights;
   };
   const DebugSettings defaults;
   check(defaults.pingRadius==Model::defaultPingRadius && defaults.bombSize==Model::defaultBombSize && defaults.electricSeconds==Model::defaultElectricSeconds &&
         defaults.electricHalves==static_cast<int>(Model::defaultElectricRadius*2) && defaults.snapDegrees==Model::defaultSnapDegrees &&
         defaults.balls==Model::defaultBalls && defaults.bounces==Model::defaultBounces,"the debug defaults are the model's defaults");
-  check(same(tapdemo::loadDebug(tapdemo::saveDebug(defaults),4),defaults),"the defaults round-trip");
+  check(same(tapdemo::loadDebug(tapdemo::saveDebug(defaults)),defaults),"the defaults round-trip");
   DebugSettings every;
   every.pingRadius=17; every.bombSize=9; every.electricSeconds=11; every.electricHalves=9; every.snapDegrees=0; every.balls=33; every.bounces=44;
-  every.scheme=3; every.grid.gridScale=7; every.grid.glow=21; every.grid.weights={0,9,2,5,3};
-  check(same(tapdemo::loadDebug(tapdemo::saveDebug(every),4),every),"every debug setting round-trips");
+  every.grid.gridScale=7; every.grid.glow=21; every.grid.weights={0,9,2,5,3};
+  check(same(tapdemo::loadDebug(tapdemo::saveDebug(every)),every),"every debug setting round-trips");
   check(tapdemo::saveDebug(every).rfind("debug 1\n",0)==0,"the text starts with its version");
   for(const char* bad: {"","debug","debug 2\nballs 5\n","ping 17\nballs 5\n","\x01 garbage\n\n\n","debug 1 \nballs 5\n"})
-    check(same(tapdemo::loadDebug(bad,4),defaults),"a missing, damaged or newer-version save gives the defaults");
+    check(same(tapdemo::loadDebug(bad),defaults),"a missing, damaged or newer-version save gives the defaults");
   {
-    const auto d=tapdemo::loadDebug("debug 1\nballs 12\nbogus 4\nping x\nbounces\nsnap 3 4\nweights 4 x 2\ngrid 5\n",4);
+    const auto d=tapdemo::loadDebug("debug 1\nballs 12\nbogus 4\nping x\nbounces\nsnap 3 4\nweights 4 x 2\ngrid 5\n");
     check(d.balls==12 && d.grid.gridScale==5 && d.snapDegrees==3,"a partial save keeps what it has");
     check(d.pingRadius==defaults.pingRadius && d.bounces==defaults.bounces,"unreadable or empty lines leave the default");
     check(d.grid.weights==std::array<int,5>{4,1,2,1,1},"a damaged weight leaves its own default");
   }
   {
-    const auto d=tapdemo::loadDebug("debug 1\nping 999\nbomb 4\nzapSeconds -5\nzapHalves 99\nsnap 90\nballs 0\nbounces 1000\ngrid 1\nglow 99\nscheme 9\nweights -1 99 3 3 3\n",4);
+    const auto d=tapdemo::loadDebug("debug 1\nping 999\nbomb 4\nzapSeconds -5\nzapHalves 99\nsnap 90\nballs 0\nbounces 1000\ngrid 1\nglow 99\nweights -1 99 3 3 3\n");
     check(d.pingRadius==Model::maxPingRadius && d.bombSize==5 && d.electricSeconds==Model::minElectricSeconds,"out-of-range power-up values clamp");
     check(d.electricHalves==static_cast<int>(Model::maxElectricRadius*2) && d.snapDegrees==Model::maxSnapDegrees,"out-of-range reach and snap clamp");
     check(d.balls==1 && d.bounces==Model::maxSetting && d.grid.gridScale==Settings::minScale && d.grid.glow==Settings::maxGlow,"out-of-range round settings clamp");
-    check(d.scheme==3 && d.grid.weights[0]==0 && d.grid.weights[1]==Settings::maxWeight,"an unknown scheme and weights clamp");
+    check(d.grid.weights[0]==0 && d.grid.weights[1]==Settings::maxWeight,"weights clamp");
   }
-  check(tapdemo::loadDebug("debug 1\nballs 99999999999\n",4).balls==Model::defaultBalls,"a number too large to read leaves the default");
+  for(const char* scheme: {"0","3","9","-4","x"}) { // a scheme line from an older save is ignored
+    const auto d=tapdemo::loadDebug(std::string("debug 1\nscheme ")+scheme+"\nballs 12\nweights 0 4 2 5 3\n");
+    check(d.balls==12 && d.grid.weights==std::array<int,5>{0,4,2,5,3} && d.bounces==defaults.bounces,"a saved scheme line leaves every other setting intact");
+  }
+  check(tapdemo::saveDebug(every).find("scheme")==std::string::npos,"a save has no scheme line");
+  check(tapdemo::loadDebug("debug 1\nballs 99999999999\n").balls==Model::defaultBalls,"a number too large to read leaves the default");
   std::cout<<"Debug settings: round-trip, defaults and clamping\n";
 }
 void gardenChecks();

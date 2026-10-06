@@ -3,19 +3,16 @@
 #include <yy/runtime.hpp>
 
 namespace tapdemo {
-// A fifth render choice; the four saved palette indices remain unchanged.
-inline constexpr std::size_t gardenScheme=palettes.size(), lookCount=gardenScheme+1;
+// Garden Pop is the game's only look.
 inline constexpr Palette garden{
   "GARDEN POP", {24,43,29}, {25,57,34}, {25,57,34}, {63,91,55},
   {255,248,224}, {166,192,158}, {162,224,126},
-  {237,35,51}, {255,191,185}, {255,248,224}, {58,32,18},
-  {{{174,101,43},{113,166,49},{97,181,35}}},
-  {{{154,177,143},{184,207,170}}}, {239,250,226},
+  {237,35,51}, {58,32,18},
+  {{{154,177,143},{184,207,170}}},
   {{{244,111,175},{255,174,122},{255,234,122},{128,225,250},{219,181,250},{162,245,179}}}
 };
 inline constexpr float popSeconds=0.200f;
 inline constexpr int gardenTextureCells=8; // large dewy/soil patches, independent of brick strength
-inline const Palette& lookPalette(std::size_t scheme) { return scheme==gardenScheme ? garden : palettes[scheme]; }
 enum class GardenSprite { Grass, Cut, Soil, Clear, Holder, Mist, Ball, Flag,
   Flash, Burst, Clippings, Header, Card, RimH, RimV, RimCorner };
 inline yy::Rect gardenSource(GardenSprite sprite) {

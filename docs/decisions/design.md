@@ -6,7 +6,7 @@ Append-only. The **Status:** line under each heading says which entry holds.
 
 ### D2 — Fog has brightness and texture contrast in every colour scheme (2026-10-05)
 
-**Status:** active
+**Status:** amended by D9 -- only Garden Pop remains; the four other schemes and COLORS are removed
 
 **What happened.** Yotam: "Also give some different color schemes from debug and make sure that what is in the fog has a different contrast to what is outside. Like the cavities kind of look like the fog right now."
 
@@ -150,7 +150,7 @@ of its experience. The bot is not a person: a person will win more often.
 
 ### D8 — Garden Pop draws damage as materials and keeps hit effects outside the model (2026-10-06)
 
-**Status:** active
+**Status:** amended by D9 -- Garden Pop is the only look, on every launch
 
 **What happened.** T16 implements the accepted concept 1 of
 `docs/reskin-concepts.md`: Garden Pop's material damage, garden art, ladybird
@@ -179,3 +179,17 @@ local pop makes contact visible during continuous aiming and shooting.
 
 **Evidence.** V9 and `docs/garden-pop-validation.md` record production pixel
 checks, live touch tests and nine inspected runtime/mockup pairs at 390 wide.
+
+---
+
+### D9 — TapDemo has one look, Garden Pop, and ignores a saved colour scheme (2026-10-06)
+
+**Status:** active
+
+**What happened.** Yotam: "set the default theme to the garden theme. get rid of all other themes but the main one". Read as: Garden Pop is the main one. Garden Pop was the default only on a fresh install; a phone with debug settings saved before it existed reopened in the scheme it remembered, and DEBUG still had a COLORS button.
+
+**Decision.** Garden Pop is the only palette and the only drawing path: the NAVY, EMBER, FOREST and PLUM palettes, their rectangle bricks, stipple fog, plain header, plain instructions card and circle ball, the COLORS button and `YY_TAPDEMO_SCHEME` are removed. `DebugSettings` has no scheme; an older `debug 1` save with a `scheme N` line (any N) loads with every other setting intact and the line is ignored, and a save written now has none. The fog must still be at least 0.08 linear-sRGB luminance above the cavity (D2's rule, now for Garden Pop alone). Garden Pop's art, colours, fog and gameplay are unchanged.
+
+**Why.** One look is what the owner asked for, and it removes the drawing paths nobody can reach, which had to be kept in step with every rendering change.
+
+**Evidence.** V10, `tests/palette_tests.cpp` (old saves with `scheme 0` and `scheme 3` through the real Game, no COLORS button) and `tests/core_tests.cpp`.
