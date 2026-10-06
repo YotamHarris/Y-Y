@@ -27,6 +27,7 @@ constexpr yy::Rect plusButton(int row) { return {320,stepperTops[row],44,38}; }
 constexpr yy::Rect colorsButton{40,746,310,38};
 constexpr yy::Rect restartButton{40,792,150,44}, closeButton{200,792,150,44};
 constexpr const char* progressFile="progress.txt"; // the reached level, in yy::Storage
+constexpr const char* debugFile="debug.txt";       // every debug panel setting, in yy::Storage
 constexpr yy::Rect overlay{24,340,342,156};
 // Drawing code lets Power::None stand for the goal: its colour, name and flag icon.
 constexpr const char* powerNames[]{"GOAL","BOMB","ELECTRICITY","PING","GHOST","SPEED UP"};
@@ -113,7 +114,8 @@ class TapGame final: public yy::Game {
   yy::Haptics* haptics{};
   bool debugOpen{};
   yy::Storage* storage{};
-  std::size_t scheme{}; // session preference: restarting a round keeps it
+  std::size_t scheme{}; // restarting a round keeps it; saved with the debug settings
+  bool saveDebugSettings{true}; // off while a smoke run pins a level, scene or scheme
   int freeBalls{Model::defaultBalls}, freeBounces{Model::defaultBounces};
   Settings freeGrid; // free play's settings; levels bring their own
   int debugLevel{}; // the picker: 1..levelCount, or 0 for free play
@@ -141,6 +143,15 @@ class TapGame final: public yy::Game {
     else if(next==model.level()) retry();
     else enter(next);
   }
+  // Writes every panel value as it stands, pending ones included, so a relaunch shows the panel as left.
+  void persist() {
+    if(!storage || !saveDebugSettings) return;
+    DebugSettings d;
+    d.pingRadius=model.pingRadius; d.bombSize=model.bombSize; d.electricSeconds=model.electricSeconds;
+    d.electricHalves=static_cast<int>(std::lround(model.electricRadius*2)); d.snapDegrees=model.snapDegrees;
+    d.balls=debugBalls; d.bounces=debugBounces; d.grid=debugGrid; d.scheme=static_cast<int>(scheme);
+    storage->write(debugFile,saveDebug(d));
+  }
   void openDebug() { touch.cancel(); debugLevel=model.level(); debugBalls=freeBalls; debugBounces=freeBounces; debugGrid=freeGrid; debugOpen=true; }
   void step(int row, int by) {
     switch(row) {
@@ -156,13 +167,14 @@ class TapGame final: public yy::Game {
     case GlowRate: debugGrid.glow=stepGlow(debugGrid.glow,by); break;
     default: { int& w=debugGrid.weights[row-Weight0]; w=std::clamp(w+by,0,Settings::maxWeight); }
     }
+    persist();
   }
   void pressDebug(yy::Vec2 p) {
     for(int row=0; row<steppers; ++row) {
       if(inside(minusButton(row),p)) { step(row,-1); return; }
       if(inside(plusButton(row),p)) { step(row,1); return; }
     }
-    if(inside(colorsButton,p)) scheme=(scheme+1)%palettes.size();
+    if(inside(colorsButton,p)) { scheme=(scheme+1)%palettes.size(); persist(); }
     else if(inside(restartButton,p)) {
       freeBalls=debugBalls; freeBounces=debugBounces; freeGrid=debugGrid;
       if(debugLevel>0) enter(debugLevel); else freePlay();
@@ -268,12 +280,23 @@ class TapGame final: public yy::Game {
   }
 public: void initialize(yy::Services& services) override {
     audio=&services.audio; haptics=&services.haptics; touch.haptics=haptics; storage=&services.storage;
-    // The app opens at the reached level; a smoke run can pin one without touching the save.
-    if(const char* pinned=std::getenv("YY_TAPDEMO_LEVEL")) { if(std::atoi(pinned)>0) enter(std::atoi(pinned),false); }
+    // The app opens at the reached level with the debug settings it was left with. A smoke run can
+    // pin a level, a scene or a scheme: the first two use the defaults, none of them touches a save.
+    const char* pinned=std::getenv("YY_TAPDEMO_LEVEL"), *scene=std::getenv("YY_TAPDEMO_SCENE"), *scheme_=std::getenv("YY_TAPDEMO_SCHEME");
+    saveDebugSettings=!pinned && !scene && !scheme_;
+    const bool saved=!pinned && !scene;
+    // Before the first grid: free play's grid, balls and bounces come from the save.
+    const DebugSettings d=saved ? loadDebug(storage->read(debugFile),static_cast<int>(palettes.size())) : DebugSettings{};
+    freeBalls=debugBalls=d.balls; freeBounces=debugBounces=d.bounces; freeGrid=debugGrid=d.grid; scheme=static_cast<std::size_t>(d.scheme);
+    if(pinned) { if(std::atoi(pinned)>0) enter(std::atoi(pinned),false); }
     else enter(loadProgress(storage->read(progressFile)),false);
-    if(const char* name=std::getenv("YY_TAPDEMO_SCHEME"))
-      for(std::size_t i=0; i<palettes.size(); ++i) if(palettes[i].name==name) { scheme=i; break; }
-    stage(std::getenv("YY_TAPDEMO_SCENE"));
+    // A level's table sets the power-up values, so the saved ones go on after it.
+    if(saved) { model.setPingRadius(d.pingRadius); model.setBombSize(d.bombSize); model.setElectricSeconds(d.electricSeconds);
+                model.setElectricRadius(d.electricHalves/2.0f); }
+    model.setSnapDegrees(d.snapDegrees);
+    if(scheme_)
+      for(std::size_t i=0; i<palettes.size(); ++i) if(palettes[i].name==scheme_) { scheme=i; break; }
+    stage(scene);
   }
   void update(float seconds) override {
     model.update(seconds); touch.update(seconds);

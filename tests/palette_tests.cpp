@@ -126,9 +126,10 @@ void paletteChecks() {
 
 namespace {
 struct MemoryStorage final: yy::Storage {
-  std::string saved; int writes{};
-  std::string read(std::string_view) override { return saved; }
-  bool write(std::string_view, std::string_view text) override { saved=text; ++writes; return true; }
+  std::string saved, debug; int writes{}; // the reached level, and the debug settings
+  std::string& file(std::string_view name) { return name=="debug.txt" ? debug : saved; }
+  std::string read(std::string_view name) override { return file(name); }
+  bool write(std::string_view name, std::string_view text) override { file(name)=text; ++writes; return true; }
 };
 struct Quiet final: yy::Audio, yy::Haptics {
   void tone(float, float) override {}
@@ -149,12 +150,12 @@ struct Session {
   Canvas canvas; Quiet quiet; MemoryStorage storage;
   std::unique_ptr<yy::Game> game=tapdemo::createGame();
   int frames{}; // played so far; the glow pulse follows the clock
-  Session(const char* save, const char* level=nullptr, const char* scene=nullptr) {
-    storage.saved=save;
-    setVariable("YY_TAPDEMO_LEVEL",level); setVariable("YY_TAPDEMO_SCENE",scene);
+  Session(const char* save, const char* level=nullptr, const char* scene=nullptr, const char* debug="", const char* scheme=nullptr) {
+    storage.saved=save; storage.debug=debug;
+    setVariable("YY_TAPDEMO_LEVEL",level); setVariable("YY_TAPDEMO_SCENE",scene); setVariable("YY_TAPDEMO_SCHEME",scheme);
     yy::Services services{canvas,quiet,quiet,storage};
     game->initialize(services);
-    setVariable("YY_TAPDEMO_LEVEL",nullptr); setVariable("YY_TAPDEMO_SCENE",nullptr);
+    setVariable("YY_TAPDEMO_LEVEL",nullptr); setVariable("YY_TAPDEMO_SCENE",nullptr); setVariable("YY_TAPDEMO_SCHEME",nullptr);
     canvas.read(*game);
   }
   void tap(yy::Vec2 p) { game->pointerDown(7,p); game->pointerUp(7,p); canvas.read(*game); }
@@ -170,6 +171,42 @@ struct Session {
 bool sameFills(const std::vector<yy::Color>& a, const std::vector<yy::Color>& b) {
   return a.size()==b.size() && std::equal(a.begin(),a.end(),b.begin(),same);
 }
+}
+
+// The debug panel survives a relaunch: every change is saved as it is made, the next session opens
+// with it, and a pinned scheme or scene neither reads nor writes the save.
+void debugPersistenceChecks() {
+  std::string saved;
+  {
+    Session first("");
+    first.tap({330,40});
+    first.tap({335,127}); first.tap({335,359}); first.tap({335,443}); first.tap({335,549}); // bomb, balls, grid, bomb weight
+    check(first.storage.writes==4 && first.storage.debug.rfind("debug 1\n",0)==0,"each debug change is saved as it is made");
+    first.tap({195,762});
+    check(first.storage.writes==5,"cycling the colours saves too");
+    saved=first.storage.debug;
+  }
+  {
+    Session second("",nullptr,nullptr,saved.c_str());
+    check(second.storage.writes==0,"opening the app does not rewrite the settings");
+    second.tap({330,40});
+    check(second.canvas.has("EMBER") && second.canvas.valueAt(120,"7X7") && second.canvas.valueAt(352,"11") && second.canvas.valueAt(436,"30X50") && second.canvas.valueAt(542,"2"),
+          "a relaunch brings the debug settings back");
+  }
+  {
+    Session pinned("",nullptr,nullptr,saved.c_str(),"PLUM");
+    pinned.tap({330,40}); pinned.tap({335,127});
+    check(pinned.canvas.has("PLUM") && pinned.canvas.valueAt(120,"9X9") && pinned.storage.writes==0 && pinned.storage.debug==saved,"a pinned scheme overrides the saved one and saves nothing");
+    Session scene("",nullptr,"debug",saved.c_str());
+    scene.tap({335,127});
+    check(scene.canvas.valueAt(120,"7X7") && scene.storage.writes==0 && scene.storage.debug==saved,"a scene uses the defaults and saves nothing");
+  }
+  {
+    Session damaged("",nullptr,nullptr,"debug 1\nballs 12\nscheme 99\nbomb\n\x01");
+    damaged.tap({330,40});
+    check(damaged.canvas.valueAt(352,"12") && damaged.canvas.valueAt(120,"5X5") && damaged.canvas.has("PLUM"),"a damaged save still opens, clamped and defaulted");
+  }
+  std::cout<<"Debug touch path: settings survive a relaunch, pins neither read nor write them passed\n";
 }
 
 // The level flow through the real Game: the app opens at the saved level, a win offers and opens

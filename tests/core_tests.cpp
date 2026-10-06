@@ -12,6 +12,7 @@
 
 void paletteChecks();
 void levelFlowChecks();
+void debugPersistenceChecks();
 void levelBandChecks();
 
 static void check(bool condition, const char* label) { if(!condition) { std::cerr<<label<<'\n'; std::exit(1); } }
@@ -772,6 +773,41 @@ static void levelChecks() {
   check(tapdemo::loadProgress("level 7\n")==7 && tapdemo::saveProgress(7)=="level 7\n","the save is one plain line");
   std::cout<<"Levels: ten tables load, retries repeat shot for shot, progress round-trips\n";
 }
+static void debugSettingsChecks() {
+  using tapdemo::DebugSettings; using tapdemo::Settings;
+  const auto same=[](const DebugSettings& a, const DebugSettings& b) {
+    return a.pingRadius==b.pingRadius && a.bombSize==b.bombSize && a.electricSeconds==b.electricSeconds && a.electricHalves==b.electricHalves &&
+           a.snapDegrees==b.snapDegrees && a.balls==b.balls && a.bounces==b.bounces && a.scheme==b.scheme &&
+           a.grid.gridScale==b.grid.gridScale && a.grid.glow==b.grid.glow && a.grid.weights==b.grid.weights;
+  };
+  const DebugSettings defaults;
+  check(defaults.pingRadius==Model::defaultPingRadius && defaults.bombSize==Model::defaultBombSize && defaults.electricSeconds==Model::defaultElectricSeconds &&
+        defaults.electricHalves==static_cast<int>(Model::defaultElectricRadius*2) && defaults.snapDegrees==Model::defaultSnapDegrees &&
+        defaults.balls==Model::defaultBalls && defaults.bounces==Model::defaultBounces,"the debug defaults are the model's defaults");
+  check(same(tapdemo::loadDebug(tapdemo::saveDebug(defaults),4),defaults),"the defaults round-trip");
+  DebugSettings every;
+  every.pingRadius=17; every.bombSize=9; every.electricSeconds=11; every.electricHalves=9; every.snapDegrees=0; every.balls=33; every.bounces=44;
+  every.scheme=3; every.grid.gridScale=7; every.grid.glow=21; every.grid.weights={0,9,2,5,3};
+  check(same(tapdemo::loadDebug(tapdemo::saveDebug(every),4),every),"every debug setting round-trips");
+  check(tapdemo::saveDebug(every).rfind("debug 1\n",0)==0,"the text starts with its version");
+  for(const char* bad: {"","debug","debug 2\nballs 5\n","ping 17\nballs 5\n","\x01 garbage\n\n\n","debug 1 \nballs 5\n"})
+    check(same(tapdemo::loadDebug(bad,4),defaults),"a missing, damaged or newer-version save gives the defaults");
+  {
+    const auto d=tapdemo::loadDebug("debug 1\nballs 12\nbogus 4\nping x\nbounces\nsnap 3 4\nweights 4 x 2\ngrid 5\n",4);
+    check(d.balls==12 && d.grid.gridScale==5 && d.snapDegrees==3,"a partial save keeps what it has");
+    check(d.pingRadius==defaults.pingRadius && d.bounces==defaults.bounces,"unreadable or empty lines leave the default");
+    check(d.grid.weights==std::array<int,5>{4,1,2,1,1},"a damaged weight leaves its own default");
+  }
+  {
+    const auto d=tapdemo::loadDebug("debug 1\nping 999\nbomb 4\nzapSeconds -5\nzapHalves 99\nsnap 90\nballs 0\nbounces 1000\ngrid 1\nglow 99\nscheme 9\nweights -1 99 3 3 3\n",4);
+    check(d.pingRadius==Model::maxPingRadius && d.bombSize==5 && d.electricSeconds==Model::minElectricSeconds,"out-of-range power-up values clamp");
+    check(d.electricHalves==static_cast<int>(Model::maxElectricRadius*2) && d.snapDegrees==Model::maxSnapDegrees,"out-of-range reach and snap clamp");
+    check(d.balls==1 && d.bounces==Model::maxSetting && d.grid.gridScale==Settings::minScale && d.grid.glow==Settings::maxGlow,"out-of-range round settings clamp");
+    check(d.scheme==3 && d.grid.weights[0]==0 && d.grid.weights[1]==Settings::maxWeight,"an unknown scheme and weights clamp");
+  }
+  check(tapdemo::loadDebug("debug 1\nballs 99999999999\n",4).balls==Model::defaultBalls,"a number too large to read leaves the default");
+  std::cout<<"Debug settings: round-trip, defaults and clamping\n";
+}
 int main() {
   yy::Viewport v{{10,40,780,1688}};
   auto point=v.map({400,884});
@@ -811,8 +847,10 @@ int main() {
   glowChecks();
   snapChecks();
   levelChecks();
+  debugSettingsChecks();
   paletteChecks();
   levelFlowChecks();
+  debugPersistenceChecks();
   levelBandChecks();
   std::cout<<"Engine and TapDemo checks passed\n";
 }
