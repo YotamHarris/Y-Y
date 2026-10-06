@@ -9,6 +9,12 @@ The manager runs on your Windows PC and talks with you in one private Discord
 channel. Give it a goal in normal language. It plans bounded tasks, runs up to
 two Codex/Claude CLI sessions, independently reviews their evidence, and lands
 passing commits through `fe_sync`. Each task has a Discord thread and board record.
+Discord accepts the configured `owner_ids` allowlist, defaulting to `owner_id`.
+Each new goal records its requester and everyone who writes or uses a control in
+its planning or task threads. Goal and task pings mention those participants who
+remain allowed. Older goals without a recorded requester, and manager-wide
+alerts, retain the configured owner fallback (S36).
+
 Each goal has a short name the planner gives it (D193), shown on its tasks' board
 chips ("G3 · V165 improvements"), in its task threads' titles and on the Manager
 tab; `fe_manager.py name G3 "V165 improvements"` renames it.
@@ -442,7 +448,7 @@ found in the newest one.
 ```
 
 ```powershell
-& $managerPython -m unittest discover -s studio -p test_manager.py -v
+python studio/fe_manager.py test   # S35: the venv, stderr folded, one summary line
 python studio/fe_board.py selftest
 python studio/fe_docs.py check
 # Opt-in, uses the signed-in CLI allowances in an empty temporary repo:

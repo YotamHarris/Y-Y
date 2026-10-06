@@ -9,12 +9,12 @@ python studio/fe_docs.py show S12
 python studio/fe_docs.py category manager
 ```
 
-33 entries: 33 active.
+34 entries: 34 active.
 
 | category | file | entries | covers |
 |---|---|---|---|
 | Process | [process.md](decisions/process.md) | 11, 11 holding | the docs, the board, agents and checkouts, sync, the index, Jev |
-| Manager | [manager.md](decisions/manager.md) | 22, 22 holding | the background manager: planning, workers, models, landing, Discord |
+| Manager | [manager.md](decisions/manager.md) | 23, 23 holding | the background manager: planning, workers, models, landing, Discord |
 
 ---
 
@@ -38,10 +38,11 @@ python studio/fe_docs.py category manager
 
 ## Manager
 
-22 entries: 22 active. [decisions/manager.md](decisions/manager.md)
+23 entries: 23 active. [decisions/manager.md](decisions/manager.md)
 
 #### Active — the current rules
 
+- **S36** (2026-10-06) Goal pings reach its allowed participants
 - **S33** (2026-10-05) A landed task's Accept is the message's own and is taken for the latest commit
 - **S32** (2026-10-05) The cleanup crew is judged by health and detours, works from deltas, and reports what it changed and turned down
 - **S31** (2026-10-05) A plan document is an illustrated PDF the owner can read on a phone

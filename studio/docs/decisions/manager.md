@@ -577,3 +577,16 @@ snapshot go dead on any timing the manager does not control; every link of
 that chain was the manager's code, and each failed without a word.
 
 ---
+
+
+---
+
+### S36 — Goal pings reach its allowed participants (2026-10-06)
+
+**Status:** active
+
+**Origin:** YYEngine G9
+
+Discord authentication accepts the configured owner_ids allowlist, defaulting to the single owner_id. Authenticated input retains its author. A new goal retains its requester and everyone who writes or uses a control in its planning or task threads. Pings for that goal and its tasks mention those participants who remain allowed. Manager-wide notices and older goals with no recorded requester retain the owner fallback. Replayed input cannot change its author. Additive tables preserve existing stores.
+
+**Validation:** test_discord_goals.py exercises transport receipt, partial answer buttons, planner replies, task questions, goal completion, allowlist removal, legacy goals and duplicate input without network access.

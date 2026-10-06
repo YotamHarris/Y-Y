@@ -45,6 +45,19 @@ paths when landing. Changes to candidate instructions cannot expand that policy.
 permission code, studio.toml, provider settings, credentials and publication stay with the
 coordinator. Scope access does not authorize changes outside the approved task's purpose.
 
+Manager changes need a normal repository maintenance session: managed game workers
+cannot edit or land the manager's own Python code. Make the fix upstream in Agent
+Studio, test and publish it there, then import the pinned change into studio/ and
+record its commit in studio/UPSTREAM.md while preserving YYEngine's extensions.
+Run npm run check before publishing YYEngine. The manager adopts published code
+through its release handoff; verify the serving and settled commits with
+python studio/fe_manager.py release. Keep separate goals in separate commits.
+
+New Discord goals record their requester and people who write or use controls in
+their planning or task threads. Goal and task pings mention those participants who
+remain in the developer allowlist. Older goals and manager-wide alerts keep the
+configured owner fallback.
+
 The board is http://127.0.0.1:45320 and is bound to loopback. Double-click MobileStudio.cmd
 to open it. Discord works independently of browser access and needs no incoming public port.
 The board's native server has no login. Optional sharing uses a protected Cloudflare Quick

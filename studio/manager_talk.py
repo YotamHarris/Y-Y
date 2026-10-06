@@ -31,6 +31,8 @@ TALK_KEEP = 60000  # characters of conversation kept for a fresh session
 
 
 def ensure_tables(con):
+    import manager_participants
+    manager_participants.ensure_tables(con)
     for stmt in DDL.split(';'):
         if stmt.strip():
             con.execute(stmt)
@@ -59,6 +61,8 @@ def start(b, event_id, body):
     """Yotam's message in the project channel: a new conversation (D226)."""
     gid = b.con.execute("INSERT INTO pm_goals(body,source,created,status) VALUES(?,?,?,'planning')",
                         (body, event_id, time.time())).lastrowid
+    import manager_participants
+    manager_participants.opened(b, gid, event_id)
     _said(b, gid, studio_config.owner(), body)
     b.add_message('owner', 'manager', f'Goal G{gid}', body)
     store.notify(b, f'talk-open:{gid}', f'Planning G{gid} with you, as in a Claude Code session in plan mode: I read '

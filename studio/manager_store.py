@@ -226,12 +226,15 @@ def with_images_of(text, files=()):
     return out
 
 
-def receive(b, event_id, kind, body='', task=None, goal=None):
+def receive(b, event_id, kind, body='', task=None, goal=None, author=None):
     """Called only after transport authentication. Atomically deduplicate input. goal: said
     in that goal's planning thread (D226)."""
     with b.tx():
         n = b.con.execute('INSERT OR IGNORE INTO pm_inbox VALUES(?,?,?,?,?,?)',
                          (str(event_id), kind, task, body, 'pending', time.time())).rowcount
+        if n:
+            import manager_participants
+            manager_participants.remember(b, event_id, author, task, goal)
         if n and goal:
             b.con.execute('INSERT OR IGNORE INTO pm_inbox_goal VALUES(?,?)', (str(event_id), goal))
     return bool(n)

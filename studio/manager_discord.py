@@ -236,7 +236,7 @@ def build_client(config, wake):
                     if skipped:
                         store.notify(b, 'quick-skipped:' + event_id, skipped_note(skipped, bool(body.strip())))
                     if body.strip():
-                        store.receive(b, event_id, 'ask', body)
+                        store.receive(b, event_id, 'ask', body, author=message.author.id)
                     store.set_setting(b, key, max(int(store.setting(b, key, '0')), message.id))
                 wake.set()
                 return
@@ -248,7 +248,7 @@ def build_client(config, wake):
                         # a file left behind is said, never dropped in silence (G27's FBX was)
                         store.notify(b, 'skipped:' + event_id, skipped_note(skipped, bool(body.strip())),
                                      tid, goal=gid)
-                    fresh = bool(body.strip()) and store.receive(b, event_id, 'reply', body, tid, goal=gid)
+                    fresh = bool(body.strip()) and store.receive(b, event_id, 'reply', body, tid, goal=gid, author=message.author.id)
                     if fresh and gid:
                         # D226: a planning thread is a conversation; the live line shows its turn
                         if talk.planner_running(b, gid):
@@ -277,6 +277,13 @@ def build_client(config, wake):
                 return
             parts = custom.split(':')
             action = parts[1]
+            if action in ('approve', 'why', 'drop', 'reason', 'ans', 'own', 'ownsub',
+                          'plan', 'accept', 'changes', 'submit', 'pause'):
+                import manager_participants
+                with fe_board.Board() as b, b.tx():
+                    manager_participants.remember(b, 'interaction:' + str(interaction.id),
+                                                  interaction.user.id, self.task_for(interaction.channel),
+                                                  self.goal_for(interaction.channel))
             tid = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else None
             if action in ('approve', 'why', 'drop', 'reason'):
                 await self.decide(interaction, action, tid)
@@ -294,7 +301,7 @@ def build_client(config, wake):
                         await interaction.response.send_message(
                             'That plan was replaced or already approved; approve the latest one.', ephemeral=True)
                         return
-                    store.receive(b, 'interaction:' + str(interaction.id), 'plan', parts[3], goal=gid)
+                    store.receive(b, 'interaction:' + str(interaction.id), 'plan', parts[3], goal=gid, author=interaction.user.id)
                 wake.set()
                 await interaction.response.send_message('Approved: creating the tasks.', ephemeral=True)
                 return
@@ -316,7 +323,7 @@ def build_client(config, wake):
             if action not in ('accept', 'reply', 'pause'):
                 return
             with fe_board.Board() as b:
-                store.receive(b, 'interaction:' + str(interaction.id), action, body, tid)
+                store.receive(b, 'interaction:' + str(interaction.id), action, body, tid, author=interaction.user.id)
             wake.set()
             await interaction.response.send_message('Recorded. The manager will follow up here.', ephemeral=True)
 
@@ -374,7 +381,7 @@ def build_client(config, wake):
                     return
                 if reply:
                     store.receive(b, 'interaction:' + str(interaction.id), 'reply', reply, tid,
-                                  goal=r.get('goal_id') or None)
+                                  goal=r.get('goal_id') or None, author=interaction.user.id)
             if reply:
                 wake.set()
                 text = f'Recorded. {f"T{tid}" if tid else "The planner"} goes on with your answers.'
@@ -406,7 +413,7 @@ def build_client(config, wake):
                              for c in row.get('components', [])) if action == 'reason' else ''
             with fe_board.Board() as b:
                 store.receive(b, 'interaction:' + str(interaction.id), 'approve' if action == 'approve'
-                              else 'drop' if action == 'drop' else 'reason', body, tid)
+                              else 'drop' if action == 'drop' else 'reason', body, tid, author=interaction.user.id)
             wake.set()
             await interaction.response.send_message(
                 {'approve': 'Approved.', 'drop': 'Dropped.'}.get(action, 'Reasoning saved.')
@@ -516,11 +523,14 @@ def build_client(config, wake):
         async def send_message(self, channel, row, embed, view, paths, first):
             """One message. Discord refusing the attachments (400) must not keep the message,
             and the controls on it, from arriving: it is sent again naming what was left out."""
+            import manager_participants
+            with fe_board.Board() as b:
+                people = manager_participants.recipients(b, row, config) if row['ping'] and first else []
             def send(files):
-                return channel.send(content=f'<@{config["owner_id"]}>' if row['ping'] and first else None,
+                return channel.send(content=' '.join(f'<@{person}>' for person in people) or None,
                                     embed=embed, view=view, files=files,
                                     allowed_mentions=discord.AllowedMentions(
-                                        users=[discord.Object(id=int(config['owner_id']))], roles=False, everyone=False))
+                                        users=[discord.Object(id=int(person)) for person in people], roles=False, everyone=False))
             files = [discord.File(str(p)) for p in paths]
             try:
                 return await send(files)
@@ -669,7 +679,7 @@ def build_client(config, wake):
                 import manager_models  # D218: each model's record, the routing and what each task spent
                 text = '\n'.join(manager_models.report(b, last=8))[:1900]
             else:
-                store.receive(b, 'interaction:' + str(interaction.id), action)
+                store.receive(b, 'interaction:' + str(interaction.id), action, author=interaction.user.id)
                 text = f'{action.capitalize()} recorded.'
         wake.set()
         await interaction.response.send_message(text, ephemeral=True)
@@ -709,7 +719,7 @@ def build_client(config, wake):
                                                     ephemeral=True)
             return
         with fe_board.Board() as b:
-            store.receive(b, 'interaction:' + str(interaction.id), 'ask', question, tid)
+            store.receive(b, 'interaction:' + str(interaction.id), 'ask', question, tid, author=interaction.user.id)
         wake.set()
         await interaction.response.send_message(
             f'**/ask** {question[:1700]}\n-# Answering here; nothing changes {f"T{tid}" if tid else "the work"}.',
