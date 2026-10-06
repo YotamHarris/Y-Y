@@ -1,5 +1,6 @@
 #pragma once
 #include "core.hpp"
+#include "font.hpp"
 #include "input.hpp"
 #include <memory>
 #include <string>
@@ -11,9 +12,18 @@ public:
   virtual ~Renderer() = default;
   virtual void rectangle(Rect r, Color color) = 0;
   virtual void circle(Vec2 center, float radius, Color color) = 0;
+  // The debug font: blocky capitals, for the debug panel and placeholders.
   virtual void text(Vec2 position, std::string_view value, Color color, float scale=2) = 0;
-  // Assets are cached and owned by the runtime. BMP keeps the initial dependency surface small.
+  // A font baked by scripts/generate-assets.py, named by its metrics file without ".font"
+  // (e.g. "fonts/fredoka"). `size` is the em size in logical units; `position` is the top of the
+  // line at its left edge, centre or right edge by `align`. False when the font cannot be loaded.
+  virtual bool label(std::string_view font, Vec2 position, std::string_view value, float size, Color color, Align align=Align::Left) = 0;
+  // Assets are cached and owned by the runtime. BMP keeps the initial dependency surface small:
+  // 32-bit BMPs keep their alpha, and every sprite is drawn blended with linear filtering.
   virtual bool sprite(std::string_view asset, Rect destination) = 0;
+  // Only `source`, in the image's pixels, of a sheet. Sampling stays half a pixel inside it, so
+  // filtering never reads the neighbouring cell: give each cell a transparent border.
+  virtual bool sprite(std::string_view asset, Rect source, Rect destination) = 0;
 };
 class Audio {
 public:

@@ -125,6 +125,7 @@ class TapGame final: public yy::Game {
   struct Burst { Fired fired; float age; };
   std::vector<Burst> bursts; // power-ups that just fired, while their rings grow
   float clock{};             // seconds, for glow pulses and sparks
+  bool renderTest{};         // YY_TAPDEMO_SCENE=render-test: the renderer's own checks over the field
 
   void reset(bool instructions) { bursts.clear(); touch.refit(); touch.instructions=instructions; }
   // Opens a level on its instructions card; `save` records it as the reached level.
@@ -189,7 +190,8 @@ class TapGame final: public yy::Game {
   // into that power-up), pingin or pingout (a launch into a Ping brick with the goal inside or
   // outside the ping radius), won (a launch into the goal), lost (the last ball, spent on a brick), palette / palette-fit /
   // palette-max (all icons, a real Ping revealing fogged bricks, frozen at activation),
-  // grid-min or grid-max (the debug steppers pick free play and the smallest or largest grid, then RESTART).
+  // grid-min or grid-max (the debug steppers pick free play and the smallest or largest grid, then RESTART),
+  // render-test (the opening field under soft-edged cutouts, a cropped sheet cell and baked-font text).
   // YY_TAPDEMO_LEVEL (1..10, or 0 for free play) opens that level instead of the saved one, and saves nothing.
   void stage(const char* scene) {
     if(!scene || model.pockets.empty() || std::strcmp(scene,"instructions")==0) return;
@@ -205,6 +207,7 @@ class TapGame final: public yy::Game {
     }
     touch.instructions=false;
     if(std::strcmp(scene,"field")==0) return;
+    if(std::strcmp(scene,"render-test")==0) { renderTest=true; return; }
     const auto& pocket=model.pockets.front();
     const yy::Vec2 centre{(pocket.column+pocket.columns/2.0f)*Model::cell, (pocket.row+pocket.rows/2.0f)*Model::cell};
     const int column=pocket.column+pocket.columns/2;
@@ -550,6 +553,29 @@ public: void initialize(yy::Services& services) override {
       r.rectangle(restartButton,palette.teal); r.text({restartButton.x+19,restartButton.y+14},"RESTART",dark);
       r.rectangle(closeButton,palette.button); r.text({closeButton.x+35,closeButton.y+14},"CLOSE",white);
     }
+    if(renderTest) drawRenderTest(r);
+  }
+  // Not game art: the alpha edges, sheet cropping and font sizes a reskin depends on, at the header's
+  // size (40) and the card's (16), over the dark field and over a light card.
+  static void drawRenderTest(yy::Renderer& r) {
+    constexpr const char* font="fonts/fredoka";
+    constexpr yy::Rect leaf{0,0,64,64}; // the sheet's top-left cell; the others are magenta
+    const yy::Color white{255,255,255}, sun{255,214,92}, ink{40,84,48}, cream{250,244,226};
+    r.label(font,{195,92},"Garden Pop",40,white,yy::Align::Center);
+    r.label(font,{24,142},"0123456789",40,sun);
+    r.sprite("render-test/cutout.bmp",{20,200,120,120});
+    r.sprite("render-test/cutout.bmp",{150,232,56,56});
+    r.sprite("render-test/sheet.bmp",leaf,{220,200,150,150});
+    const yy::Rect card{12,360,366,270};
+    r.rectangle(card,cream);
+    r.label(font,{28,372},"Find the goal",40,ink);
+    r.label(font,{28,428},"Break the goal brick to win. It hides",16,ink);
+    r.label(font,{28,450},"in the fog: 3 balls, 5 bounces each.",16,ink);
+    r.label(font,{195,480},"Tap to start",16,{30,150,130},yy::Align::Center);
+    r.sprite("render-test/cutout.bmp",{28,512,96,96});
+    r.sprite("render-test/sheet.bmp",leaf,{136,528,64,64});
+    r.sprite("render-test/cutout.bmp",{214,540,40,40});
+    r.label(font,{360,560},"12",40,ink,yy::Align::Right);
   }
 };
 std::unique_ptr<yy::Game> createGame() { return std::make_unique<TapGame>(); }

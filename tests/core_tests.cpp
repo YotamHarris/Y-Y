@@ -14,6 +14,7 @@ void paletteChecks();
 void levelFlowChecks();
 void debugPersistenceChecks();
 void levelBandChecks();
+void fontChecks();
 
 static void check(bool condition, const char* label) { if(!condition) { std::cerr<<label<<'\n'; std::exit(1); } }
 
@@ -852,5 +853,6 @@ int main() {
   levelFlowChecks();
   debugPersistenceChecks();
   levelBandChecks();
+  fontChecks();
   std::cout<<"Engine and TapDemo checks passed\n";
 }

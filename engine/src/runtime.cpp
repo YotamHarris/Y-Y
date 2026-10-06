@@ -38,7 +38,11 @@ public:
   float pixelScale{1};
   std::unordered_map<std::string,SDL_Texture*> textures;
   std::string assetDirectory;
-  ~SDLRenderer() override { for(auto& [_,t]:textures) SDL_DestroyTexture(t); if(handle) SDL_DestroyRenderer(handle); }
+  ~SDLRenderer() override {
+    for(auto& [_,t]:textures) if(t) SDL_DestroyTexture(t);
+    for(auto& [_,f]:fonts) for(auto* t: f.sheets) SDL_DestroyTexture(t);
+    if(handle) SDL_DestroyRenderer(handle);
+  }
   Vec2 screen(Vec2 p) const { const auto r=viewport.content(); return {(r.x+p.x*viewport.scale())*pixelScale,(r.y+p.y*viewport.scale())*pixelScale}; }
   void color(Color c) { SDL_SetRenderDrawColor(handle,c.r,c.g,c.b,c.a); }
   void rectangle(Rect r,Color c) override {
@@ -64,21 +68,90 @@ public:
     SDL_RenderDebugText(handle,point.x/s,point.y/s,std::string(value).c_str());
     SDL_SetRenderScale(handle,1,1);
   }
-  bool sprite(std::string_view asset,Rect dst) override {
+  // Asset names are relative to the bundled assets directory.
+  std::string assetPath(std::string_view name) const {
+    if(name.empty() || name.find("..")!=std::string_view::npos || name.find(':')!=std::string_view::npos || name.front()=='/' || name.front()=='\\') return {};
+    return std::string(SDL_GetBasePath())+assetDirectory+std::string(name);
+  }
+  // Every texture holds premultiplied alpha and draws with linear filtering: blending premultiplied
+  // texels, a scaled edge fades to transparent instead of towards the black of the clear pixels.
+  SDL_Texture* upload(SDL_Surface* premultiplied) {
+    if(!premultiplied) return nullptr;
+    SDL_Texture* texture=SDL_CreateTextureFromSurface(handle,premultiplied); SDL_DestroySurface(premultiplied);
+    if(texture) { SDL_SetTextureBlendMode(texture,SDL_BLENDMODE_BLEND_PREMULTIPLIED); SDL_SetTextureScaleMode(texture,SDL_SCALEMODE_LINEAR); }
+    return texture;
+  }
+  // A failed load is cached too, so a missing asset is looked for once.
+  SDL_Texture* texture(std::string_view asset) {
     const std::string key(asset);
-    auto it=textures.find(key);
-    if(it==textures.end()) {
-      // Asset names are relative to the bundled assets directory.
-      if(key.empty() || key.find("..")!=std::string::npos || key.find(':')!=std::string::npos || key.front()=='/' || key.front()=='\\') return false;
-      SDL_Surface* surface=SDL_LoadBMP((std::string(SDL_GetBasePath())+assetDirectory+key).c_str());
-      if(!surface) { textures.emplace(key,nullptr); return false; }
-      SDL_Texture* texture=SDL_CreateTextureFromSurface(handle,surface); SDL_DestroySurface(surface);
-      if(!texture) return false;
-      it=textures.emplace(key,texture).first;
+    if(auto it=textures.find(key); it!=textures.end()) return it->second;
+    const std::string path=assetPath(key);
+    SDL_Surface* image=path.empty() ? nullptr : SDL_LoadBMP(path.c_str());
+    if(image && SDL_ISPIXELFORMAT_ALPHA(image->format) && !SDL_PremultiplySurfaceAlpha(image,false)) { SDL_DestroySurface(image); image=nullptr; }
+    return textures.emplace(key,upload(image)).first->second;
+  }
+  SDL_FRect device(Rect r) const {
+    const auto p=screen({r.x,r.y}); const float s=viewport.scale()*pixelScale;
+    return {p.x,p.y,r.w*s,r.h*s};
+  }
+  bool sprite(std::string_view asset,Rect dst) override {
+    SDL_Texture* t=texture(asset); const SDL_FRect rect=device(dst);
+    return t && SDL_RenderTexture(handle,t,nullptr,&rect);
+  }
+  bool sprite(std::string_view asset,Rect src,Rect dst) override {
+    SDL_Texture* t=texture(asset); const SDL_FRect rect=device(dst);
+    const float inX=std::min(0.5f,src.w/2), inY=std::min(0.5f,src.h/2);
+    const SDL_FRect from{src.x+inX,src.y+inY,src.w-2*inX,src.h-2*inY};
+    return t && SDL_RenderTexture(handle,t,&from,&rect);
+  }
+  // A glyph sheet is 8-bit greyscale coverage: white text, premultiplied, tinted at draw time.
+  SDL_Texture* coverageSheet(const std::string& path) {
+    SDL_Surface* sheet=SDL_LoadBMP(path.c_str());
+    if(!sheet) return nullptr;
+    SDL_Palette* palette=SDL_GetSurfacePalette(sheet);
+    SDL_Surface* rgba=sheet->format==SDL_PIXELFORMAT_INDEX8 && palette ? SDL_CreateSurface(sheet->w,sheet->h,SDL_PIXELFORMAT_RGBA32) : nullptr;
+    if(rgba) for(int y=0; y<sheet->h; ++y) {
+      const auto* in=static_cast<const Uint8*>(sheet->pixels)+y*sheet->pitch;
+      auto* out=static_cast<Uint8*>(rgba->pixels)+y*rgba->pitch;
+      for(int x=0; x<sheet->w; ++x) { const Uint8 a=palette->colors[in[x]].r; out[x*4]=out[x*4+1]=out[x*4+2]=out[x*4+3]=a; }
     }
-    if(!it->second) return false;
-    const auto p=screen({dst.x,dst.y}); const float s=viewport.scale()*pixelScale;
-    SDL_FRect rect{p.x,p.y,dst.w*s,dst.h*s}; return SDL_RenderTexture(handle,it->second,nullptr,&rect);
+    SDL_DestroySurface(sheet);
+    return upload(rgba);
+  }
+  struct LoadedFont { Font font; std::vector<SDL_Texture*> sheets; };
+  std::unordered_map<std::string,LoadedFont> fonts;
+  const LoadedFont* font(std::string_view name) {
+    const std::string key(name);
+    if(auto it=fonts.find(key); it!=fonts.end()) return it->second.sheets.empty() ? nullptr : &it->second;
+    LoadedFont loaded;
+    const std::string path=assetPath(key+".font");
+    std::size_t size=0; void* data=path.empty() ? nullptr : SDL_LoadFile(path.c_str(),&size);
+    if(data) { loaded.font=parseFont({static_cast<const char*>(data),size}); SDL_free(data); }
+    const std::string folder=key.substr(0,key.find_last_of('/')+1);
+    for(const auto& bake: loaded.font.bakes) {
+      SDL_Texture* sheet=coverageSheet(assetPath(folder+bake.sheet));
+      if(!sheet) { for(auto* t: loaded.sheets) SDL_DestroyTexture(t); loaded.sheets.clear(); break; }
+      loaded.sheets.push_back(sheet);
+    }
+    auto& entry=fonts.emplace(key,std::move(loaded)).first->second;
+    return entry.sheets.empty() ? nullptr : &entry;
+  }
+  bool label(std::string_view name,Vec2 p,std::string_view value,float size,Color c,Align align) override {
+    const LoadedFont* f=font(name);
+    if(!f) return false;
+    const float ppu=viewport.scale()*pixelScale;
+    const auto layout=f->font.layout(p,value,size,align,ppu);
+    SDL_Texture* sheet=f->sheets[layout.bake];
+    // Premultiplied: the tint's colour is scaled by its own alpha.
+    const auto mod=[&](unsigned char v){ return static_cast<Uint8>(v*c.a/255); };
+    SDL_SetTextureColorMod(sheet,mod(c.r),mod(c.g),mod(c.b)); SDL_SetTextureAlphaMod(sheet,c.a);
+    for(const auto& q: layout.quads) {
+      // Whole device pixels: at a bake's own size every texel lands on one pixel, sharp.
+      SDL_FRect rect=device(q.destination); rect.x=std::round(rect.x); rect.y=std::round(rect.y);
+      const SDL_FRect from{q.source.x,q.source.y,q.source.w,q.source.h};
+      SDL_RenderTexture(handle,sheet,&from,&rect);
+    }
+    return true;
   }
 };
 class SDLAudio final: public Audio {

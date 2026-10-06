@@ -297,3 +297,33 @@ Pop's implementation; another theme needs a named change first. The
 Damage cues during motion, BMP alpha support and iPhone performance need a
 playable check after acceptance. Runtime tests, player-path and device checks
 are not applicable to this concept round. No game, engine or palette changes.
+
+### V8 Transparent, cropped sprites and baked real-font text (D7)
+
+**Status:** active
+
+T15 gives the renderer what Garden Pop's art and UI need, without reskinning
+the game. 32-bit BMPs keep their alpha and draw premultiplied with linear
+filtering, a new `sprite` overload draws one cell of a sheet, and `label`
+draws Fredoka SemiBold (OFL, `games/tapdemo/assets/fonts/`) from sheets baked
+by `scripts/generate-assets.py`, left, centred or right aligned, in any colour.
+The debug font is unchanged.
+
+**Validation.** `scripts/build.ps1 -Smoke` passed the Windows build, CTest
+(1/1) and the 120-frame smoke. `yy_tests` checks font parsing, glyph lookup and
+the '?' fallback, bake choice, text width and left/centre/right layout, and
+that the committed bake has every printable ASCII glyph in every size and
+full-height digits for the ball counter.
+
+**Visual evidence.** `YY_TAPDEMO_SCENE=render-test` (a debug scene; normal
+play never draws it) puts, over the opening field and over a light card, a
+128-pixel flower cutout with an anti-aliased rim and soft shadow at 120, 96,
+56 and 40 points, the leaf cell of a 2x2 sheet whose other cells are opaque
+magenta at 150 and 64 points, and Fredoka at 40 (header) and 16 (card)
+points. The 390 by 844 capture, launched through `fe_manager.py gpu`, shows no
+dark or white rim on either background and no magenta pixel anywhere.
+
+**Open:** sprites have no mipmaps, so art shrunk past about 2x aliases; the
+40-point flower in the 1x desktop capture shows it. Text has no kerning. The
+capture is desktop 1x; the 3x phone draws from the larger bakes, not yet seen
+on a device. No game art, look or gameplay changes.

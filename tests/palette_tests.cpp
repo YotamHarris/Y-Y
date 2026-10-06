@@ -31,7 +31,9 @@ struct Canvas final: yy::Renderer {
   int columns() const { return static_cast<int>(std::lround(fieldWidth/cellWidth)); }
   void circle(yy::Vec2, float, yy::Color) override {}
   void text(yy::Vec2 p, std::string_view v, yy::Color, float) override { texts.push_back({p,std::string(v)}); }
+  bool label(std::string_view, yy::Vec2, std::string_view, float, yy::Color, yy::Align) override { return false; }
   bool sprite(std::string_view, yy::Rect) override { return false; }
+  bool sprite(std::string_view, yy::Rect, yy::Rect) override { return false; }
   void read(yy::Game& game) { fills.clear(); texts.clear(); game.render(*this); }
   bool has(std::string_view value) const {
     return std::any_of(texts.begin(),texts.end(),[&](const Text& t){ return t.value==value; });
