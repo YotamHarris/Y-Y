@@ -1,6 +1,7 @@
 #include <yy/runtime.hpp>
 #include <SDL3/SDL.h>
 #include <array>
+#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
@@ -100,6 +101,13 @@ public:
   SDL_FRect device(Rect r) const {
     const auto p=screen({r.x,r.y}); const float s=viewport.scale()*pixelScale;
     return {p.x,p.y,r.w*s,r.h*s};
+  }
+  void clip(std::optional<Rect> area) override {
+    if(!area) { SDL_SetRenderClipRect(handle,nullptr); return; }
+    const SDL_FRect d=device(*area);
+    const SDL_Rect cut{static_cast<int>(std::floor(d.x)),static_cast<int>(std::floor(d.y)),
+                       static_cast<int>(std::ceil(d.x+d.w))-static_cast<int>(std::floor(d.x)),static_cast<int>(std::ceil(d.y+d.h))-static_cast<int>(std::floor(d.y))};
+    SDL_SetRenderClipRect(handle,&cut);
   }
   bool sprite(std::string_view asset,Rect dst) override {
     SDL_Texture* t=texture(asset); const SDL_FRect rect=device(dst);
@@ -301,7 +309,10 @@ Runtime::~Runtime() {
 bool Runtime::initialize() {
   SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS,"0"); SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS,"0");
   if(!SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO)) { SDL_Log("SDL_Init: %s",SDL_GetError()); return false; }
-  impl->window=SDL_CreateWindow(SDL_GetAppMetadataProperty(SDL_PROP_APP_METADATA_NAME_STRING),390,844,SDL_WINDOW_RESIZABLE|SDL_WINDOW_HIGH_PIXEL_DENSITY);
+  // A test or capture can open another window shape (YY_WINDOW_SIZE=WIDTHxHEIGHT) to see the letterbox.
+  int windowWidth=390, windowHeight=844;
+  if(const char* shape=std::getenv("YY_WINDOW_SIZE")) { int w=0,h=0; if(std::sscanf(shape,"%dx%d",&w,&h)==2 && w>0 && h>0) { windowWidth=w; windowHeight=h; } }
+  impl->window=SDL_CreateWindow(SDL_GetAppMetadataProperty(SDL_PROP_APP_METADATA_NAME_STRING),windowWidth,windowHeight,SDL_WINDOW_RESIZABLE|SDL_WINDOW_HIGH_PIXEL_DENSITY);
   if(!impl->window) return false;
 #ifdef _WIN32
   const char* driver="direct3d11";

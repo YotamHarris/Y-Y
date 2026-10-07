@@ -891,6 +891,32 @@ static void debugSettingsChecks() {
   std::cout<<"Debug settings: round-trip, defaults and clamping\n";
 }
 void gardenChecks();
+// The cull and the board's clip share one rectangle: every cell touching the play area is in the range.
+static void visibleCellChecks() {
+  using tapdemo::Camera;
+  const int columns=Model::defaultColumns, rows=Model::defaultRows;
+  Camera cam; cam.fit();
+  auto all=cam.visibleCells(columns,rows,0);
+  check(all.c0==0 && all.c1==columns-1 && all.r0==0 && all.r1==rows-1,"the fitted view sees the whole grid");
+  cam.hold({0,0},{cam.view.x,cam.view.y},Camera::maxZoom); // the top-left corner, close up
+  auto edge=cam.visibleCells(columns,rows,0);
+  check(edge.c0==0 && edge.r0==0,"the top-left edge starts at cell 0");
+  // The shake moves the board a few pixels either way: a margin of one cell still covers every touched cell.
+  for(float dx: {-12.0f,0.0f,12.0f}) for(float dy: {-12.0f,0.0f,12.0f}) {
+    Camera shaken=cam; shaken.offset.x+=dx; shaken.offset.y+=dy;
+    const auto seen=shaken.visibleCells(columns,rows,1);
+    for(int row=0; row<rows; ++row) for(int column=0; column<columns; ++column) {
+      const auto a=shaken.toScreen({column*Model::cell,row*Model::cell}), z=shaken.toScreen({(column+1)*Model::cell,(row+1)*Model::cell});
+      const bool touches=z.x>shaken.view.x && a.x<shaken.view.x+shaken.view.w && z.y>shaken.view.y && a.y<shaken.view.y+shaken.view.h;
+      const bool inside=column>=seen.c0 && column<=seen.c1 && row>=seen.r0 && row<=seen.r1;
+      check(!touches || inside,"a cell on screen is never culled");
+    }
+    check(seen.c1-seen.c0<columns-1,"a close-up still culls the cells far off screen");
+  }
+  const auto far=cam.visibleCells(columns,rows,0);
+  check(far.c1<columns-1 && far.r1<rows-1,"cells beyond the far edge are skipped");
+  std::cout<<"Visible cells: whole grid fitted, edges clamped, shake covered, far cells culled\n";
+}
 static void framingChecks() {
   using tapdemo::Camera; using tapdemo::Framing; using tapdemo::Touch;
   const auto contained=[](const Camera& cam, yy::Rect b) {
@@ -995,7 +1021,7 @@ int main() {
   clock.advance(1.0/30,[&](float){++ticks;}); check(ticks==2,"fixed updates");
   clock.reset(); clock.advance(100,[&](float){++ticks;}); check(ticks==8,"resume catch-up capped");
   tapdemoChecks();
-  framingChecks();
+  framingChecks(); visibleCellChecks();
   framingGameChecks();
   settingsChecks();
   glowChecks();

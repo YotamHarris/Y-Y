@@ -24,6 +24,9 @@ public:
   // Only `source`, in the image's pixels, of a sheet. Sampling stays half a pixel inside it, so
   // filtering never reads the neighbouring cell: give each cell a transparent border.
   virtual bool sprite(std::string_view asset, Rect source, Rect destination) = 0;
+  // Drawing outside `area` (logical units) is cut off until clip({}) lifts it. The letterbox strips beside the
+  // logical frame keep the clear colour that way. A renderer that cannot clip draws everything.
+  virtual void clip(std::optional<Rect> area) { (void)area; }
 };
 class Audio {
 public:

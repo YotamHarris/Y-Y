@@ -17,6 +17,14 @@ struct Camera {
   float minZoom() const { return std::min(view.w/world.x, view.h/world.y); }
   yy::Vec2 toScreen(yy::Vec2 w) const { return {w.x*zoom+offset.x, w.y*zoom+offset.y}; }
   yy::Vec2 toWorld(yy::Vec2 s) const { return {(s.x-offset.x)/zoom, (s.y-offset.y)/zoom}; }
+  // The cells whose boxes meet `view`, inclusive, with `margin` cells more on every side, kept on the grid.
+  struct Cells { int c0, c1, r0, r1; };
+  Cells visibleCells(int columns, int rows, int margin=1) const {
+    const auto first=toWorld({view.x,view.y}), last=toWorld({view.x+view.w,view.y+view.h});
+    const auto cell=[](float world) { return static_cast<int>(std::floor(world/Model::cell)); };
+    return {std::max(0,cell(first.x)-margin), std::min(columns-1,cell(last.x)+margin),
+            std::max(0,cell(first.y)-margin), std::min(rows-1,cell(last.y)+margin)};
+  }
   bool contains(yy::Vec2 s) const { return s.x>=view.x && s.y>=view.y && s.x<view.x+view.w && s.y<view.y+view.h; }
   // Centres the grid on an axis that fits; otherwise keeps the play area covered.
   void clamp() {

@@ -469,6 +469,16 @@ class TapGame final: public yy::Game {
     // Other pinned evidence scenes explicitly stage a camera as part of their fixture.
     touch.framing.automatic=false;
     if(std::strcmp(scene,"render-test")==0) { renderTest=true; return; }
+    if(std::strcmp(scene,"edge")==0) {
+      // Evidence for the cull: corridors cleared to the grid's far corner, the camera pinned there close up, so the
+      // field fills the play area's edge and the bricks beside the corridors must too.
+      for(int row=0; row<model.rows; ++row) for(int column=0; column<model.columns; ++column)
+        if(row%3==0 || column==model.columns-1 || column==0) model.bricks[row*model.columns+column]=0;
+      model.refreshFog(); syncBricks();
+      const auto& view=touch.camera.view;
+      touch.camera.hold({model.width(),model.height()},{view.x+view.w,view.y+view.h},1.6f);
+      return;
+    }
     const auto& pocket=model.pockets.front();
     const yy::Vec2 centre{(pocket.column+pocket.columns/2.0f)*Model::cell, (pocket.row+pocket.rows/2.0f)*Model::cell};
     const int column=pocket.column+pocket.columns/2;
@@ -788,6 +798,9 @@ public: void initialize(yy::Services& services) override {
     const float z=cam.zoom, cellSize=Model::cell*z;
     const auto origin=cam.toScreen({0,0});
     // At fit zoom the grid leaves margins; give those the backdrop too.
+    // The board is cut to the logical frame: beside it (a wider or taller window) is the engine's backdrop, never
+    // field without its bricks, because the cull below covers exactly what this clip leaves.
+    r.clip(yy::Rect{0,0,cam.view.w,cam.view.y+cam.view.h});
     r.rectangle({0,0,cam.view.w,cam.view.y+cam.view.h},dark);
     r.rectangle({origin.x,origin.y,model.width()*z,model.height()*z},field);
     // A mist patch spans eight cells, as in the concept: dew stays soft instead of
@@ -801,9 +814,7 @@ public: void initialize(yy::Services& services) override {
     }
 
     // Bricks in view, with their hit points once the cells are big enough to read.
-    const auto first=cam.toWorld({cam.view.x,cam.view.y}), last=cam.toWorld({cam.view.x+cam.view.w,cam.view.y+cam.view.h});
-    const int c0=std::max(0,static_cast<int>(first.x/Model::cell)), c1=std::min(model.columns-1,static_cast<int>(last.x/Model::cell));
-    const int r0=std::max(0,static_cast<int>(first.y/Model::cell)), r1=std::min(model.rows-1,static_cast<int>(last.y/Model::cell));
+    const auto [c0,c1,r0,r1]=cam.visibleCells(model.columns,model.rows);
     const float gap=std::max(1.0f,cellSize*0.06f);
     // Fogged cells hide their bricks and icons, except glowing bricks and the goal within a ping.
     const auto& fogColors=palette.fog;
@@ -1034,6 +1045,7 @@ public: void initialize(yy::Services& services) override {
       }
     }
 
+    r.clip({});
     // The header covers anything of the grid drawn above the play area: the ball counter and DEBUG.
     r.rectangle({0,0,cam.view.w,cam.view.y},dark);
     r.sprite("garden/header.bmp",{4,4,382,72});

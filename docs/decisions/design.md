@@ -277,3 +277,22 @@ test holds unchanged.
 **Evidence.** V15, `tests/palette_tests.cpp` (`paceChecks`) and `docs/figures/aimline/`.
 
 ---
+
+### D15 — The board is cut to the logical frame, and the cull covers what is left (2026-10-07)
+
+**Status:** active
+
+**What happened.** T27: Yotam saw bricks not drawing when the screen moved. The cull used the 390x764 play area, but
+the field and its mist drew unclipped, so in a window that is not 390x844 (the engine letterboxes the frame) they spilled
+into the strips beside it, where no brick was ever drawn.
+
+**Decision.** The board draws inside a clip to the logical frame (`Renderer::clip`); the strips keep the engine's clear
+colour. The cull is `Camera::visibleCells`, the cells meeting the play area plus one on every side, the same rectangle the
+clip leaves. Off-screen cells stay skipped.
+
+**Why.** Cutting the board is simpler and cheaper than drawing bricks across the strips, and a phone's frame already fills
+the safe area, so the strips only show on other shapes.
+
+**Evidence.** V16, `tests/core_tests.cpp` (`visibleCellChecks`) and `docs/figures/letterbox/`.
+
+---

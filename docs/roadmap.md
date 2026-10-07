@@ -496,3 +496,20 @@ eases back; the banner and hum states; the banner on the real Game. The level ba
 **Open:** how 2.5x and 0.35x feel is for a phone in hand; no iPhone performance claim. The line stops at the first
 contact only; it does not trace later bounces or what a power-up does. The goal's own celebration slow-motion keeps its
 own look-ahead and takes the slower of the two speeds.
+
+### V16 Every brick draws wherever the field shows (D15)
+
+**Status:** active
+
+The board is clipped to the logical frame and bricks, fog, rims, pops and fog-lift effects are culled to the same
+rectangle with a one-cell margin (`Camera::visibleCells`), so no field is drawn without its bricks. `YY_WINDOW_SIZE=WxH`
+opens another window shape; the debug scene `edge` pins the camera at the grid's far corner.
+
+**Validation.** `scripts/build.ps1 -ToolsRoot D:/Source/Y&Y/YYEngine -Smoke`: CTest 1/1 and the SDL smoke passed.
+`visibleCellChecks`: the fitted view sees the whole grid, a corner view starts at cell 0, every on-screen cell survives a
+12 px shake either way, far cells are skipped. Captures of the `edge` scene (`tests/capture_letterbox.py`) at 600x844 and
+390x844: before, the left strip shows mist with no bricks and the field spills over the header's side; after, it is cut
+at the frame (`docs/figures/letterbox/before-600x844.png`, `after-600x844.png`).
+
+**Open:** the strips are the engine's plain backdrop; a themed one is a design call. Panning and pinching by touch is
+covered by the existing touch tests; no device pass was made.
