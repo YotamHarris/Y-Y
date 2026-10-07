@@ -345,7 +345,7 @@ void framingGameChecks() {
     play.canvas.read(*play.game);
     check(std::any_of(play.canvas.texts.begin(),play.canvas.texts.end(),[&](const auto& t){return t.at.x==62 && t.at.y==13 && t.value==std::to_string(levelBalls-1);}),"the real game fires through touch at its opening zoom");
   }
-  for(const char* scene: {"camera-ghost-before","camera-ghost-arrival","camera-ghost-4","camera-ghost-12"}) {
+  for(const char* scene: {"camera-launch-early","camera-launch"}) {
     Session play("","6",scene);
     const auto ball=gardenSource(GardenSprite::Ball);
     bool flying=false;
@@ -353,9 +353,9 @@ void framingGameChecks() {
       const auto r=s.destination;
       if(r.y<80) continue; // header ball icon
       flying=true;
-      check(r.x>=5 && r.y>=85 && r.x+r.w<=385 && r.y+r.h<=839,"the Game keeps the drawn Ghost ball inside the play area with margin, including hit-stop and shake");
+      check(r.x>=5 && r.y>=85 && r.x+r.w<=385 && r.y+r.h<=839,"the Game keeps the launched ball inside the play area, including hit-stop and shake");
     }
-    check(flying,"the actual Ghost capture scene draws a live ball");
+    check(flying,"the camera launch scene draws a live ball");
   }
   std::cout<<"Game framing: levels 1/6/10 open framed, wheel holds, restart resets, zoomed touch fires\n";
 }

@@ -1014,14 +1014,6 @@ static void shotCameraChecks() {
   const auto same=[](const Camera& a,const Camera& b) {
     return a.zoom==b.zoom && a.offset.x==b.offset.x && a.offset.y==b.offset.y;
   };
-  const auto inView=[](const Camera& cam,const Model& m) {
-    for(const auto& b: m.balls) {
-      const auto lo=cam.toScreen({b.position.x-Model::cell,b.position.y-Model::cell});
-      const auto hi=cam.toScreen({b.position.x+Model::cell,b.position.y+Model::cell});
-      if(lo.x<cam.view.x-.03f || lo.y<cam.view.y-.03f || hi.x>cam.view.x+cam.view.w+.03f || hi.y>cam.view.y+cam.view.h+.03f) return false;
-    }
-    return true;
-  };
   Model m; m.play(6); Touch t(m); t.instructions=false;
   // The player's two-finger pinch out, then hold / cancel / launch.
   t.down(1,{100,462}); t.down(2,{290,462}); t.move(2,{140,462});
@@ -1055,84 +1047,28 @@ static void shotCameraChecks() {
   const auto release=t.camera.toScreen({anchor.x,anchor.y+60});
   t.move(7,release);
   check(near(t.aim->pull.y,60),"zoomed aim strength stays in world units");
-  const float aimed=t.camera.zoom;
-  check(t.up(7,release) && t.camera.zoom==aimed,"launch keeps the aiming zoom");
-  t.update(.016f,false); check(t.camera.zoom==aimed,"celebration ownership bypasses camera following");
-  t.update(.016f); check(t.camera.zoom==aimed,"following a stationary launch preserves the aiming zoom");
-  m.balls.clear();
-  // An edge hold needs a temporarily unclamped offset to preserve the finger.
-  std::fill(m.bricks.begin(),m.bricks.end(),0); m.goal=-1; m.refreshFog(); t.refit(); t.camera.fit(); t.framing.automatic=false;
-  const Camera edgePrior=t.camera; const auto edge=t.camera.toScreen({16,16});
-  t.down(8,edge); t.update(.3f);
-  check(t.aim && near(t.camera.toScreen(t.aim->anchor).x,edge.x) && near(t.camera.toScreen(t.aim->anchor).y,edge.y),"grid-edge aim remains fixed beneath the finger");
-  t.up(8,edge); t.update(.3f); check(same(t.camera,edgePrior),"grid-edge cancel restores the original camera exactly");
-  // Real one-finger manual pan, followed by a moving shot and a second live ball.
-  m.bricks[0]=1; m.refreshFog(); t.refit(); t.instructions=false;
-  t.camera.hold({384,640},{195,462},1.3f);
-  const auto solid=t.camera.toWorld({60,200});
-  const int solidColumn=static_cast<int>(solid.x/Model::cell), solidRow=static_cast<int>(solid.y/Model::cell);
-  for(int r=solidRow-2; r<=solidRow+2; ++r) for(int c=solidColumn-2; c<=solidColumn+2; ++c)
-    m.bricks[r*m.columns+c]=3;
-  m.refreshFog();
-  t.down(9,{60,200}); t.move(9,{100,220}); t.up(9,{100,220});
-  check(!t.framing.automatic,"manual touch pan takes ownership before the shot");
-  const Camera panned=t.camera;
-  check(m.launch({384,640},{-40,0}),"a ball launches after the pan");
-  m.balls.push_back({{384,640},{Model::speed,0},m.bouncesPerBall}); // and one flying the other way
-  check(m.balls.size()==2,"opposing live balls fly");
-  for(int i=0; i<100; ++i) { m.update(1.0f/60); t.update(1.0f/60); check(inView(t.camera,m),"every live ball stays inside the play area with a margin after a manual pan"); }
-  check(!same(t.camera,panned),"shot follow still moves the manually panned camera");
-  t.zoom({195,462},-5); const float widened=t.camera.zoom;
-  t.update(1.0f/60);
-  check(t.camera.zoom<=widened && inView(t.camera,m),"manual zoom-out during a shot keeps its zoom and live-ball following");
-  m.balls.clear(); const Camera ended=t.camera; t.update(1);
-  check(same(t.camera,ended),"the camera stays exactly where the shot ended");
-  // Production Ghost activation, deterministic far landing, no camera cut.
-  Model ghost(38); ghost.restart(5,99);
-  std::fill(ghost.bricks.begin(),ghost.bricks.end(),2); std::fill(ghost.powers.begin(),ghost.powers.end(),Power::None); ghost.goal=-1;
-  for(int r=6; r<=21; ++r) ghost.bricks[r*ghost.columns+12]=0;
-  ghost.bricks[5*ghost.columns+12]=1; ghost.powers[5*ghost.columns+12]=Power::Ghost; ghost.refreshFog();
-  Model automaticGhost=ghost;
-  Touch follow(ghost); follow.instructions=false; follow.framing.automatic=false;
-  const yy::Vec2 start{12.5f*Model::cell,20.5f*Model::cell};
-  follow.camera.hold(start,{195,462},1.3f);
-  const auto gp=follow.camera.toScreen(start); follow.down(10,gp);
-  check(follow.up(10,{gp.x,gp.y+40*follow.camera.zoom}),"touch launches at the real Ghost fixture");
-  bool arrived=false; float beforeDistance=0;
-  for(int i=0; i<150 && !arrived; ++i) {
-    ghost.update(1.0f/60); const Camera before=follow.camera;
-    follow.update(1.0f/60); check(inView(follow.camera,ghost),"Ghost shot never loses a live ball, including its arrival frame");
-    if(firedCount(ghost.hits,Power::Ghost)>0) {
-      arrived=true;
-      const auto& f=ghost.hits.fired.front();
-      check(f.to>=0,"real Ghost reports the arrival cell");
-      const auto ball=ghost.balls.front().position, oldCentre=before.toWorld({195,462}), centre=follow.camera.toWorld({195,462});
-      beforeDistance=std::hypot(oldCentre.x-ball.x,oldCentre.y-ball.y);
-      const float afterDistance=std::hypot(centre.x-ball.x,centre.y-ball.y);
-      check(beforeDistance>Model::cell*3 && afterDistance>Model::cell,"Ghost landing uses a visible swing instead of a cut");
-      check(afterDistance<beforeDistance,"Ghost camera starts approaching the arrival immediately");
-    }
-  }
-  check(arrived,"Ghost camera fixture reaches its far landing");
-  for(int i=0; i<12; ++i) { ghost.update(1.0f/60); follow.update(1.0f/60); check(inView(follow.camera,ghost),"Ghost ease keeps the arriving ball in view"); }
-  const auto centre=follow.camera.toWorld({195,462}), ball=ghost.balls.front().position;
-  check(std::hypot(centre.x-ball.x,centre.y-ball.y)<beforeDistance*.4f,"Ghost follow reaches the far side within 200 ms");
-  Touch reveal(automaticGhost); const float initial=reveal.camera.zoom;
-  check(launchUp(automaticGhost),"automatic Ghost framing fixture launches");
-  bool widenedGhost=false;
-  for(int i=0; i<150 && !widenedGhost; ++i) {
-    automaticGhost.update(1.0f/60); reveal.update(1.0f/60);
-    check(inView(reveal.camera,automaticGhost),"automatic reveal framing also keeps the Ghost arrival visible");
-    if(firedCount(automaticGhost.hits,Power::Ghost)>0) {
-      widenedGhost=true; const int cell=automaticGhost.hits.fired.front().to;
-      const yy::Vec2 arrival{(cell%automaticGhost.columns+.5f)*Model::cell,(cell/automaticGhost.columns+.5f)*Model::cell};
-      check(arrival.x>=reveal.framing.bounds.x && arrival.y>=reveal.framing.bounds.y &&
-            arrival.x<=reveal.framing.bounds.x+reveal.framing.bounds.w && arrival.y<=reveal.framing.bounds.y+reveal.framing.bounds.h &&
-            reveal.camera.zoom<initial,"Ghost landing joins accumulated revealed bounds and widens the automatic view");
-    }
-  }
-  check(widenedGhost,"automatic framing fixture fires its Ghost");
-  std::cout<<"Shot camera: touch pinch/hold/cancel/launch, exact restore, edge anchor, manual-pan multi-ball follow, real Ghost visible and reached within 200 ms\n";
+  check(t.up(7,release),"a pulled release launches from the aim zoom");
+  t.update(.1f); check(!same(t.camera,prior),"launch restores through an ease, not a cut");
+  t.update(.2f); check(same(t.camera,prior),"launch restores the exact view held before the ball was placed");
+  check(!t.framing.automatic && m.flying(),"the pinch keeps manual ownership and the shot is live");
+  t.update(1.0f/60); check(same(t.camera,prior),"framing resumes from the prior view without a jump");
+  // One ball at a time: pressing while it flies places nothing, so no aim zoom starts.
+  t.down(8,press); check(!t.aim,"a press while a ball flies does not aim"); t.up(8,press);
+  // After a manual pan, a shot never chases the ball.
+  Model n; n.play(6); Touch p(n); p.instructions=false;
+  p.camera.hold({384,640},{195,462},1.3f);
+  p.down(9,{60,200}); p.move(9,{100,220}); p.up(9,{100,220});
+  check(!p.framing.automatic,"a manual pan takes ownership");
+  const Camera panned=p.camera;
+  check(n.launch(pocketCentre(n),{0,30}),"a ball launches after the pan");
+  for(int i=0; i<120; ++i) { n.update(1.0f/60); p.update(1.0f/60); }
+  check(same(p.camera,panned),"the camera does not chase a ball during a shot after a manual pan");
+  // Automatic framing only eases outward to take in newly uncovered area; it never pushes in.
+  Model a; a.play(6); Touch f(a); f.instructions=false;
+  f.camera.zoom=f.camera.minZoom()*1.2f; f.camera.clamp(); const float held=f.camera.zoom;
+  check(a.launch(pocketCentre(a),{0,30}),"an automatic-framing shot launches");
+  for(int i=0; i<120; ++i) { f.update(1.0f/60); check(f.camera.zoom<=held+1e-4f,"automatic framing never zooms in during a shot"); }
+  std::cout<<"Shot camera: aim zoom-in, exact restore on cancel and launch, edge anchor, no chase after a manual pan\n";
 }
 int main() {
   yy::Viewport v{{10,40,780,1688}};

@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
-#include <span>
 #include <vector>
 
 namespace tapdemo {
@@ -52,9 +51,6 @@ struct Framing {
   static constexpr float openingScale=2.5f, easeRate=4;
   yy::Rect bounds{};
   bool automatic{true};
-  bool shotWasLive{};
-  float followLimit{}, ghostTime{};
-  void manual() { automatic=false; followLimit=0; }
   static yy::Rect visibleBounds(const Model& model) {
     int left=model.columns, top=model.rows, right=0, bottom=0;
     for(int r=0; r<model.rows; ++r) for(int c=0; c<model.columns; ++c) {
@@ -77,65 +73,22 @@ struct Framing {
     return target;
   }
   void reset(Camera& camera, const Model& model) {
-    automatic=true; shotWasLive=false; followLimit=0; ghostTime=0; bounds=visibleBounds(model);
+    automatic=true; bounds=visibleBounds(model);
     camera.world={model.width(),model.height()}; camera=fitted(camera);
   }
-  void update(Camera& camera, const Model& model, float dt, std::span<const yy::Vec2> shown={}) {
-    if(dt<=0) return;
-    const bool live=!model.balls.empty();
-    if(!live && (shotWasLive || !automatic)) { followLimit=0; return; }
-    const auto previous=bounds;
+  void update(Camera& camera, const Model& model, float dt) {
+    if(!automatic || dt<=0) return;
     const auto visible=visibleBounds(model);
     const float right=std::max(bounds.x+bounds.w,visible.x+visible.w);
     const float bottom=std::max(bounds.y+bounds.h,visible.y+visible.h);
     bounds.x=std::min(bounds.x,visible.x); bounds.y=std::min(bounds.y,visible.y);
     bounds.w=right-bounds.x; bounds.h=bottom-bounds.y;
-    const bool revealed=bounds.x!=previous.x || bounds.y!=previous.y || bounds.w!=previous.w || bounds.h!=previous.h;
-    Camera target=fitted(camera,camera.zoom);
-    yy::Rect flight{};
-    if(live) {
-      if(followLimit==0) followLimit=camera.zoom;
-      shotWasLive=true;
-      float left=model.width(), top=model.height(), right=0, bottom=0;
-      const auto include=[&](yy::Vec2 at) {
-        left=std::min(left,at.x-Model::cell); top=std::min(top,at.y-Model::cell);
-        right=std::max(right,at.x+Model::cell); bottom=std::max(bottom,at.y+Model::cell);
-      };
-      for(const auto& ball: model.balls) include(ball.position);
-      for(const auto at: shown) include(at); // interpolation and hit-stop can draw behind the model
-      flight={left,top,right-left,bottom-top};
-      followLimit=std::min({followLimit,camera.view.w/flight.w,camera.view.h/flight.h,
-                           automatic && revealed ? fitted(camera).zoom : Camera::maxZoom});
-      for(const auto& fired: model.hits.fired)
-        if(fired.power==Power::Ghost && fired.to>=0) ghostTime=0.35f;
-      // A fast swing to a Ghost's new cavity. Other shots drift only as far as
-      // needed to bring the live bounds inside the view, regardless of manual ownership.
-      target=camera;
-      target.zoom=followLimit;
-      const yy::Vec2 centre=ghostTime>0 || !automatic ? yy::Vec2{left+flight.w/2,top+flight.h/2} :
-                                                                      yy::Vec2{bounds.x+bounds.w/2,bounds.y+bounds.h/2};
-      target.offset={camera.view.x+camera.view.w/2-centre.x*followLimit,
-                     camera.view.y+camera.view.h/2-centre.y*followLimit};
-    }
+    const Camera target=fitted(camera,camera.zoom); // never push in during a shot
     const yy::Vec2 screen{camera.view.x+camera.view.w/2,camera.view.y+camera.view.h/2};
     const auto from=camera.toWorld(screen), to=target.toWorld(screen);
-    const float k=1-std::exp(-(ghostTime>0 ? 24.0f : easeRate)*dt);
-    const yy::Vec2 centre{from.x+(to.x-from.x)*k,from.y+(to.y-from.y)*k};
-    float zoom=camera.zoom+(target.zoom-camera.zoom)*k;
-    if(live) {
-      // Widen immediately when a teleport or a fast ball outruns the ease.
-      // This preserves a visible swing instead of cutting to the landing.
-      const float dx=std::max(std::abs(centre.x-flight.x),std::abs(centre.x-flight.x-flight.w));
-      const float dy=std::max(std::abs(centre.y-flight.y),std::abs(centre.y-flight.y-flight.h));
-      zoom=std::min({zoom,camera.view.w/(2*dx),camera.view.h/(2*dy)});
-    }
-    if(live) {
-      // A ball at a wall still needs breathing room. Following may show a
-      // little backdrop outside the grid; manual camera limits remain intact.
-      camera.zoom=zoom;
-      camera.offset={screen.x-centre.x*zoom,screen.y-centre.y*zoom};
-    } else camera.hold(centre,screen,zoom);
-    ghostTime=std::max(0.0f,ghostTime-dt);
+    const float k=1-std::exp(-easeRate*dt);
+    camera.hold({from.x+(to.x-from.x)*k,from.y+(to.y-from.y)*k},screen,
+                camera.zoom+(target.zoom-camera.zoom)*k);
   }
 };
 
@@ -160,7 +113,7 @@ class Touch {
   static yy::Vec2 mid(yy::Vec2 a, yy::Vec2 b) { return {(a.x+b.x)/2, (a.y+b.y)/2}; }
   static float distance(yy::Vec2 a, yy::Vec2 b) { return std::hypot(a.x-b.x, a.y-b.y); }
   void startPinch() {
-    framing.manual();
+    framing.automatic=false;
     const yy::Vec2 a=fingers[0].position, b=fingers[1].position;
     pinch=Pinch{camera.toWorld(mid(a,b)), std::max(1.0f,distance(a,b)), camera.zoom};
   }
@@ -180,7 +133,7 @@ public:
   void zoom(yy::Vec2 at, float steps) {
     if(steps==0) return;
     restore.reset();
-    framing.manual();
+    framing.automatic=false;
     camera.zoomAt(at,camera.zoom*std::pow(1.15f,steps));
   }
   // The aim's hum grows with the pull; the last ball's is tighter: it starts higher and ends at full strength.
@@ -227,7 +180,7 @@ public:
       aim->pull={world.x-aim->anchor.x, world.y-aim->anchor.y};
       if(haptics) haptics->humStart(humLevel());
     } else if(!aim && (p.x!=last.x || p.y!=last.y)) {
-      framing.manual();
+      framing.automatic=false;
       camera.pan({p.x-last.x, p.y-last.y});
     }
   }
@@ -238,17 +191,18 @@ public:
     if(aim && aim->finger==id) {
       move(id,p);
       launched=model.launch(aim->anchor, aim->pull);
-      if(launched) framing.followLimit=0;
       if(launched && haptics) { haptics->humStop(); haptics->thump(); }
-      if(!launched) cancel();
-      aimZoom.reset();
-      aim.reset();
+      if(launched) { // the aim zoom eases back to the view held before the ball was placed
+        if(aimZoom) restore=Restore{camera,aimZoom->prior};
+        aimZoom.reset();
+        aim.reset();
+      } else cancel();
     }
     fingers.erase(std::remove_if(fingers.begin(),fingers.end(),[&](const Finger& f){ return f.id==id; }),fingers.end());
     pinch.reset();
     return launched;
   }
-  void update(float dt, bool follow=true, std::span<const yy::Vec2> shown={}) {
+  void update(float dt, bool follow=true) {
     rejectTime=std::max(0.0f, rejectTime-dt);
     if(!follow || dt<=0) return; // the celebration borrows the entire camera
     if(restore) {
@@ -271,7 +225,7 @@ public:
         const auto world=camera.toWorld(finger->position);
         aim->pull={world.x-aim->anchor.x,world.y-aim->anchor.y};
       }
-    } else if(!aim && (fingers.empty() || !model.balls.empty())) framing.update(camera,model,dt,shown);
+    } else if(!aim && (fingers.empty() || !model.balls.empty())) framing.update(camera,model,dt);
   }
 };
 }

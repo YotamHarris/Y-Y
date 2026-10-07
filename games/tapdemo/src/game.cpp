@@ -175,7 +175,6 @@ class TapGame final: public yy::Game {
   FogLift lift;              // cells the fog is peeling off
   std::vector<char> wasVisible;
   std::vector<yy::Vec2> heldBalls; // where the balls were drawn when the hit-stop began
-  std::vector<yy::Vec2> cameraBalls; // drawn positions the live follow must also contain
   int lastBallsLeft{};
   int shakeLevel{defaultShakeLevel};
   int glintLevel{defaultGlintLevel};
@@ -472,48 +471,27 @@ class TapGame final: public yy::Game {
     }
     touch.instructions=false;
     if(std::strcmp(scene,"field")==0) return;
-    // T28 evidence uses production touch/camera updates; only the Ghost field
-    // is a deterministic collision fixture. Freeze at named phone-sized beats.
+    // T31 evidence uses production touch/camera updates, frozen
+    // at named phone-sized beats: aim, cancel and launch restore the same view.
     if(std::strncmp(scene,"camera-",7)==0) {
       const std::string beat=scene+7;
-      if(beat.starts_with("ghost")) {
-        model=Model(38); model.restart(5,99);
-        std::fill(model.bricks.begin(),model.bricks.end(),2);
-        std::fill(model.powers.begin(),model.powers.end(),Power::None); model.goal=-1;
-        for(int r=6; r<=21; ++r) model.bricks[r*model.columns+12]=0;
-        model.bricks[5*model.columns+12]=1; model.powers[5*model.columns+12]=Power::Ghost;
-        model.refreshFog(); touch.refit(); touch.instructions=false; syncBricks();
-        const yy::Vec2 start{12.5f*Model::cell,20.5f*Model::cell};
-        touch.camera.hold(start,{195,462},1.3f);
-        const auto pan=touch.camera.toScreen({10.5f*Model::cell,start.y});
-        pointerDown(21,pan); pointerMove(21,{pan.x+20,pan.y}); pointerUp(21,{pan.x+20,pan.y});
-        const auto press=touch.camera.toScreen(start);
-        sling(press,{0,40*touch.camera.zoom});
-        const auto ghostFired=[&] {
-          return std::any_of(model.hits.fired.begin(),model.hits.fired.end(),[](const Fired& f) { return f.power==Power::Ghost; });
-        };
-        for(int i=0; i<600; ++i) {
-          if(beat=="ghost-before" && !model.balls.empty() && model.balls[0].position.y<7*Model::cell) break;
-          update(1.0f/60);
-          if(ghostFired()) break;
-        }
-        const int extra=beat=="ghost-4" ? 4 : beat=="ghost-12" ? 12 : 0;
-        for(int i=0; i<extra; ++i) update(1.0f/60);
-      } else {
-        // Pinch out, hold, then release without a pull to cancel.
-        pointerDown(21,{100,462}); pointerDown(22,{290,462});
-        pointerMove(22,{140,462}); pointerUp(22,{140,462}); pointerUp(21,{100,462});
-        const auto& pocket=model.pockets.front();
-        const yy::Vec2 anchor{(pocket.column+pocket.columns/2.0f)*Model::cell,(pocket.row+pocket.rows/2.0f)*Model::cell};
-        const auto press=touch.camera.toScreen(anchor);
-        if(beat!="wide") {
-          pointerDown(23,press);
-          const int frames=beat=="aim-early" ? 6 : 18;
-          for(int i=0; i<frames; ++i) update(1.0f/60);
-          if(beat.starts_with("cancel")) {
-            pointerUp(23,press);
-            for(int i=0; i<(beat=="cancel-early" ? 6 : 18); ++i) update(1.0f/60);
-          }
+      // Pinch out, hold, then release without a pull to cancel, or pull and launch.
+      pointerDown(21,{100,462}); pointerDown(22,{290,462});
+      pointerMove(22,{140,462}); pointerUp(22,{140,462}); pointerUp(21,{100,462});
+      const auto& pocket=model.pockets.front();
+      const yy::Vec2 anchor{(pocket.column+pocket.columns/2.0f)*Model::cell,(pocket.row+pocket.rows/2.0f)*Model::cell};
+      const auto press=touch.camera.toScreen(anchor);
+      if(beat!="wide") {
+        pointerDown(23,press);
+        const int frames=beat=="aim-early" ? 6 : 18;
+        for(int i=0; i<frames; ++i) update(1.0f/60);
+        if(beat.starts_with("cancel")) {
+          pointerUp(23,press);
+          for(int i=0; i<(beat=="cancel-early" ? 6 : 18); ++i) update(1.0f/60);
+        } else if(beat.starts_with("launch")) {
+          const float pull=40*touch.camera.zoom;
+          pointerMove(23,{press.x,press.y+pull}); pointerUp(23,{press.x,press.y+pull});
+          for(int i=0; i<(beat=="launch-early" ? 6 : 24); ++i) update(1.0f/60);
         }
       }
       frozenScene=true; return;
@@ -752,12 +730,7 @@ public: void initialize(yy::Services& services) override {
     celebration.step(seconds,ahead.hit);
     if(!playing && celebration.playing()) touch.cancel(); // a held aim gives way to the show
     stepModel(seconds);
-    cameraBalls.clear();
-    for(std::size_t i=0; i<model.balls.size(); ++i) {
-      cameraBalls.push_back(shown(model.balls[i]));
-      if(hitStop.holding() && heldBalls.size()==model.balls.size()) cameraBalls.push_back(heldBalls[i]);
-    }
-    touch.update(seconds,!celebration.engaged() && !debugOpen,cameraBalls);
+    touch.update(seconds,!celebration.engaged() && !debugOpen);
     for(auto& p: pops) p.age+=seconds;
     std::erase_if(pops,[](const Pop& p){ return p.age>=popSeconds; });
     hitStop.step(seconds); shake.step(seconds); specks.step(seconds,chipGravity); lift.step(seconds);

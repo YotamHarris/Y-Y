@@ -1,8 +1,7 @@
-"""T28 actual SDL readbacks at 390x844; run through fe_manager.py gpu.
+"""T31 actual SDL readbacks at 390x844; run through fe_manager.py gpu.
 
-Aim scenes pinch/hold/cancel through the Game's pointer handlers on level 6.
-Ghost scenes use a seeded corridor fixture, a real manual pan and touch shot,
-production collision/activation and Game camera updates, frozen at each beat.
+Aim scenes pinch/hold/cancel/launch through the Game's pointer handlers on level 6,
+frozen at each beat; a launch eases back to the pre-aim view.
 """
 from pathlib import Path
 import argparse
@@ -14,7 +13,7 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'docs/figures/shot-camera'
 BEATS = ['wide', 'aim-early', 'aim', 'cancel-early', 'cancel',
-         'ghost-before', 'ghost-arrival', 'ghost-4', 'ghost-12']
+         'launch-early', 'launch']
 
 
 def main():
@@ -44,7 +43,7 @@ def main():
         bmp.unlink()
         captures.append({'file': bmp.with_suffix('.png').name, 'scene': f'camera-{beat}',
                          'size': list(shot.size), 'source': 'SDL render readback',
-                         'fixture': 'seed-38 Ghost corridor' if beat.startswith('ghost') else 'level 6 touch pinch/hold/cancel'})
+                         'fixture': 'level 6 touch pinch/hold/cancel/launch'})
         print(f'{beat}: actual SDL readback, 390x844', flush=True)
     # Exact Camera restoration is checked by shotCameraChecks. Decorative
     # glows evolve during the gesture, so entire frames need not match bytes.
