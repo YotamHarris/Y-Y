@@ -5,6 +5,7 @@
 #include <tapdemo/celebration.hpp>
 #include <tapdemo/juice.hpp>
 #include <tapdemo/pace.hpp>
+#include <tapdemo/glint.hpp>
 #include <yy/runtime.hpp>
 #include <algorithm>
 #include <cmath>
@@ -22,20 +23,21 @@ namespace {
 bool inside(yy::Rect r, yy::Vec2 p) { return p.x>=r.x && p.y>=r.y && p.x<r.x+r.w && p.y<r.y+r.h; }
 // The header holds the ball counter, the level and DEBUG; the board starts below it (Camera::view).
 constexpr yy::Rect debugButton{286,22,88,36};
-// The debug panel covers the screen: fifteen stepper rows (a label, -, value, +) under three
+// The debug panel covers the screen: sixteen stepper rows (a label, -, value, +) under three
 // headings (what applies now; what RESTART applies: the level, or free play's settings; free
 // play's weights), then RESTART and CLOSE.
-constexpr yy::Rect panel{20,12,350,784};
-enum Stepper { PingRadius, BombSize, ZapSeconds, ZapReach, SnapAngle, LevelPick, Balls, Bounces, GridSize, GlowRate, Weight0, steppers=Weight0+powerKinds };
-constexpr float stepperTops[steppers]{66,108,150,192,234, 298,340,382,424,466, 530,572,614,656,698};
-constexpr float headingTops[]{50,282,514};
+constexpr yy::Rect panel{20,12,350,820};
+enum Stepper { PingRadius, BombSize, ZapSeconds, ZapReach, SnapAngle, GlintStrength, LevelPick, Balls, Bounces, GridSize, GlowRate, Weight0, steppers=Weight0+powerKinds };
+constexpr float stepperTops[steppers]{66,108,150,192,234,276, 340,382,424,466,508, 572,614,656,698,740};
+constexpr float headingTops[]{50,324,556};
 constexpr yy::Rect minusButton(int row) { return {180,stepperTops[row],44,38}; }
 constexpr yy::Rect plusButton(int row) { return {320,stepperTops[row],44,38}; }
-constexpr yy::Rect restartButton{40,746,150,44}, closeButton{200,746,150,44};
+constexpr yy::Rect restartButton{40,788,150,44}, closeButton{200,788,150,44};
 constexpr yy::Rect shakeButton{196,40,174,24}; // on the APPLY NOW heading's line: taps cycle the screen shake
 constexpr const char* progressFile="progress.txt"; // the reached level, in yy::Storage
 constexpr const char* debugFile="debug.txt";       // every debug panel setting, in yy::Storage
 constexpr yy::Rect overlay{24,340,342,156};          // the OUT OF BALLS card
+constexpr yy::Rect missAbove{0,80,390,250}, missBelow{0,506,390,338}; // where the loss screen frames the goal: the board above the card, or below it
 constexpr yy::Rect winCard{24,250,342,348};          // the win card: the instructions card's art, cut short
 constexpr float cardArtWidth=1098, cardArtHeight=2232; // garden/card.bmp, in pixels
 // The goal's tune: four short notes rising and a long last one. The audio queues them one after another.
@@ -175,6 +177,12 @@ class TapGame final: public yy::Game {
   std::vector<yy::Vec2> heldBalls; // where the balls were drawn when the hit-stop began
   int lastBallsLeft{};
   int shakeLevel{defaultShakeLevel};
+  int glintLevel{defaultGlintLevel};
+  // The loss screen (glint.hpp): the goal lifted out of the fog and how far it was from an open cell. Presentation only.
+  bool missActive{}; float missTime{}; int missBricks{};
+  std::vector<int> missPath;   // goal first, the open cell last
+  std::vector<char> missLift;  // cells whose fog the reveal lifts
+  yy::Rect missBounds{}, missRegion{missAbove}; // the world rectangle the loss screen frames, and where on screen
   Camera drawCam;            // the camera as drawn this frame, shake included
   float clock{};             // seconds, for glow pulses and sparks
   // The goal celebration (celebration.hpp): presentation only. The model always steps by the real frame's dt,
@@ -198,6 +206,7 @@ class TapGame final: public yy::Game {
   void reset(bool instructions) {
     bursts.clear(); pops.clear(); petals.clear(); frozenScene=false; specks.clear(); hitStop={}; shake={}; ladder.reset(); lastBallsLeft=model.ballsLeft; lift.resize(model.columns*model.rows); heldBalls.reserve(16); syncBricks(); touch.refit(); touch.instructions=instructions;
     celebration.reset(); framing.reset(); focused=false; timeDebt=0; pace.reset(); bannerPulse=0; rainDebt=0; countedBalls=0; cheered=false;
+    missActive=false; missTime=0; missPath.clear(); missLift.clear();
   }
   // The cell's bricks and visibility as the effects last saw them: changes after this are what they react to.
   void syncBricks() {
@@ -286,6 +295,47 @@ class TapGame final: public yy::Game {
     cam.hold({from.x+(focusWorld.x-from.x)*k,from.y+(focusWorld.y-from.y)*k},centre,
              framing->zoom*std::pow(std::max(1.0f,focusZoom/framing->zoom),k));
   }
+  // A camera showing the world rectangle `bounds` inside `region` (a cell of margin, no closer than `limit`), centred there.
+  Camera cameraOn(yy::Rect bounds, yy::Rect region, float limit=2.2f) const {
+    Camera target=touch.camera;
+    const float margin=Model::cell;
+    const float zoom=std::min({region.w/(bounds.w+2*margin),region.h/(bounds.h+2*margin),limit});
+    target.hold({bounds.x+bounds.w/2,bounds.y+bounds.h/2},{region.x+region.w/2,region.y+region.h/2},zoom);
+    return target;
+  }
+  // The world rectangle holding every cell of `cells`.
+  yy::Rect boundsOf(const std::vector<int>& cells) const {
+    int left=model.columns, top=model.rows, right=-1, bottom=-1;
+    for(int cell: cells) {
+      left=std::min(left,cell%model.columns); right=std::max(right,cell%model.columns);
+      top=std::min(top,cell/model.columns); bottom=std::max(bottom,cell/model.columns);
+    }
+    return {left*Model::cell,top*Model::cell,(right-left+1)*Model::cell,(bottom-top+1)*Model::cell};
+  }
+  // The round was just lost: lift the fog around the goal and along its straight run to the nearest open cell, and
+  // frame them above the card. The model is not touched, so a retry opens the identical field.
+  void beginMiss() {
+    missActive=true; missTime=0; missBricks=nearMissBricks(model);
+    missPath=nearMissPath(model); missLift=nearMissLift(model);
+    std::vector<int> cells;
+    for(std::size_t i=0; i<missLift.size(); ++i) if(missLift[i]) cells.push_back(static_cast<int>(i));
+    missBounds=boundsOf(cells);
+    // The camera cannot leave the grid, so a goal near an edge cannot be centred everywhere: take the side of the card
+    // where it can sit closest to the middle of its region.
+    const auto offCentre=[&](const yy::Rect& region) { return std::abs(cameraOn(missBounds,region).toScreen(goalCentre()).y-(region.y+region.h/2)); };
+    missRegion=offCentre(missBelow)+8<offCentre(missAbove) ? missBelow : missAbove;
+    touch.cancel(); touch.framing.automatic=false;
+  }
+  // Eases the camera onto the reveal; the player has it back once the retry is offered.
+  void frameMiss(float seconds) {
+    Camera& cam=touch.camera;
+    const Camera target=cameraOn(missBounds,missRegion);
+    const yy::Vec2 screen{missRegion.x+missRegion.w/2,missRegion.y+missRegion.h/2};
+    const auto from=cam.toWorld(screen), to=target.toWorld(screen);
+    const float k=1-std::exp(-6*seconds);
+    cam.hold({from.x+(to.x-from.x)*k,from.y+(to.y-from.y)*k},screen,cam.zoom+(target.zoom-cam.zoom)*k);
+  }
+  bool retryOffered() const { return !missActive || missTime>=missSeconds; }
   // The break: a bigger burst on the goal, confetti, the tune and a strong haptic.
   void celebrate() {
     bursts.push_back({{Power::None,model.goal,-1},0});
@@ -358,12 +408,13 @@ class TapGame final: public yy::Game {
     DebugSettings d;
     d.pingRadius=model.pingRadius; d.bombSize=model.bombSize; d.electricSeconds=model.electricSeconds;
     d.electricHalves=static_cast<int>(std::lround(model.electricRadius*2)); d.snapDegrees=model.snapDegrees;
-    d.balls=debugBalls; d.bounces=debugBounces; d.grid=debugGrid; d.shake=shakeLevel;
+    d.balls=debugBalls; d.bounces=debugBounces; d.grid=debugGrid; d.shake=shakeLevel; d.glint=glintLevel;
     storage->write(debugFile,saveDebug(d));
   }
   void openDebug() { touch.cancel(); debugLevel=model.level(); debugBalls=freeBalls; debugBounces=freeBounces; debugGrid=freeGrid; debugOpen=true; }
   void step(int row, int by) {
     switch(row) {
+    case GlintStrength: glintLevel=std::clamp(glintLevel+by,0,glintLevels-1); break;
     case LevelPick: debugLevel=std::clamp(debugLevel+by,0,levelCount); break;
     case Balls: debugBalls=std::clamp(debugBalls+by,1,Model::maxSetting); break;
     case Bounces: debugBounces=std::clamp(debugBounces+by,1,Model::maxSetting); break;
@@ -393,7 +444,7 @@ class TapGame final: public yy::Game {
   }
   void sling(yy::Vec2 at, yy::Vec2 pull) { pointerDown(0,at); pointerMove(0,{at.x+pull.x,at.y+pull.y}); pointerUp(0,{at.x+pull.x,at.y+pull.y}); }
   // YY_TAPDEMO_SCENE stages a moment for smoke screenshots: instructions (as the game opens),
-  // field (the opening field with the card dismissed, untouched), header (one ball flying), aim, aim-brick or aim-wall (a held aim whose line ends on a brick, or on the wall above an emptied column), lastball (that aim with one ball left), snap (an aim 3 degrees off horizontal), debug, play, zoom, icons (one of each power-up and the goal
+  // field (the opening field with the card dismissed, untouched), glint (the camera on the goal's glint), header (one ball flying), aim, aim-brick or aim-wall (a held aim whose line ends on a brick, or on the wall above an emptied column), lastball (that aim with one ball left), snap (an aim 3 degrees off horizontal), debug, play, zoom, icons (one of each power-up and the goal
   // beside the pocket) or glow (the same close up), breaks (four launches), electric (a launch
   // into that power-up), pingin or pingout (a launch into a Ping brick with the goal inside or
   // outside the ping radius), won (a launch into the goal; won-approach, won-burst, won-goal and won-card freeze its celebration at a beat), lost (the last ball, spent on a brick), palette / palette-fit /
@@ -473,6 +524,15 @@ class TapGame final: public yy::Game {
       if(kind=="break") runTo([&]{ return specks.live()>8; },3);
       else if(kind=="bomb") runTo([&]{ return !bursts.empty(); },5);
       else if(kind=="fog") runTo([&]{ return !lift.entries().empty(); },5);
+      return;
+    }
+    if(std::strcmp(scene,"glint")==0) {
+      // The camera on the hidden goal, the cells that glint around it and the run to the nearest open cell: only the view moves.
+      std::vector<int> cells=nearMissPath(model);
+      const int gc=model.goal%model.columns, gr=model.goal/model.columns;
+      for(int dc: {-glintReach,glintReach}) for(int dr: {-glintReach,glintReach})
+        cells.push_back(std::clamp(gr+dr,0,model.rows-1)*model.columns+std::clamp(gc+dc,0,model.columns-1));
+      touch.camera=cameraOn(boundsOf(cells),{0,80,390,764},2.0f);
       return;
     }
     if(std::strcmp(scene,"debug")==0) { openDebug(); return; }
@@ -601,7 +661,7 @@ public: void initialize(yy::Services& services) override {
     // A level's table sets the power-up values, so the saved ones go on after it.
     if(saved) { model.setPingRadius(d.pingRadius); model.setBombSize(d.bombSize); model.setElectricSeconds(d.electricSeconds);
                 model.setElectricRadius(d.electricHalves/2.0f); }
-    model.setSnapDegrees(d.snapDegrees); shakeLevel=d.shake;
+    model.setSnapDegrees(d.snapDegrees); shakeLevel=d.shake; glintLevel=d.glint;
     stage(scene);
     syncBricks();
   }
@@ -684,6 +744,11 @@ public: void initialize(yy::Services& services) override {
       }
     }
     steer(ahead,seconds);
+    if(model.lost()) {
+      if(!missActive) beginMiss();
+      missTime+=seconds;
+      if(missTime<missSeconds*1.6f) frameMiss(seconds);
+    }
   }
   void pause(bool value) override { model.pause(value); if(value) { touch.cancel(); settle(); } }
   void shutdown() override { touch.cancel(); touch.haptics=nullptr; audio=nullptr; haptics=nullptr; }
@@ -695,7 +760,11 @@ public: void initialize(yy::Services& services) override {
     if(celebration.playing()) { uiFinger=id; skipCelebration(); return; }
     // An anticipation that came to nothing, still easing back, gives way to the player.
     if(celebration.engaged()) { celebration.reset(); timeDebt=0; releaseCamera(); }
-    if(cardShows() && inside(cardRect(),p)) { uiFinger=id; advance(); return; }
+    if(cardShows() && inside(cardRect(),p)) {
+      uiFinger=id;
+      if(retryOffered()) advance(); else missTime=missSeconds; // a tap during the reveal finishes it
+      return;
+    }
     touch.down(id,p);
   }
   void pointerMove(int id, yy::Vec2 p) override { if(id!=uiFinger && !celebration.engaged()) touch.move(id,p); }
@@ -753,13 +822,30 @@ public: void initialize(yy::Services& services) override {
       gardenSprite(r,gardenDamage(hp),face);
       cracks(r,hp,column,row,face);
     };
+    // A warm shimmer in a fogged cell near the hidden goal: the same strength for the goal's cell and its neighbours,
+    // fading out four steps away, each cell twinkling on its own phase.
+    const bool glinting=glintLevel>0 && !model.over() && model.goal>=0 && model.bricks[model.goal]>0 &&
+                        !model.visible(model.goal%model.columns,model.goal/model.columns);
+    const auto glint=[&](int column,int row,yy::Vec2 p) {
+      if(!glinting) return;
+      const float strength=glintStrength(glintDistance(model,column,row),glintLevel);
+      if(strength<=0) return;
+      const float twinkle=0.7f+0.3f*std::sin(clock*2.4f+column*1.9f+row*2.7f);
+      auto c=mix(glow(palette,Power::Electricity),white,0.2f);
+      c.a=static_cast<unsigned char>(std::min(255.0f,85*strength*twinkle));
+      r.rectangle({p.x,p.y,cellSize,cellSize},c);
+      c.a=static_cast<unsigned char>(std::min(255.0f,120*strength*twinkle));
+      r.circle({p.x+cellSize/2,p.y+cellSize/2},cellSize*0.26f,c);
+    };
     for(int row=r0; row<=r1; ++row) for(int column=c0; column<=c1; ++column) {
       const int hp=model.brick(column,row);
       const bool goal=hp>0 && model.isGoal(column,row);
       const Power power=model.power(column,row);
       const auto p=cam.toScreen({column*Model::cell,row*Model::cell});
       const yy::Rect box{p.x,p.y,cellSize,cellSize};
-      if(!model.visible(column,row)) {
+      // The loss screen lifts the fog from the goal's surroundings and the run to the nearest open cell, goal first.
+      const float revealed=missActive && missLift[row*model.columns+column] ? missProgress(missTime,glintDistance(model,column,row)) : 0.0f;
+      if(!model.visible(column,row) && revealed<=0) {
         if(model.fogDistance(column,row)==Model::fogReach+1) {
           // The first fogged ring fades in: contents first, then fog in thin strips, faint on
           // the side facing a clear cell and nearly solid on the side facing deeper fog.
@@ -785,6 +871,7 @@ public: void initialize(yy::Services& services) override {
             r.rectangle({p.x+u0*cellSize,p.y+v0*cellSize,w*cellSize,h*cellSize},tint(closeness(u0+w/2,v0+h/2)));
           }
           if((goal || power!=Power::None) && model.pinged(column,row)) iconBrick(r,palette,power,box);
+          glint(column,row,p);
           continue;
         }
         const float rim=std::clamp(cellSize*0.045f,1.0f,3.0f);
@@ -794,11 +881,17 @@ public: void initialize(yy::Services& services) override {
         if(exposed(column-1,row)) gardenSprite(r,GardenSprite::RimV,{p.x,p.y,rim,cellSize});
         if(exposed(column+1,row)) gardenSprite(r,GardenSprite::RimV,{p.x+cellSize-rim,p.y,rim,cellSize});
         if((goal || power!=Power::None) && model.pinged(column,row)) iconBrick(r,palette,power,box);
+        glint(column,row,p);
         continue;
       }
       gardenCellTexture(r,GardenSprite::Clear,column,row,box);
       if(hp>0) cellContents(column,row,p,box,hp,goal,power);
+      if(revealed>0 && revealed<1 && !model.visible(column,row)) { // the fog still peeling off a lifted cell
+        auto fog=fogColors[(column+row)%2]; fog.a=static_cast<unsigned char>(fogEdgeSolid*(1-revealed*revealed));
+        r.rectangle({p.x,p.y+cellSize*revealed,cellSize,cellSize*(1-revealed)},fog);
+      }
     }
+    if(missActive) drawMiss(r);
     // Fog peeling off cells a break just uncovered, and the highlight on a power-up brick or the goal found there.
     for(const auto& e: lift.entries()) {
       const int column=e.cell%model.columns, row=e.cell/model.columns;
@@ -960,8 +1053,9 @@ public: void initialize(yy::Services& services) override {
       else {
         r.rectangle(overlay,palette.card);
         r.text({58,367},"OUT OF BALLS",white,2.5f);
-        r.text({58,410},"THE GOAL STAYED HIDDEN",teal,1.5f);
-        r.text({58,450},model.level()==0 ? "TAP TO RESTART" : "TAP TO RETRY",muted);
+        r.text({58,404},std::to_string(missBricks)+(missBricks==1 ? " BRICK AWAY" : " BRICKS AWAY"),teal,2.0f);
+        r.text({58,430},"THE GOAL IS THE FLAGGED BRICK",muted,1.25f);
+        if(retryOffered()) r.text({58,456},model.level()==0 ? "TAP TO RESTART" : "TAP TO RETRY",white);
       }
     }
     drawPetals(r);
@@ -988,6 +1082,7 @@ public: void initialize(yy::Services& services) override {
       row(ZapSeconds,"ZAP SECONDS",white,std::to_string(model.electricSeconds));
       row(ZapReach,"ZAP REACH",white,halves(model.electricRadius));
       row(SnapAngle,"SNAP ANGLE",white,model.snapDegrees>0 ? std::to_string(model.snapDegrees)+" DEG" : std::string("OFF"));
+      row(GlintStrength,"GLINT",white,glintNames[glintLevel]);
       row(LevelPick,"LEVEL",white,debugLevel>0 ? std::to_string(debugLevel) : std::string("FREE"));
       // Free play's settings; with a level picked they wait, muted, for the next free play.
       const Color freeLabel=debugLevel>0 ? muted : white;
@@ -1000,6 +1095,31 @@ public: void initialize(yy::Services& services) override {
       r.rectangle(closeButton,palette.button); r.text({closeButton.x+35,closeButton.y+14},"CLOSE",white);
     }
     if(renderTest) drawRenderTest(r);
+  }
+  // The loss screen's marks over the lifted cells: a ring on the goal, then a dot on each brick of the straight run to
+  // the nearest open cell, one more dot per step, so the count on the card can be followed.
+  void drawMiss(yy::Renderer& r) const {
+    const Camera& cam=drawCam;
+    const float cell=Model::cell*cam.zoom;
+    const yy::Color gold=mix(glow(garden,Power::None),garden.white,0.35f);
+    const auto centre=[&](int index) { return cam.toScreen({(index%model.columns+0.5f)*Model::cell,(index/model.columns+0.5f)*Model::cell}); };
+    for(std::size_t i=1; i<missPath.size(); ++i) {
+      const float u=std::clamp((missTime-0.45f-0.08f*i)/0.2f,0.0f,1.0f);
+      if(u<=0) continue;
+      yy::Color c=i+1==missPath.size() ? glow(garden,Power::Ping) : gold; c.a=static_cast<unsigned char>(235*u);
+      r.circle(centre(missPath[i]),std::max(2.0f,cell*(i+1==missPath.size() ? 0.16f : 0.11f)*u),c);
+    }
+    const float u=std::clamp((missTime-0.25f)/0.4f,0.0f,1.0f);
+    if(u<=0 || missPath.empty()) return;
+    const auto at=centre(missPath.front());
+    yy::Color halo=glow(garden,Power::None); halo.a=static_cast<unsigned char>(90*u);
+    r.circle(at,cell*0.8f,halo);
+    yy::Color ring=gold; ring.a=static_cast<unsigned char>(240*u);
+    const float reach=cell*(0.62f+0.06f*std::sin(clock*5));
+    for(int i=0; i<14; ++i) {
+      const float a=i*6.2831853f/14+clock;
+      r.circle({at.x+std::cos(a)*reach,at.y+std::sin(a)*reach},std::max(1.5f,cell*0.07f),ring);
+    }
   }
   // LAST BALL, top of the board, popping in and then breathing.
   void drawLastBall(yy::Renderer& r) const {
@@ -1086,8 +1206,10 @@ public: void initialize(yy::Services& services) override {
     gardenLabel(r,{78,y+4},"FIND THE GOAL",25,green);
     y+=53;
     const std::string limits=std::to_string(model.ballCount)+" BALLS, "+std::to_string(model.bouncesPerBall)+" BOUNCES EACH.";
-    for(const std::string& line: {std::string("BREAK THE GOAL BRICK TO WIN."),std::string("IT HIDES IN THE FOG."),std::string(),
-                                 std::string("HOLD IN A GAP, PULL, LET GO."),limits,std::string("NO BALLS LEFT: YOU LOSE.")}) {
+    std::vector<std::string> lines{"BREAK THE GOAL BRICK TO WIN.","IT HIDES IN THE FOG."};
+    if(model.level()==1 && glintLevel>0) lines.push_back("THE GOAL GLOWS FAINTLY THROUGH IT."); // the glint, taught on the first card
+    lines.insert(lines.end(),{"","HOLD IN A GAP, PULL, LET GO.",limits,"NO BALLS LEFT: YOU LOSE."});
+    for(const std::string& line: lines) {
       gardenLabel(r,{26,y},line,15,ink); y+=19;
     }
     y+=10;

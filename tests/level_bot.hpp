@@ -53,9 +53,9 @@ inline bool goalShows(const Model& m) {
 
 // Plays level `level` as `table` sets it up with bot seed `botSeed` and returns how it went.
 // With `shots` (and `touch`) each launched shot's press and release, in screen units, is appended to it:
-// the same shots replayed on a game reproduce the round.
+// the same shots replayed on a game reproduce the round. With `end` the finished model is copied to it.
 struct Shot { yy::Vec2 press, release; };
-inline Result play(int level, const tapdemo::Level& table, std::uint32_t botSeed, Style style={}, bool touch=false, std::vector<Shot>* shots=nullptr) {
+inline Result play(int level, const tapdemo::Level& table, std::uint32_t botSeed, Style style={}, bool touch=false, std::vector<Shot>* shots=nullptr, Model* end=nullptr) {
   Model m; m.play(level,table);
   tapdemo::Touch finger(m); finger.instructions=false;
   // Difficulty/recorded-flight regressions use the player's whole-grid manual view.
@@ -116,6 +116,7 @@ inline Result play(int level, const tapdemo::Level& table, std::uint32_t botSeed
     m.balls.clear(); // a ball still flying after two minutes is spent
   }
   if(m.goal>=0) result.goalDistance=m.fogDistance(m.goal%m.columns,m.goal/m.columns);
+  if(end) *end=m; // the field as the round ended
   return result;
 }
 

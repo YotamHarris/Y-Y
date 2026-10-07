@@ -11,6 +11,7 @@
 #include <vector>
 
 void paletteChecks();
+void glintChecks();
 void levelFlowChecks();
 void debugPersistenceChecks();
 void levelBandChecks();
@@ -852,7 +853,7 @@ static void debugSettingsChecks() {
   const auto same=[](const DebugSettings& a, const DebugSettings& b) {
     return a.pingRadius==b.pingRadius && a.bombSize==b.bombSize && a.electricSeconds==b.electricSeconds && a.electricHalves==b.electricHalves &&
            a.snapDegrees==b.snapDegrees && a.balls==b.balls && a.bounces==b.bounces &&
-           a.grid.gridScale==b.grid.gridScale && a.grid.glow==b.grid.glow && a.grid.weights==b.grid.weights;
+           a.grid.gridScale==b.grid.gridScale && a.grid.glow==b.grid.glow && a.grid.weights==b.grid.weights && a.glint==b.glint;
   };
   const DebugSettings defaults;
   check(defaults.pingRadius==Model::defaultPingRadius && defaults.bombSize==Model::defaultBombSize && defaults.electricSeconds==Model::defaultElectricSeconds &&
@@ -861,9 +862,11 @@ static void debugSettingsChecks() {
   check(same(tapdemo::loadDebug(tapdemo::saveDebug(defaults)),defaults),"the defaults round-trip");
   DebugSettings every;
   every.pingRadius=17; every.bombSize=9; every.electricSeconds=11; every.electricHalves=9; every.snapDegrees=0; every.balls=33; every.bounces=44;
-  every.grid.gridScale=7; every.grid.glow=21; every.grid.weights={0,9,2,5,3};
+  every.grid.gridScale=7; every.grid.glow=21; every.grid.weights={0,9,2,5,3}; every.glint=1;
   check(same(tapdemo::loadDebug(tapdemo::saveDebug(every)),every),"every debug setting round-trips");
   check(tapdemo::saveDebug(every).rfind("debug 1\n",0)==0,"the text starts with its version");
+  check(tapdemo::loadDebug("debug 1\nglint 0\n").glint==0 && tapdemo::loadDebug("debug 1\nglint 99\n").glint==3 && tapdemo::loadDebug("debug 1\nglint x\n").glint==defaults.glint,"the glint setting loads, clamps and ignores a damaged line");
+  check(tapdemo::saveDebug(defaults).find("glint")==std::string::npos,"a default glint adds no line to the save");
   for(const char* bad: {"","debug","debug 2\nballs 5\n","ping 17\nballs 5\n","\x01 garbage\n\n\n","debug 1 \nballs 5\n"})
     check(same(tapdemo::loadDebug(bad),defaults),"a missing, damaged or newer-version save gives the defaults");
   {
@@ -1002,6 +1005,7 @@ int main() {
   paletteChecks();
   gardenChecks();
   levelFlowChecks();
+  glintChecks();
   debugPersistenceChecks();
   levelBandChecks();
   celebrationChecks();

@@ -78,6 +78,7 @@ struct DebugSettings {
   int pingRadius{6}, bombSize{5}, electricSeconds{6}, electricHalves{5}, snapDegrees{5};
   int balls{10}, bounces{15};
   int shake{2}; // screen shake, 0 off to 3 high (juice.hpp; presentation only)
+  int glint{2}; // the goal's glint in the fog, 0 off to 3 high (glint.hpp; presentation only)
   Settings grid;
   // Every value within its range (bomb size odd).
   DebugSettings clamped() const;

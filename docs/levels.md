@@ -107,3 +107,24 @@ differs from the 200 test games by more than 7 points (two widths of their
 noise). It is the bot's rate, not a person's. `YY_TAPDEMO_SCENE=instructions`
 captures the card: `docs/figures/levels/card-02.png` (55%) and `card-10.png`
 (now 46%).
+
+## T26: the goal's glint and the near miss
+
+Two presentation changes help a person find the goal and plan the retry; neither
+touches the model, so the seeds, the fields and every number in this document are
+unchanged.
+
+- **Glint.** Fogged cells within 4 straight steps of the goal shimmer warmly, as
+  strongly as the debug GLINT setting (OFF, LOW, MEDIUM, HIGH) allows: the goal's
+  cell and its four neighbours the same, then falling in even steps to a quarter at
+  4 steps and nothing beyond. It says "over here", not "this brick". It stops once
+  the goal is out of the fog. Level 1's card says "THE GOAL GLOWS FAINTLY THROUGH IT."
+  Captures: `docs/figures/glint/` (`tests/capture_glint.py`).
+- **Near miss.** On any loss the fog lifts around the goal and along the straight
+  run to the nearest open cell, the goal is ringed and the card says "N BRICKS
+  AWAY": N is the closeness measure above (`nearMissBricks`, checked against the
+  bot's own `goalDistance` and a count over every open cell). A tap during the
+  reveal finishes it; the next tap retries the identical field.
+
+**The card's EXPECTED WINS is the bot's rate without the glint.** The bot never
+sees the glint, so a person who reads it will win more often than the figure says.

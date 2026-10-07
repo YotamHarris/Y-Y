@@ -64,6 +64,7 @@ DebugSettings DebugSettings::clamped() const {
   s.balls=std::clamp(balls,1,Model::maxSetting);
   s.bounces=std::clamp(bounces,1,Model::maxSetting);
   s.shake=std::clamp(shake,0,3);
+  s.glint=std::clamp(glint,0,3);
   s.grid=grid.clamped();
   return s;
 }
@@ -75,6 +76,7 @@ std::string saveDebug(const DebugSettings& settings) {
   line("snap",s.snapDegrees); line("balls",s.balls); line("bounces",s.bounces); line("grid",s.grid.gridScale);
   line("glow",s.grid.glow);
   if(s.shake!=DebugSettings{}.shake) line("shake",s.shake); // a save at the default stays as older builds wrote it
+  if(s.glint!=DebugSettings{}.glint) line("glint",s.glint);
   text+="weights";
   for(int w: s.grid.weights) { text+=' '; text+=std::to_string(w); }
   return text+'\n';
@@ -108,7 +110,7 @@ DebugSettings loadDebug(std::string_view text) {
     struct Field { std::string_view key; int* value; };
     for(const Field& f: {Field{"ping",&s.pingRadius},{"bomb",&s.bombSize},{"zapSeconds",&s.electricSeconds},{"zapHalves",&s.electricHalves},
                          {"snap",&s.snapDegrees},{"balls",&s.balls},{"bounces",&s.bounces},{"grid",&s.grid.gridScale},
-                         {"glow",&s.grid.glow},{"shake",&s.shake}})
+                         {"glow",&s.grid.glow},{"shake",&s.shake},{"glint",&s.glint}})
       if(f.key==key) number(words[1],*f.value);
   }
   return s.clamped();
