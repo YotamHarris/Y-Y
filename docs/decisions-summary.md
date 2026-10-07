@@ -9,11 +9,11 @@ python studio/fe_docs.py show D64
 python studio/fe_docs.py category design
 ```
 
-13 entries: 11 active, 2 amended.
+14 entries: 12 active, 2 amended.
 
 | category | file | entries | covers |
 |---|---|---|---|
-| Design | [design.md](decisions/design.md) | 10, 10 holding | game rules, touch interaction, look and feel |
+| Design | [design.md](decisions/design.md) | 11, 11 holding | game rules, touch interaction, look and feel |
 | Engine | [engine.md](decisions/engine.md) | 2, 2 holding | C++20, SDL3, iOS and deterministic simulation |
 | Process | [process.md](decisions/process.md) | 1, 1 holding | Agent Studio, Discord and TestFlight delivery |
 
@@ -21,10 +21,11 @@ python studio/fe_docs.py category design
 
 ## Design
 
-10 entries: 8 active, 2 amended. [decisions/design.md](decisions/design.md)
+11 entries: 9 active, 2 amended. [decisions/design.md](decisions/design.md)
 
 #### Active — the current rules
 
+- **D14** (2026-10-07) The aim line shows the first bounce, and game speed follows the shot
 - **D13** (2026-10-07) Levels open framed on the visible cavity and ease outward as it grows
 - **D12** (2026-10-07) Every hit has feedback, bricks show cracks, and the fog peels away
 - **D10** (2026-10-06) Breaking the goal plays a celebration, presentation only

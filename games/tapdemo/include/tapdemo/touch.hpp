@@ -122,7 +122,12 @@ public:
     framing.automatic=false;
     camera.zoomAt(at,camera.zoom*std::pow(1.15f,steps));
   }
-  float humLevel() const { return aim ? 0.25f+0.5f*std::min(1.0f, std::hypot(aim->pull.x,aim->pull.y)/fullPull) : 0; }
+  // The aim's hum grows with the pull; the last ball's is tighter: it starts higher and ends at full strength.
+  float humLevel() const {
+    if(!aim) return 0;
+    const float pulled=std::min(1.0f, std::hypot(aim->pull.x,aim->pull.y)/fullPull);
+    return model.ballsLeft==1 ? 0.5f+0.5f*pulled : 0.25f+0.5f*pulled;
+  }
   void cancel() {
     if(aim && haptics) haptics->humStop();
     aim.reset();

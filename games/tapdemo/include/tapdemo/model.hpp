@@ -87,6 +87,10 @@ struct DebugSettings {
 // unreadable line leaves its own setting at the default (a saved colour `scheme` line from older builds is ignored); numbers are clamped to their ranges.
 std::string saveDebug(const DebugSettings& settings);
 DebugSettings loadDebug(std::string_view text);
+// The straight flight a launch takes up to its first wall or brick contact, from Model::aimPath. It does
+// not say what a brick is, so a fogged brick stays unrevealed. `contact` is where the ball circle's centre
+// stops, `after` the unit direction it leaves in.
+struct AimPath { bool valid{}; yy::Vec2 start{}, contact{}, after{}; bool brick{}; };
 // A power-up that fired: its brick's cell, and for Ghost the cell its ball reappeared at (else -1).
 struct Fired { Power power{}; int cell{-1}, to{-1}; };
 // What the last update did, so the game can play sounds and haptics.
@@ -119,6 +123,9 @@ class Model {
   void fire(Ball& ball);
   void ghost(Ball& ball, Fired& fired);
   void zap(const Ball& ball);
+  // Moves the ball one sub-step of h seconds; true when it bounced, with the bricks it struck in `struck` (-1: none).
+  bool stepBall(Ball& ball, float h, int (&struck)[2]) const;
+  static int substeps(float dt);
 public:
   static constexpr int defaultColumns=Settings::shapeColumns*Settings::defaultScale, defaultRows=Settings::shapeRows*Settings::defaultScale;
   static constexpr float cell=32, ballRadius=10, speed=480, minPull=18;
@@ -191,6 +198,10 @@ public:
   // Launches from `at` opposite `pull` (finger minus ball), snapped by snapPull. A pull shorter than minPull,
   // no balls left, a finished round or a spot a brick covers launches nothing.
   bool launch(yy::Vec2 at, yy::Vec2 pull);
+  // Where a launch from `at` opposite `pull` first touches a wall or brick: the same snap, speed, sub-steps and
+  // collision as launch() then update(dt), so the endpoint is the real first contact. Invalid when launch() would
+  // refuse the pull or the spot (a finished round or no balls left aside).
+  AimPath aimPath(yy::Vec2 at, yy::Vec2 pull, float dt=1.0f/60) const;
   void update(float dt);
   void pause(bool value) { paused_ = value; }
   bool paused() const { return paused_; }

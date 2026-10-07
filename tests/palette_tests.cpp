@@ -4,10 +4,13 @@
 #include <tapdemo/touch.hpp>
 #include <tapdemo/celebration.hpp>
 #include <tapdemo/juice.hpp>
+#include <tapdemo/pace.hpp>
 #include "level_bot.hpp"
 #include <optional>
 #include <yy/runtime.hpp>
 #include <algorithm>
+#include <array>
+#include <utility>
 #include <cmath>
 #include <cstdlib>
 #include <memory>
@@ -773,4 +776,189 @@ void juiceChecks() {
     check(loadDebug(saveDebug(d)).shake==3 && loadDebug("debug 1\nshake 9\n").shake==3 && DebugSettings{}.shake==defaultShakeLevel,"the shake round-trips and is clamped");
   }
   std::cout<<"Hit feedback: hit-stop, pitch ladder, shake, specks, cracks and fog lift passed\n";
+}
+
+namespace {
+using tapdemo::Model;
+using tapdemo::Power;
+bool close(float a, float b, float within=0.01f) { return std::abs(a-b)<=within; }
+// An empty field but for the given bricks, so a ball's path is known; no goal unless a test sets one.
+void clearField(Model& m, const std::vector<std::pair<int,int>>& cells, int hp) {
+  std::fill(m.bricks.begin(),m.bricks.end(),0);
+  std::fill(m.powers.begin(),m.powers.end(),Power::None);
+  m.goal=-1;
+  for(auto [c,r]: cells) m.bricks[r*Model::defaultColumns+c]=hp;
+  m.refreshFog();
+}
+yy::Vec2 pocketSpot(const Model& m) {
+  const auto& p=m.pockets.front();
+  return {(p.column+p.columns/2+0.5f)*Model::cell,(p.row+p.rows/2+0.5f)*Model::cell};
+}
+// What a played level left behind, to compare runs that differ only in game speed.
+struct Outcome {
+  std::vector<int> bricks; std::vector<Power> powers; int goal, ballsLeft; bool won;
+  std::vector<std::array<int,3>> fired; int bounces;
+  bool operator==(const Outcome& o) const { return bricks==o.bricks && powers==o.powers && goal==o.goal && ballsLeft==o.ballsLeft && won==o.won && fired==o.fired && bounces==o.bounces; }
+};
+// Plays `level` with six pulls in turn from the first pocket's centre, one ball at a time, each launched the moment
+// nothing flies, whatever the frame. `scale` is the clock's speed; 0 means the game's own pace (tapdemo::Pace).
+Outcome playPaced(int level, float scale, float& fastest) {
+  using namespace tapdemo;
+  Model m; m.play(level);
+  const yy::Vec2 at=pocketSpot(m);
+  const yy::Vec2 pulls[]{{20,40},{-40,15},{5,-40},{40,-10},{-30,-30},{0,50}};
+  Pace pace; float debt=0; int shot=0; Outcome out{}; fastest=1;
+  const float dt=1.0f/60;
+  for(int frame=0; frame<60*600 && !m.over(); ++frame) {
+    if(m.balls.empty() && m.ballsLeft>0 && !m.launch(at,pulls[shot++%6])) break;
+    const float speed=scale>0 ? scale : pace.step(m,dt);
+    fastest=std::max(fastest,speed);
+    for(int n=takeSteps(debt,dt,speed,4); n>0; --n) {
+      m.update(dt);
+      for(const auto& f: m.hits.fired) out.fired.push_back({static_cast<int>(f.power),f.cell,f.to});
+      out.bounces+=m.hits.bounces;
+    }
+  }
+  out.bricks=m.bricks; out.powers=m.powers; out.goal=m.goal; out.ballsLeft=m.ballsLeft; out.won=m.won();
+  return out;
+}
+}
+
+void paceChecks() {
+  using namespace tapdemo;
+  // The aim line ends where a real launch first touches something: several shots on several levels, snapped or not.
+  int shots=0, onBrick=0, onWall=0;
+  const auto compare=[&](const Model& m, yy::Vec2 at, yy::Vec2 pull) {
+    constexpr float dt=1.0f/240;
+    const AimPath path=m.aimPath(at,pull,dt);
+    check(path.valid && path.start.x==at.x && path.start.y==at.y,"the aim line starts at the held ball");
+    Model real=m;
+    check(real.launch(at,pull),"the shot launches");
+    for(int i=0; i<4000 && real.hits.bounces==0; ++i) real.update(dt);
+    check(real.hits.bounces>0,"the real ball touches something");
+    const Ball& b=real.balls.front();
+    check(close(b.position.x,path.contact.x,1e-3f) && close(b.position.y,path.contact.y,1e-3f),"the aim line ends at the real first contact");
+    const float speed=std::hypot(b.velocity.x,b.velocity.y);
+    check(close(b.velocity.x/speed,path.after.x,1e-4f) && close(b.velocity.y/speed,path.after.y,1e-4f),"the stub leaves in the real reflected direction");
+    check(path.brick==(real.hits.bricksHit>0),"the line knows a brick from a wall as the real hit does");
+    ++shots; (path.brick ? onBrick : onWall)++;
+  };
+  const yy::Vec2 pulls[]{{20,40},{-40,15},{5,-40},{40,-10},{-100,-5},{3,60},{-30,-30},{0,50}};
+  for(int level: {1,3,5,8,10}) for(yy::Vec2 pull: pulls) { Model m; m.play(level); compare(m,pocketSpot(m),pull); }
+  for(yy::Vec2 pull: pulls) { Model m; clearField(m,{},1); compare(m,{9.5f*Model::cell,20.5f*Model::cell},pull); } // an empty field: walls
+  check(shots==48 && onBrick>0 && onWall>=8,"the aim checks ran, on bricks and on walls");
+  {
+    // After the snap: a pull 3 degrees off horizontal is drawn level, and as pulled once the snap is off.
+    Model m; m.play(1); m.setSnapDegrees(5);
+    const yy::Vec2 at=pocketSpot(m);
+    const AimPath snapped=m.aimPath(at,{-100,-5});
+    check(snapped.valid && close(snapped.contact.y,at.y,1e-3f) && snapped.contact.x>at.x,"the line is drawn from the snapped direction");
+    m.setSnapDegrees(0);
+    const AimPath loose=m.aimPath(at,{-100,-5});
+    check(loose.valid && !close(loose.contact.y,at.y,1.0f),"without the snap the same pull is drawn as pulled");
+    check(!m.aimPath(at,{3,3}).valid && !m.aimPath({0,0},{40,40}).valid,"a short pull or a covered spot draws nothing");
+  }
+
+  // Game speed changes how many fixed steps a frame takes, never the steps: every level plays out the same.
+  float fastest=1;
+  for(int level=1; level<=levelCount; ++level) {
+    float f1,fp,ff,fs;
+    const Outcome flat=playPaced(level,1,f1), paced=playPaced(level,0,fp), fast=playPaced(level,2.5f,ff), slow=playPaced(level,0.35f,fs);
+    check(flat==paced && flat==fast && flat==slow,"a level plays out the same at 1x, at the game's varying pace, fast and slow");
+    check(flat.bounces>0,"the compared run flew");
+    fastest=std::max(fastest,fp);
+  }
+  check(fastest>2,"the varying pace really ran fast on some level");
+  std::cout<<"Aim line: "<<shots<<" shots matched their first contact ("<<onBrick<<" brick, "<<onWall<<" wall); game speed left every level's outcome unchanged (fastest "<<fastest<<"x)\n";
+
+  {
+    // The speed rises with the oldest flying ball's bounces, 1x to about 2.5x, and is 1x with nothing flying.
+    Model m; m.play(1);
+    check(Pace::target(m)==1,"nothing flying runs at 1x");
+    const yy::Vec2 at=pocketSpot(m);
+    check(m.launch(at,{20,40}) && m.launch(at,{-20,40}),"two balls fly");
+    float last=0;
+    for(int left=m.bouncesPerBall; left>=1; --left) {
+      m.balls[0].bounces=left; m.balls[1].bounces=m.bouncesPerBall;
+      const float t=Pace::target(m);
+      check(t>=last && t>=1 && t<=Pace::topSpeed+1e-4f,"the speed rises as the oldest ball uses its bounces");
+      last=t;
+    }
+    check(close(Pace::target(m),Pace::topSpeed,1e-4f),"the oldest ball's last bounce runs at the top speed");
+    m.balls[0].bounces=m.bouncesPerBall; m.balls[1].bounces=1;
+    check(Pace::target(m)==1,"a fresh oldest ball runs at 1x whatever the newer ball has used");
+    Pace pace; m.balls[0].bounces=1;
+    float s=1; for(int i=0; i<120; ++i) s=pace.step(m,1.0f/60);
+    check(close(s,Pace::topSpeed,0.01f),"the pace eases up to the target");
+    m.balls.clear();
+    check(pace.step(m,1.0f/60)==1,"the pace returns to 1x the moment nothing flies");
+  }
+  {
+    // Last ball: banner state and the tighter hum.
+    Model m; m.play(1);
+    const yy::Vec2 at=pocketSpot(m);
+    check(!lastBall(m,false) && !lastBall(m,true),"no banner with all balls in hand");
+    m.ballsLeft=1;
+    check(lastBall(m,true) && !lastBall(m,false),"the banner shows while the last ball is held");
+    check(m.launch(at,{20,40}) && m.ballsLeft==0 && lastBall(m,false) && lastBall(m,true),"and while it flies");
+    m.balls.clear();
+    check(!lastBall(m,false) && !lastBall(m,true),"and goes when it is spent");
+    Model hum; hum.play(1); Touch t(hum); t.instructions=false;
+    t.aim=Touch::Aim{0,at,{0,60}};
+    const float calm=t.humLevel(); hum.ballsLeft=1;
+    check(t.humLevel()>calm && t.humLevel()<=1,"the last ball's hum is tighter");
+    t.aim->pull={0,Touch::fullPull*2};
+    check(close(t.humLevel(),1),"and tops out at full strength");
+  }
+  {
+    // Slow motion: the last ball within about 2 cells of a goal that is visible or pinged.
+    Model m;
+    std::vector<std::pair<int,int>> mass;
+    for(int c=10; c<=14; ++c) for(int r=5; r<=12; ++r) mass.push_back({c,r});
+    clearField(m,mass,3);
+    const int columns=Model::defaultColumns;
+    m.bricks[13*columns+12]=1; m.powers[13*columns+12]=Power::Ping;
+    m.goal=8*columns+12; m.bricks[m.goal]=1; m.refreshFog();
+    const yy::Vec2 goal{12.5f*Model::cell,8.5f*Model::cell};
+    check(!m.visible(12,8),"the goal starts hidden in the fog");
+    m.ballsLeft=0; m.balls.push_back({{goal.x,goal.y+1.5f*Model::cell},{0,-Model::speed},5});
+    check(!nearGoal(m) && Pace::target(m)>=1,"near a hidden, unpinged goal nothing slows");
+    // A real Ping: launch up the column into the Ping brick, then put the ball by the goal.
+    Model p=m; p.balls.clear(); p.ballsLeft=1;
+    check(p.launch({12.5f*Model::cell,16.5f*Model::cell},{0,40}),"the Ping shot launches");
+    for(int i=0; i<600 && p.pingTime<=0; ++i) p.update(1.0f/60);
+    check(p.pinged(12,8) && !p.visible(12,8),"the goal is pinged though fogged");
+    p.balls.front().position={goal.x,goal.y+1.5f*Model::cell};
+    check(nearGoal(p) && Pace::target(p)==Pace::dramaSpeed,"the last ball within 2 cells of a pinged goal drops to slow motion");
+    p.balls.front().position={goal.x,goal.y+3*Model::cell};
+    check(!nearGoal(p),"3 cells away is not near");
+    p.balls.front().position={goal.x,goal.y+1.5f*Model::cell}; p.ballsLeft=1;
+    check(!nearGoal(p),"with balls still to place it is not the last ball");
+    p.ballsLeft=0; p.pingTime=0;
+    check(!nearGoal(p),"once the ping has gone the fogged goal is hidden again");
+    // A visible goal needs no ping, and the slow-down overrides the speed-up.
+    m.bricks[10*columns+12]=0; m.bricks[9*columns+12]=0; m.refreshFog();
+    check(m.visible(12,8),"the goal is now visible");
+    m.balls.front().bounces=1; m.bouncesPerBall=15;
+    check(nearGoal(m) && Pace::target(m)==Pace::dramaSpeed,"the slow-down overrides the speed-up");
+    Pace pace; pace.step(m,1.0f/60);
+    check(pace.speed()<1,"the pace starts dropping at once");
+    for(int i=0; i<60; ++i) pace.step(m,1.0f/60);
+    check(close(pace.speed(),Pace::dramaSpeed,0.01f),"and reaches slow motion");
+    m.balls.front().position={goal.x,goal.y+5*Model::cell};
+    pace.step(m,1.0f/60);
+    check(pace.speed()>Pace::dramaSpeed && pace.speed()<1,"leaving the zone eases back rather than snapping");
+    for(int i=0; i<240; ++i) pace.step(m,1.0f/60);
+    check(close(pace.speed(),Pace::target(m),0.01f),"and arrives at the speed the ball's bounces call for");
+  }
+  {
+    // On screen: the banner shows with the last ball held and not before.
+    Session held("",nullptr,"lastball");
+    check(held.canvas.has("LAST BALL"),"the LAST BALL banner shows while the last ball is held");
+    Session many("",nullptr,"aim-brick");
+    check(!many.canvas.has("LAST BALL"),"no banner with balls to spare");
+    Session wall("",nullptr,"aim-wall");
+    check(!wall.canvas.has("LAST BALL"),"no banner on the wall-line scene");
+  }
+  std::cout<<"Game speed: bounce speed-up, slow motion near the goal, LAST BALL banner and hum passed\n";
 }

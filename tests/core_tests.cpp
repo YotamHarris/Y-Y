@@ -17,6 +17,7 @@ void levelBandChecks();
 void celebrationChecks();
 void fontChecks();
 void juiceChecks();
+void paceChecks();
 void framingGameChecks();
 
 static void check(bool condition, const char* label) { if(!condition) { std::cerr<<label<<'\n'; std::exit(1); } }
@@ -1005,6 +1006,7 @@ int main() {
   levelBandChecks();
   celebrationChecks();
   juiceChecks();
+  paceChecks();
   fontChecks();
   std::cout<<"Engine and TapDemo checks passed\n";
 }

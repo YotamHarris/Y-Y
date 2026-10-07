@@ -357,27 +357,48 @@ bool Model::launch(yy::Vec2 at, yy::Vec2 pull) {
   --ballsLeft;
   return true;
 }
+int Model::substeps(float dt) { return std::max(1,static_cast<int>(std::ceil(speed*speedUp*dt/4))); }
+// Each axis moves alone; a blocked axis steps back and reverses.
+bool Model::stepBall(Ball& b, float h, int (&struck)[2]) const {
+  struck[0]=struck[1]=-1; bool bounced=false;
+  b.position.x+=b.velocity.x*h;
+  if(b.position.x<ballRadius || b.position.x>width()-ballRadius || (struck[0]=brickIndexHit(b.position))>=0) {
+    b.position.x-=b.velocity.x*h; b.velocity.x=-b.velocity.x; bounced=true;
+  }
+  b.position.y+=b.velocity.y*h;
+  if(b.position.y<ballRadius || b.position.y>height()-ballRadius || (struck[1]=brickIndexHit(b.position))>=0) {
+    b.position.y-=b.velocity.y*h; b.velocity.y=-b.velocity.y; bounced=true;
+  }
+  return bounced;
+}
+AimPath Model::aimPath(yy::Vec2 at, yy::Vec2 pull, float dt) const {
+  pull=snapPull(pull,static_cast<float>(snapDegrees));
+  const float length=std::hypot(pull.x,pull.y);
+  if(!(length>=minPull) || !open(at) || !(dt>0) || !std::isfinite(dt)) return {};
+  Ball b{at,{-pull.x/length*speed,-pull.y/length*speed},bouncesPerBall};
+  const float h=dt/static_cast<float>(substeps(dt));
+  const int limit=static_cast<int>(std::ceil(2*(width()+height())/(speed*h)))+8; // a straight flight meets a wall long before
+  for(int i=0; i<limit; ++i) {
+    int struck[2];
+    if(!stepBall(b,h,struck)) continue;
+    const float speedNow=std::hypot(b.velocity.x,b.velocity.y);
+    return {true,at,b.position,{b.velocity.x/speedNow,b.velocity.y/speedNow},struck[0]>=0 || struck[1]>=0};
+  }
+  return {};
+}
 void Model::update(float dt) {
   hits={};
   if(paused_ || over() || !std::isfinite(dt) || dt<=0) return;
   pingTime=std::max(0.0f,pingTime-dt);
   if(pingTime<=0) pingCells_.clear();
   // Sub-steps of at most a few units for a sped-up ball keep any ball from passing a cell corner.
-  const int steps=std::max(1,static_cast<int>(std::ceil(speed*speedUp*dt/4)));
+  const int steps=substeps(dt);
   const float h=dt/steps;
   for(std::size_t i=0; i<balls.size(); ) {
     Ball& b=balls[i]; bool spent=false;
     for(int s=0; s<steps && !spent; ++s) {
-      int struck[2]{-1,-1}; bool bounced=false;
-      // Each axis moves alone; a blocked axis steps back and reverses.
-      b.position.x+=b.velocity.x*h;
-      if(b.position.x<ballRadius || b.position.x>width()-ballRadius || (struck[0]=brickIndexHit(b.position))>=0) {
-        b.position.x-=b.velocity.x*h; b.velocity.x=-b.velocity.x; bounced=true;
-      }
-      b.position.y+=b.velocity.y*h;
-      if(b.position.y<ballRadius || b.position.y>height()-ballRadius || (struck[1]=brickIndexHit(b.position))>=0) {
-        b.position.y-=b.velocity.y*h; b.velocity.y=-b.velocity.y; bounced=true;
-      }
+      int struck[2];
+      const bool bounced=stepBall(b,h,struck);
       // Electric zaps cost no bounces.
       if(b.electric>0) {
         b.zapTimer-=h;

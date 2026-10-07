@@ -476,3 +476,23 @@ are in `docs/framing-validation.md`.
 **Open:** phone feel remains the owner's playtest; evidence is deterministic
 tests and desktop captures, with no iPhone performance claim. A level whose
 visible area already spans the grid may remain at its original fitted zoom.
+
+### V15 The aim line shows the first bounce; shots speed up and the last ball slows (D14)
+
+**Status:** active
+
+While the player pulls, the line follows the launch up to its first wall or brick and a short stub beyond it,
+computed by the model's own collision. The game clock runs 1x to 2.5x with the oldest flying ball's bounces used, and the
+last ball shows a LAST BALL banner, a tighter hum, and 0.35x slow motion within 2 cells of a visible or pinged goal.
+
+**Validation.** `scripts/build.ps1 -ToolsRoot D:/Source/Y&Y/YYEngine -Smoke`: CTest 1/1 and the 120-frame SDL smoke
+passed. `paceChecks`: 48 shots on five levels and an empty field (40 on bricks, 8 on walls, snapped and not) end
+exactly at a real launch's first contact with the same reflected direction; every level plays out with identical
+bricks, power-ups, fired power-ups, goal, balls left and bounces at 1x, at the varying pace, at 2.5x and at 0.35x;
+the speed rises with bounces, returns to 1x when nothing flies, drops to 0.35x near a visible or pinged goal and
+eases back; the banner and hum states; the banner on the real Game. The level band test passes unchanged. Captures at
+390x844 (`tests/capture_aimline.py`): `docs/figures/aimline/1-brick.png`, `2-wall.png`, `3-last-ball.png`.
+
+**Open:** how 2.5x and 0.35x feel is for a phone in hand; no iPhone performance claim. The line stops at the first
+contact only; it does not trace later bounces or what a power-up does. The goal's own celebration slow-motion keeps its
+own look-ahead and takes the slower of the two speeds.

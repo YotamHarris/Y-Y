@@ -247,3 +247,33 @@ the player's camera. This changes presentation, not the simulation or levels.
 zoomed viewport touch tests and six inspected 390x844 opening captures.
 
 ---
+
+### D14 — The aim line shows the first bounce, and game speed follows the shot (2026-10-07)
+
+**Status:** active
+
+**What happened.** T25 records Yotam choosing items 4, 5 and 9 of the gameplay
+review: shots should be plans rather than hopes, watching 15 bounces takes too
+long, and the last ball should carry tension.
+
+**Decision.** While the player pulls, the line is the launch's real path up to its
+first wall or brick contact, plus a short stub of the way it leaves.
+`Model::aimPath` runs the same snap, speed, sub-steps and collision
+(`Model::stepBall`) that `update()` uses, so the line cannot lie. A brick draws as
+a brick or a wall alike, so a fogged brick is blocking but never revealed.
+The game clock takes more fixed steps per frame (never a faster ball, never a
+different dt): 1x with nothing flying, rising with the oldest flying ball's
+bounces used to 2.5x on its last. The last ball shows a LAST BALL banner from the
+moment it is held until it is spent, with a tighter hum (0.5 to 1.0 where other
+balls hum 0.25 to 0.75). When the last ball, or any ball once none are left, is
+within 2 cells of a goal that is visible or pinged, the speed eases down to 0.35x
+(overriding the speed-up) and eases back afterwards.
+
+**Why.** The line turns a hope into a plan, the speed-up cuts the wait without
+touching any outcome, and the slowed last ball lets the player watch the moment
+that decides the level. The model and its seeds are untouched, so the level band
+test holds unchanged.
+
+**Evidence.** V15, `tests/palette_tests.cpp` (`paceChecks`) and `docs/figures/aimline/`.
+
+---
