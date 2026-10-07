@@ -250,7 +250,7 @@ zoomed viewport touch tests and six inspected 390x844 opening captures.
 
 ### D14 — The aim line shows the first bounce, and game speed follows the shot (2026-10-07)
 
-**Status:** amended by D17 -- the game speed is a calm constant, not a rising one
+**Status:** active
 
 **What happened.** T25 records Yotam choosing items 4, 5 and 9 of the gameplay
 review: shots should be plans rather than hopes, watching 15 bounces takes too
@@ -334,21 +334,5 @@ Ghost arrivals stay visible immediately and become readable quickly.
 **Evidence.** V17, [shot camera validation](../shot-camera-validation.md),
 deterministic touch and Game render checks, and nine inspected 390x844 SDL
 captures in `docs/figures/shot-camera/`.
-
----
-
----
-
-### D17 — The game runs slower, one ball at a time (2026-10-07)
-
-**Status:** active
-
-**What happened.** T29 records Yotam: "Game is too hectic right now let's take things more slowly and focus on player understanding". He chose a slower ball with no 2.5x speed-up, keeping only the slow motion near the goal, and one ball at a time.
-
-**Decision.** The game clock runs at a constant base of 0.7x (`Pace::defaultBase`), not a speed that rises with the oldest ball's bounces. Near the goal on the last ball it eases down to half the base (0.35x at the default), as before. The debug panel's PACE stepper moves the base from 0.4x to 1.0x in tenths, applies at once and is saved with the other debug settings (`pace`, in tenths, omitted at the default). `Model::launch` refuses while `Model::flying()`: a ball is in flight, or a fired power-up (a Ghost landing, lightning) has not finished. A press while a ball flies places nothing and pans like any press on the board. The ball counter is greyed while the field is moving and, when it goes still with a ball left to place, glows briefly with a soft tone after the last hit's sound.
-
-**Why.** Only the clock moves, so a ball's path, the electricity seconds and every outcome are what they were at any other pace; the model, the level tables and their seeds are untouched, and the level band test passes unchanged. One ball at a time lets the player watch what each shot did before placing the next.
-
-**Evidence.** V18, `tests/palette_tests.cpp` (`paceChecks`) and `docs/figures/onebyone/`.
 
 ---

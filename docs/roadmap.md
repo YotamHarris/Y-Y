@@ -479,7 +479,7 @@ visible area already spans the grid may remain at its original fitted zoom.
 
 ### V15 The aim line shows the first bounce; shots speed up and the last ball slows (D14)
 
-**Status:** amended by V18 -- the speed is a calm constant and one ball flies at a time
+**Status:** active
 
 While the player pulls, the line follows the launch up to its first wall or brick and a short stub beyond it,
 computed by the model's own collision. The game clock runs 1x to 2.5x with the oldest flying ball's bounces used, and the
@@ -551,22 +551,3 @@ details and captures are in [shot camera validation](shot-camera-validation.md).
 ease and fast Ghost swing. Evidence is deterministic tests and desktop SDL
 captures; device measurements are not applicable to this camera task, and
 there is no iPhone performance claim.
-
-### V18 The game runs slower, one ball at a time (D17)
-
-**Status:** active
-
-The game clock runs at a constant 0.7x with the slow motion near the goal on the last ball kept (half the base). The debug
-panel has a PACE stepper (0.4x to 1.0x, saved). A ball cannot launch while another ball or fired power-up is in flight: a
-press then places nothing, the ball counter is greyed, and it glows with a soft tone when it is the player's turn again.
-
-**Validation.** `scripts/build.ps1 -ToolsRoot D:/Source/Y&Y/YYEngine`: CTest 1/1. `paceChecks`: every level plays out with
-identical bricks, power-ups, fired power-ups, goal, balls left and bounces at 1x, at the game's calm pace, at the old 2.5x
-and at 0.35x; the speed no longer rises with bounces, the base clamps to its range, slow motion near a visible or pinged
-goal holds; a launch is refused while a ball or an electric ball flies and accepted after; the touch path presses at the
-placement spot during flight (nothing placed, the ball count unchanged) and after the field is still places and fires, with
-the ready tone. The level band test passes unchanged. 390x844 captures: `docs/figures/onebyone/1-waiting-390x844.png` (the
-counter greyed while a ball flies, level 2) and `2-ready-390x844.png` (the counter lit, level 1).
-
-**Open:** how 0.7x and the one-ball rhythm feel is for a phone in hand; no iPhone performance claim, and device
-measurements are not applicable to this pacing change.

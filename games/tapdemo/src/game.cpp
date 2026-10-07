@@ -23,16 +23,16 @@ namespace {
 bool inside(yy::Rect r, yy::Vec2 p) { return p.x>=r.x && p.y>=r.y && p.x<r.x+r.w && p.y<r.y+r.h; }
 // The header holds the ball counter, the level and DEBUG; the board starts below it (Camera::view).
 constexpr yy::Rect debugButton{286,22,88,36};
-// The debug panel covers the screen: seventeen stepper rows (a label, -, value, +) under three
+// The debug panel covers the screen: sixteen stepper rows (a label, -, value, +) under three
 // headings (what applies now; what RESTART applies: the level, or free play's settings; free
 // play's weights), then RESTART and CLOSE.
 constexpr yy::Rect panel{20,12,350,820};
-enum Stepper { PingRadius, BombSize, ZapSeconds, ZapReach, SnapAngle, GlintStrength, PaceSpeed, LevelPick, Balls, Bounces, GridSize, GlowRate, Weight0, steppers=Weight0+powerKinds };
-constexpr float stepperTops[steppers]{66,106,146,186,226,266,306, 366,406,446,486,526, 588,628,668,708,748};
-constexpr float headingTops[]{50,350,572};
+enum Stepper { PingRadius, BombSize, ZapSeconds, ZapReach, SnapAngle, GlintStrength, LevelPick, Balls, Bounces, GridSize, GlowRate, Weight0, steppers=Weight0+powerKinds };
+constexpr float stepperTops[steppers]{66,108,150,192,234,276, 340,382,424,466,508, 572,614,656,698,740};
+constexpr float headingTops[]{50,324,556};
 constexpr yy::Rect minusButton(int row) { return {180,stepperTops[row],44,38}; }
 constexpr yy::Rect plusButton(int row) { return {320,stepperTops[row],44,38}; }
-constexpr yy::Rect restartButton{40,792,150,40}, closeButton{200,792,150,40};
+constexpr yy::Rect restartButton{40,788,150,44}, closeButton{200,788,150,44};
 constexpr yy::Rect shakeButton{196,40,174,24}; // on the APPLY NOW heading's line: taps cycle the screen shake
 constexpr const char* progressFile="progress.txt"; // the reached level, in yy::Storage
 constexpr const char* debugFile="debug.txt";       // every debug panel setting, in yy::Storage
@@ -191,10 +191,7 @@ class TapGame final: public yy::Game {
   std::optional<Camera> framing; // the camera as the player left it, while the celebration has it
   yy::Vec2 focusWorld{}; bool focused{};
   float timeDebt{};          // game time earned by the scaled clock but not yet stepped
-  Pace pace;                 // the game speed (pace.hpp): fewer fixed steps per frame, never a slower ball
-  int paceTenths{static_cast<int>(Pace::defaultBase*10+0.5f)}; // the debug PACE stepper: the base game speed in tenths
-  bool wasFlying{};          // a ball or fired power-up was in flight last frame
-  float readyPulse{};        // seconds the ball counter still glows after the field goes still
+  Pace pace;                 // the game speed (pace.hpp): more fixed steps per frame, never a faster ball
   float bannerPulse{};       // seconds the LAST BALL banner has shown
   float frameSeconds{1.0f/60};
   struct Petal { yy::Vec2 at, velocity; float size, spin, age, life; yy::Color color; bool leaf; };
@@ -208,7 +205,7 @@ class TapGame final: public yy::Game {
 
   void reset(bool instructions) {
     bursts.clear(); pops.clear(); petals.clear(); frozenScene=false; specks.clear(); hitStop={}; shake={}; ladder.reset(); lastBallsLeft=model.ballsLeft; lift.resize(model.columns*model.rows); heldBalls.reserve(16); syncBricks(); touch.refit(); touch.instructions=instructions;
-    celebration.reset(); framing.reset(); focused=false; timeDebt=0; pace.reset(); wasFlying=false; readyPulse=0; bannerPulse=0; rainDebt=0; countedBalls=0; cheered=false;
+    celebration.reset(); framing.reset(); focused=false; timeDebt=0; pace.reset(); bannerPulse=0; rainDebt=0; countedBalls=0; cheered=false;
     missActive=false; missTime=0; missPath.clear(); missLift.clear();
   }
   // The cell's bricks and visibility as the effects last saw them: changes after this are what they react to.
@@ -411,14 +408,13 @@ class TapGame final: public yy::Game {
     DebugSettings d;
     d.pingRadius=model.pingRadius; d.bombSize=model.bombSize; d.electricSeconds=model.electricSeconds;
     d.electricHalves=static_cast<int>(std::lround(model.electricRadius*2)); d.snapDegrees=model.snapDegrees;
-    d.balls=debugBalls; d.bounces=debugBounces; d.grid=debugGrid; d.shake=shakeLevel; d.glint=glintLevel; d.pace=paceTenths;
+    d.balls=debugBalls; d.bounces=debugBounces; d.grid=debugGrid; d.shake=shakeLevel; d.glint=glintLevel;
     storage->write(debugFile,saveDebug(d));
   }
   void openDebug() { touch.cancel(); debugLevel=model.level(); debugBalls=freeBalls; debugBounces=freeBounces; debugGrid=freeGrid; debugOpen=true; }
   void step(int row, int by) {
     switch(row) {
     case GlintStrength: glintLevel=std::clamp(glintLevel+by,0,glintLevels-1); break;
-    case PaceSpeed: paceTenths=std::clamp(paceTenths+by,4,10); pace.setBase(paceTenths/10.0f); break;
     case LevelPick: debugLevel=std::clamp(debugLevel+by,0,levelCount); break;
     case Balls: debugBalls=std::clamp(debugBalls+by,1,Model::maxSetting); break;
     case Bounces: debugBounces=std::clamp(debugBounces+by,1,Model::maxSetting); break;
@@ -449,7 +445,7 @@ class TapGame final: public yy::Game {
   void sling(yy::Vec2 at, yy::Vec2 pull) { pointerDown(0,at); pointerMove(0,{at.x+pull.x,at.y+pull.y}); pointerUp(0,{at.x+pull.x,at.y+pull.y}); }
   // YY_TAPDEMO_SCENE stages a moment for smoke screenshots: instructions (as the game opens),
   // field (the opening field with the card dismissed, untouched), glint (the camera on the goal's glint), header (one ball flying), aim, aim-brick or aim-wall (a held aim whose line ends on a brick, or on the wall above an emptied column), lastball (that aim with one ball left), snap (an aim 3 degrees off horizontal), debug, play, zoom, icons (one of each power-up and the goal
-  // beside the pocket) or glow (the same close up), breaks (a launch), electric (a launch
+  // beside the pocket) or glow (the same close up), breaks (four launches), electric (a launch
   // into that power-up), pingin or pingout (a launch into a Ping brick with the goal inside or
   // outside the ping radius), won (a launch into the goal; won-approach, won-burst, won-goal and won-card freeze its celebration at a beat), lost (the last ball, spent on a brick), palette / palette-fit /
   // palette-max (all icons, a real Ping revealing fogged bricks, frozen at activation),
@@ -631,7 +627,7 @@ class TapGame final: public yy::Game {
     }
     if(std::strcmp(scene,"breaks")==0) {
       const yy::Vec2 at=touch.camera.toScreen(centre);
-      sling(at,{20,40}); // one ball at a time: the other three pulls would wait for it
+      for(yy::Vec2 pull: {yy::Vec2{20,40},{-40,15},{5,-40},{40,-10}}) sling(at,pull);
       return;
     }
     if(std::strcmp(scene,"lost")==0) {
@@ -717,7 +713,7 @@ public: void initialize(yy::Services& services) override {
     // A level's table sets the power-up values, so the saved ones go on after it.
     if(saved) { model.setPingRadius(d.pingRadius); model.setBombSize(d.bombSize); model.setElectricSeconds(d.electricSeconds);
                 model.setElectricRadius(d.electricHalves/2.0f); }
-    model.setSnapDegrees(d.snapDegrees); shakeLevel=d.shake; glintLevel=d.glint; paceTenths=d.pace; pace.setBase(paceTenths/10.0f); pace.reset();
+    model.setSnapDegrees(d.snapDegrees); shakeLevel=d.shake; glintLevel=d.glint;
     stage(scene);
     syncBricks();
   }
@@ -778,10 +774,6 @@ public: void initialize(yy::Services& services) override {
       if(audio) audio->tone(ladder.hz(),0.025f);
       ladder.climb();
     }
-    // One ball at a time: once the field is still and a ball is left to place, it is the player's turn again, a soft cue after the last hit's sound.
-    const bool flying=model.flying();
-    if(wasFlying && !flying && !model.over() && model.ballsLeft>0) { readyPulse=0.6f; if(audio) audio->tone(880,0.05f); }
-    wasFlying=flying; readyPulse=std::max(0.0f,readyPulse-seconds);
     if(!hitStop.holding()) for(const auto& b: model.balls)
       specks.add({shown(b),{},0,trailLife,Model::ballRadius*0.8f,garden.white,true,true});
     rain(seconds);
@@ -1100,12 +1092,9 @@ public: void initialize(yy::Services& services) override {
     // The header covers anything of the grid drawn above the play area: the ball counter and DEBUG.
     r.rectangle({0,0,cam.view.w,cam.view.y},dark);
     r.sprite("garden/header.bmp",{4,4,382,72});
-    // The counter is greyed while a ball flies (one at a time) and glows when it is the player's turn again.
-    const bool waiting=model.flying() && !model.over();
-    const auto counter=waiting ? muted : white;
-    r.circle({36,40},17+5*readyPulse/0.6f,waiting ? muted : white);
+    r.circle({36,40},17,white);
     gardenSprite(r,GardenSprite::Ball,{20,24,32,32});
-    gardenLabel(r,{62,13},std::to_string(model.ballsLeft),48,counter);
+    gardenLabel(r,{62,13},std::to_string(model.ballsLeft),48,white);
     gardenLabel(r,{150,29},model.level()>0 ? "LEVEL "+std::to_string(model.level()) : "FREE PLAY",20,white);
     r.rectangle(debugButton,palette.button);
     gardenLabel(r,{330,30},"DEBUG",17,white,yy::Align::Center);
@@ -1149,7 +1138,6 @@ public: void initialize(yy::Services& services) override {
       row(ZapReach,"ZAP REACH",white,halves(model.electricRadius));
       row(SnapAngle,"SNAP ANGLE",white,model.snapDegrees>0 ? std::to_string(model.snapDegrees)+" DEG" : std::string("OFF"));
       row(GlintStrength,"GLINT",white,glintNames[glintLevel]);
-      row(PaceSpeed,"PACE",white,std::to_string(paceTenths/10)+"."+std::to_string(paceTenths%10)+"X");
       row(LevelPick,"LEVEL",white,debugLevel>0 ? std::to_string(debugLevel) : std::string("FREE"));
       // Free play's settings; with a level picked they wait, muted, for the next free play.
       const Color freeLabel=debugLevel>0 ? muted : white;
