@@ -7,7 +7,7 @@
       844
     ],
     "source": "SDL render readback",
-    "fixture": "level 6 touch pinch/hold/cancel"
+    "fixture": "level 6 touch pinch/hold/cancel/launch"
   },
   {
     "file": "2-aim-early.png",
@@ -17,7 +17,7 @@
       844
     ],
     "source": "SDL render readback",
-    "fixture": "level 6 touch pinch/hold/cancel"
+    "fixture": "level 6 touch pinch/hold/cancel/launch"
   },
   {
     "file": "3-aim.png",
@@ -27,7 +27,7 @@
       844
     ],
     "source": "SDL render readback",
-    "fixture": "level 6 touch pinch/hold/cancel"
+    "fixture": "level 6 touch pinch/hold/cancel/launch"
   },
   {
     "file": "4-cancel-early.png",
@@ -37,7 +37,7 @@
       844
     ],
     "source": "SDL render readback",
-    "fixture": "level 6 touch pinch/hold/cancel"
+    "fixture": "level 6 touch pinch/hold/cancel/launch"
   },
   {
     "file": "5-cancel.png",
@@ -47,46 +47,26 @@
       844
     ],
     "source": "SDL render readback",
-    "fixture": "level 6 touch pinch/hold/cancel"
+    "fixture": "level 6 touch pinch/hold/cancel/launch"
   },
   {
-    "file": "6-ghost-before.png",
-    "scene": "camera-ghost-before",
+    "file": "6-launch-early.png",
+    "scene": "camera-launch-early",
     "size": [
       390,
       844
     ],
     "source": "SDL render readback",
-    "fixture": "seed-38 Ghost corridor"
+    "fixture": "level 6 touch pinch/hold/cancel/launch"
   },
   {
-    "file": "7-ghost-arrival.png",
-    "scene": "camera-ghost-arrival",
+    "file": "7-launch.png",
+    "scene": "camera-launch",
     "size": [
       390,
       844
     ],
     "source": "SDL render readback",
-    "fixture": "seed-38 Ghost corridor"
-  },
-  {
-    "file": "8-ghost-4.png",
-    "scene": "camera-ghost-4",
-    "size": [
-      390,
-      844
-    ],
-    "source": "SDL render readback",
-    "fixture": "seed-38 Ghost corridor"
-  },
-  {
-    "file": "9-ghost-12.png",
-    "scene": "camera-ghost-12",
-    "size": [
-      390,
-      844
-    ],
-    "source": "SDL render readback",
-    "fixture": "seed-38 Ghost corridor"
+    "fixture": "level 6 touch pinch/hold/cancel/launch"
   }
 ]
