@@ -284,10 +284,13 @@ void gardenChecks() {
     check(shot.canvas.spriteHas(GardenSprite::Flash) && shot.canvas.spriteHas(GardenSprite::Cut),"ordinary pointer shot removes one grass layer and starts contact flash");
     Model reference; reference.play(1); const auto& p=reference.pockets.front();
     const yy::Vec2 centre{(p.column+p.columns/2.0f)*Model::cell,(p.row+p.rows/2.0f)*Model::cell};
-    Camera camera; camera.world={reference.width(),reference.height()}; camera.hold(centre,{195,480},1.4f);
-    const auto at=camera.toScreen({(p.column+p.columns/2+0.5f)*Model::cell,centre.y});
-    const auto struck=camera.toScreen({(p.column+p.columns/2+.5f)*Model::cell,(p.row-.5f)*Model::cell});
-    check(shot.canvas.spriteAt(GardenSprite::Cut,struck),"the struck three-hit cell is now the two-hit sprite at its unchanged center");
+    const auto screen=[&](const Canvas& canvas, yy::Vec2 world) {
+      const float zoom=canvas.fieldWidth/reference.width();
+      return yy::Vec2{canvas.fieldRect.x+world.x*zoom,canvas.fieldRect.y+world.y*zoom};
+    };
+    const auto at=screen(shot.canvas,{(p.column+p.columns/2+0.5f)*Model::cell,centre.y});
+    const yy::Vec2 struck{(p.column+p.columns/2+.5f)*Model::cell,(p.row-.5f)*Model::cell};
+    check(shot.canvas.spriteAt(GardenSprite::Cut,screen(shot.canvas,struck)),"the struck three-hit cell is now the two-hit sprite at its unchanged world center");
     shot.game->pointerDown(8,at); shot.game->pointerMove(8,{at.x+30,at.y+50}); shot.canvas.read(*shot.game);
     int effectOrder=0;
     for(const auto& s: shot.canvas.sprites) if(s.source.x==gardenSource(GardenSprite::Flash).x && s.source.y==gardenSource(GardenSprite::Flash).y) effectOrder=std::max(effectOrder,s.order);
@@ -300,7 +303,7 @@ void gardenChecks() {
     timing.play(4); check(timing.canvas.spriteHas(GardenSprite::Burst),"hit reaches clipping burst at 67 ms");
     timing.play(4); check(timing.canvas.spriteHas(GardenSprite::Clippings),"hit reaches clear-centred settle at 133 ms");
     timing.play(5); check(!timing.canvas.spriteHas(GardenSprite::Flash) && !timing.canvas.spriteHas(GardenSprite::Burst) && !timing.canvas.spriteHas(GardenSprite::Clippings),"hit is gone by 217 ms, with stable cut-grass damage");
-    check(timing.canvas.spriteAt(GardenSprite::Cut,struck),"the cosmetic sequence settles to the real damage at the same grid position");
+    check(timing.canvas.spriteAt(GardenSprite::Cut,screen(timing.canvas,struck)),"the cosmetic sequence settles to the real damage at the same world grid position");
   }
   const char* scenes[]{"garden-BOMB","garden-ELECTRIC","garden-PING","garden-GHOST","garden-SPEED"};
   const float tones[]{110,1320,1760,392,880};
@@ -336,6 +339,18 @@ void framingGameChecks() {
     play.game->pointerDown(3,press); play.game->pointerMove(3,release); play.game->pointerUp(3,release);
     play.canvas.read(*play.game);
     check(std::any_of(play.canvas.texts.begin(),play.canvas.texts.end(),[&](const auto& t){return t.at.x==62 && t.at.y==13 && t.value==std::to_string(levelBalls-1);}),"the real game fires through touch at its opening zoom");
+  }
+  for(const char* scene: {"camera-ghost-before","camera-ghost-arrival","camera-ghost-4","camera-ghost-12"}) {
+    Session play("","6",scene);
+    const auto ball=gardenSource(GardenSprite::Ball);
+    bool flying=false;
+    for(const auto& s: play.canvas.sprites) if(s.asset=="garden/tiles.bmp" && s.source.x==ball.x && s.source.y==ball.y) {
+      const auto r=s.destination;
+      if(r.y<80) continue; // header ball icon
+      flying=true;
+      check(r.x>=5 && r.y>=85 && r.x+r.w<=385 && r.y+r.h<=839,"the Game keeps the drawn Ghost ball inside the play area with margin, including hit-stop and shake");
+    }
+    check(flying,"the actual Ghost capture scene draws a live ball");
   }
   std::cout<<"Game framing: levels 1/6/10 open framed, wheel holds, restart resets, zoomed touch fires\n";
 }
@@ -621,6 +636,7 @@ struct Play {
     session.canvas.read(*session.game);
     fit=session.canvas.fieldWidth;
     for(std::size_t i=0; i<round.shots.size(); ++i) {
+      session.game->zoom({195,462},-100); // each recording uses the same whole-grid camera
       if(i+1==round.shots.size()) impactsBefore=session.quiet.impacts.size();
       const auto& shot=round.shots[i];
       session.game->pointerDown(1,shot.press); session.game->pointerMove(1,shot.release); session.game->pointerUp(1,shot.release);
@@ -1144,6 +1160,7 @@ void glintChecks() {
     s.tap({195,600});
     s.game->zoom({195,462},-100); s.canvas.read(*s.game);
     for(std::size_t i=0; i<loss.shots.size(); ++i) {
+      s.game->zoom({195,462},-100); // replay each recorded shot in its original whole-grid view
       const auto& shot=loss.shots[i];
       s.game->pointerDown(1,shot.press); s.game->pointerMove(1,shot.release); s.game->pointerUp(1,shot.release);
       s.canvas.read(*s.game);

@@ -455,7 +455,7 @@ shake and the pitch climb feel is a call for a phone in hand.
 
 ### V14 Levels open on the cavity and follow the revealed action (D13)
 
-**Status:** active
+**Status:** amended by V17 -- aim zoom restores on cancel and live shots follow after manual camera movement
 
 Each level and retry starts with the visible cells framed below the header.
 The camera eases outward as breaks or Ping reveal more, never inward during
@@ -517,3 +517,37 @@ fails the new clipping regression test; the restored final renderer passes. Comm
 [letterbox-validation.md](letterbox-validation.md).
 
 **Open:** none for this rendering fix. Device performance is outside this task.
+
+### V17 The camera zooms in to aim and follows every shot (D16)
+
+**Status:** active
+
+Holding a ball while zoomed out eases in around its pressed position. A
+cancelled aim returns to the exact prior view; a launch keeps the zoom.
+Shots follow after manual pan or pinch, keep all live balls in view with
+breathing room, and stop moving the camera when the shot ends. Ghost arrivals
+appear immediately through temporary widening, followed by a fast swing to
+their landing. Revealed-area widening and the goal celebration remain.
+
+**Validation.** `scripts/build.ps1 -ToolsRoot 'D:/Source/Y&Y/YYEngine' -Smoke`
+passed the Release build, CTest 1/1 and 120-frame SDL smoke. Deterministic
+checks cover fixed anchor during easing, world-unit pull, exact cancellation
+restore (release, second finger and pause), launch retention, manual-pan
+multi-ball following, manual zoom-out during a shot, no drift at the end,
+and real Ghost collision/arrival containment with a visible swing reaching
+the far side within 200 ms. Game render checks also contain the drawn Ghost
+ball during hit-stop and shake. Existing gameplay and celebration regressions
+pass; recorded whole-grid shots reset that view before each launch.
+
+`tests/capture_camera.py`, through `fe_manager.py gpu`, produced nine actual
+390x844 SDL readbacks. Each was read at phone size: zoom-in preserves the ball
+position, cancellation restores the cavity geometry, and Ghost arrival,
+67 ms and 200 ms frames show the far-side cavity reached quickly with the
+ball visible. The Ghost corridor is an explicit deterministic debug fixture;
+its shot uses the real touch, collision and camera paths. Commands, scene
+details and captures are in [shot camera validation](shot-camera-validation.md).
+
+**Open:** the owner's phone playtest decides the feel of the 0.28-second aim
+ease and fast Ghost swing. Evidence is deterministic tests and desktop SDL
+captures; device measurements are not applicable to this camera task, and
+there is no iPhone performance claim.

@@ -223,7 +223,7 @@ checks, live touch tests and nine inspected runtime/mockup pairs at 390 wide.
 
 ### D13 — Levels open framed on the visible cavity and ease outward as it grows (2026-10-07)
 
-**Status:** active
+**Status:** amended by D16 -- aim zoom remembers its prior view; live shots follow after manual camera movement
 
 **What happened.** T24 records Yotam choosing item 2 of the gameplay review.
 The opening cavity in level 6 occupied about a fifth of a 390x844 screen.
@@ -296,5 +296,43 @@ the engine's backdrop.
 wider windows and taller windows. A phone's safe area can have a different aspect ratio from the logical frame too.
 
 **Evidence.** V16, `visibleCellChecks`, `boardRenderingChecks` and [the matched phone and shake captures](../letterbox-validation.md).
+
+---
+
+### D16 — Aim zoom restores on cancel, and every shot regains camera follow (2026-10-07)
+
+**Status:** active
+
+**What happened.** T28 records Yotam: "when we are placing a ball while zoomed out zoom in to focus on that area and when canceling out return to the previous zoom level" and "Sometimes when the ball is moving and the camera is trying to follow the action it doesn't follow fast enough, like when picking up a ghost that transfers you to the other side of the map."
+
+**Decision.** Holding a ball below the aiming distance eases to 2.5 times the
+whole-grid fit zoom, capped at the manual maximum, over 0.28 seconds. The
+camera remembers its exact prior view and keeps the anchor at its original
+screen position, including near a grid edge. Aim strength stays in world
+units. Releasing without a launch, a second finger or pausing cancels the aim
+and eases back over 0.28 seconds. A deliberate pinch movement can take over
+that return; launching keeps the zoom.
+
+Live flight follows regardless of earlier manual pan, pinch or wheel zoom.
+It frames every live ball with a world cell of margin, including interpolated
+and hit-stop drawing positions. Ball spread and newly revealed bounds widen
+the settled zoom. If motion outruns the center ease, immediate temporary
+widening keeps the balls visible while the center catches up. A Ghost's
+arrival triggers a fast 0.35-second swing at rate 24 per second rather than
+the ordinary rate 4. Once the shot ends, the camera stays where it ended.
+Manual zoom-out during a shot establishes the new zoom limit.
+
+Aim and cancel transitions keep their gesture priority; the goal celebration
+and debug panel keep their existing camera ownership. Opening views and manual
+camera limits remain as D13 defined. Flight can show backdrop beyond the grid
+or widen below whole-grid fit when that is needed for the ball margin at walls.
+
+**Why.** The player can aim comfortably without losing the previous view,
+and manual exploration no longer switches off following for later shots.
+Ghost arrivals stay visible immediately and become readable quickly.
+
+**Evidence.** V17, [shot camera validation](../shot-camera-validation.md),
+deterministic touch and Game render checks, and nine inspected 390x844 SDL
+captures in `docs/figures/shot-camera/`.
 
 ---

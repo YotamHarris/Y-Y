@@ -1,0 +1,92 @@
+[
+  {
+    "file": "1-wide.png",
+    "scene": "camera-wide",
+    "size": [
+      390,
+      844
+    ],
+    "source": "SDL render readback",
+    "fixture": "level 6 touch pinch/hold/cancel"
+  },
+  {
+    "file": "2-aim-early.png",
+    "scene": "camera-aim-early",
+    "size": [
+      390,
+      844
+    ],
+    "source": "SDL render readback",
+    "fixture": "level 6 touch pinch/hold/cancel"
+  },
+  {
+    "file": "3-aim.png",
+    "scene": "camera-aim",
+    "size": [
+      390,
+      844
+    ],
+    "source": "SDL render readback",
+    "fixture": "level 6 touch pinch/hold/cancel"
+  },
+  {
+    "file": "4-cancel-early.png",
+    "scene": "camera-cancel-early",
+    "size": [
+      390,
+      844
+    ],
+    "source": "SDL render readback",
+    "fixture": "level 6 touch pinch/hold/cancel"
+  },
+  {
+    "file": "5-cancel.png",
+    "scene": "camera-cancel",
+    "size": [
+      390,
+      844
+    ],
+    "source": "SDL render readback",
+    "fixture": "level 6 touch pinch/hold/cancel"
+  },
+  {
+    "file": "6-ghost-before.png",
+    "scene": "camera-ghost-before",
+    "size": [
+      390,
+      844
+    ],
+    "source": "SDL render readback",
+    "fixture": "seed-38 Ghost corridor"
+  },
+  {
+    "file": "7-ghost-arrival.png",
+    "scene": "camera-ghost-arrival",
+    "size": [
+      390,
+      844
+    ],
+    "source": "SDL render readback",
+    "fixture": "seed-38 Ghost corridor"
+  },
+  {
+    "file": "8-ghost-4.png",
+    "scene": "camera-ghost-4",
+    "size": [
+      390,
+      844
+    ],
+    "source": "SDL render readback",
+    "fixture": "seed-38 Ghost corridor"
+  },
+  {
+    "file": "9-ghost-12.png",
+    "scene": "camera-ghost-12",
+    "size": [
+      390,
+      844
+    ],
+    "source": "SDL render readback",
+    "fixture": "seed-38 Ghost corridor"
+  }
+]

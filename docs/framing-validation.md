@@ -1,5 +1,8 @@
 # Opening camera validation (T24)
 
+This records T24's original behavior. T28's later aim zoom and shot-follow
+rules are documented in [shot camera validation](shot-camera-validation.md).
+
 Levels now open on their visible cavity instead of the whole fogged grid.
 The camera follows revealed cells outward smoothly, with a one-cell margin
 and a cap of 2.5 times the previous fitted cell size. Grid-edge clamping may

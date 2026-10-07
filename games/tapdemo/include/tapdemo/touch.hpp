@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <span>
 #include <vector>
 
 namespace tapdemo {
@@ -51,6 +52,9 @@ struct Framing {
   static constexpr float openingScale=2.5f, easeRate=4;
   yy::Rect bounds{};
   bool automatic{true};
+  bool shotWasLive{};
+  float followLimit{}, ghostTime{};
+  void manual() { automatic=false; followLimit=0; }
   static yy::Rect visibleBounds(const Model& model) {
     int left=model.columns, top=model.rows, right=0, bottom=0;
     for(int r=0; r<model.rows; ++r) for(int c=0; c<model.columns; ++c) {
@@ -73,22 +77,65 @@ struct Framing {
     return target;
   }
   void reset(Camera& camera, const Model& model) {
-    automatic=true; bounds=visibleBounds(model);
+    automatic=true; shotWasLive=false; followLimit=0; ghostTime=0; bounds=visibleBounds(model);
     camera.world={model.width(),model.height()}; camera=fitted(camera);
   }
-  void update(Camera& camera, const Model& model, float dt) {
-    if(!automatic || dt<=0) return;
+  void update(Camera& camera, const Model& model, float dt, std::span<const yy::Vec2> shown={}) {
+    if(dt<=0) return;
+    const bool live=!model.balls.empty();
+    if(!live && (shotWasLive || !automatic)) { followLimit=0; return; }
+    const auto previous=bounds;
     const auto visible=visibleBounds(model);
     const float right=std::max(bounds.x+bounds.w,visible.x+visible.w);
     const float bottom=std::max(bounds.y+bounds.h,visible.y+visible.h);
     bounds.x=std::min(bounds.x,visible.x); bounds.y=std::min(bounds.y,visible.y);
     bounds.w=right-bounds.x; bounds.h=bottom-bounds.y;
-    const Camera target=fitted(camera,camera.zoom); // never push in during a shot
+    const bool revealed=bounds.x!=previous.x || bounds.y!=previous.y || bounds.w!=previous.w || bounds.h!=previous.h;
+    Camera target=fitted(camera,camera.zoom);
+    yy::Rect flight{};
+    if(live) {
+      if(followLimit==0) followLimit=camera.zoom;
+      shotWasLive=true;
+      float left=model.width(), top=model.height(), right=0, bottom=0;
+      const auto include=[&](yy::Vec2 at) {
+        left=std::min(left,at.x-Model::cell); top=std::min(top,at.y-Model::cell);
+        right=std::max(right,at.x+Model::cell); bottom=std::max(bottom,at.y+Model::cell);
+      };
+      for(const auto& ball: model.balls) include(ball.position);
+      for(const auto at: shown) include(at); // interpolation and hit-stop can draw behind the model
+      flight={left,top,right-left,bottom-top};
+      followLimit=std::min({followLimit,camera.view.w/flight.w,camera.view.h/flight.h,
+                           automatic && revealed ? fitted(camera).zoom : Camera::maxZoom});
+      for(const auto& fired: model.hits.fired)
+        if(fired.power==Power::Ghost && fired.to>=0) ghostTime=0.35f;
+      // A fast swing to a Ghost's new cavity. Other shots drift only as far as
+      // needed to bring the live bounds inside the view, regardless of manual ownership.
+      target=camera;
+      target.zoom=followLimit;
+      const yy::Vec2 centre=ghostTime>0 || !automatic ? yy::Vec2{left+flight.w/2,top+flight.h/2} :
+                                                                      yy::Vec2{bounds.x+bounds.w/2,bounds.y+bounds.h/2};
+      target.offset={camera.view.x+camera.view.w/2-centre.x*followLimit,
+                     camera.view.y+camera.view.h/2-centre.y*followLimit};
+    }
     const yy::Vec2 screen{camera.view.x+camera.view.w/2,camera.view.y+camera.view.h/2};
     const auto from=camera.toWorld(screen), to=target.toWorld(screen);
-    const float k=1-std::exp(-easeRate*dt);
-    camera.hold({from.x+(to.x-from.x)*k,from.y+(to.y-from.y)*k},screen,
-                camera.zoom+(target.zoom-camera.zoom)*k);
+    const float k=1-std::exp(-(ghostTime>0 ? 24.0f : easeRate)*dt);
+    const yy::Vec2 centre{from.x+(to.x-from.x)*k,from.y+(to.y-from.y)*k};
+    float zoom=camera.zoom+(target.zoom-camera.zoom)*k;
+    if(live) {
+      // Widen immediately when a teleport or a fast ball outruns the ease.
+      // This preserves a visible swing instead of cutting to the landing.
+      const float dx=std::max(std::abs(centre.x-flight.x),std::abs(centre.x-flight.x-flight.w));
+      const float dy=std::max(std::abs(centre.y-flight.y),std::abs(centre.y-flight.y-flight.h));
+      zoom=std::min({zoom,camera.view.w/(2*dx),camera.view.h/(2*dy)});
+    }
+    if(live) {
+      // A ball at a wall still needs breathing room. Following may show a
+      // little backdrop outside the grid; manual camera limits remain intact.
+      camera.zoom=zoom;
+      camera.offset={screen.x-centre.x*zoom,screen.y-centre.y*zoom};
+    } else camera.hold(centre,screen,zoom);
+    ghostTime=std::max(0.0f,ghostTime-dt);
   }
 };
 
@@ -101,6 +148,11 @@ class Touch {
   struct Pinch { yy::Vec2 world; float distance, zoom; };
   std::vector<Finger> fingers;
   std::optional<Pinch> pinch;
+  struct AimZoom { Camera prior; yy::Vec2 screen; float elapsed{}; };
+  struct Restore { Camera from, to; float elapsed{}; };
+  std::optional<AimZoom> aimZoom;
+  std::optional<Restore> restore;
+  static constexpr float zoomSeconds=0.28f;
   Finger* find(int id) {
     for(auto& f: fingers) if(f.id==id) return &f;
     return nullptr;
@@ -108,7 +160,7 @@ class Touch {
   static yy::Vec2 mid(yy::Vec2 a, yy::Vec2 b) { return {(a.x+b.x)/2, (a.y+b.y)/2}; }
   static float distance(yy::Vec2 a, yy::Vec2 b) { return std::hypot(a.x-b.x, a.y-b.y); }
   void startPinch() {
-    framing.automatic=false;
+    framing.manual();
     const yy::Vec2 a=fingers[0].position, b=fingers[1].position;
     pinch=Pinch{camera.toWorld(mid(a,b)), std::max(1.0f,distance(a,b)), camera.zoom};
   }
@@ -124,10 +176,11 @@ public:
   yy::Vec2 rejected{}; float rejectTime{}; // where a press could not hold a ball, while the ring shows
   explicit Touch(Model& m): model(m) { refit(); }
   // A new level or retry returns control to the cavity frame and clears old gestures.
-  void refit() { cancel(); fingers.clear(); pinch.reset(); framing.reset(camera,model); }
+  void refit() { cancel(); restore.reset(); fingers.clear(); pinch.reset(); framing.reset(camera,model); }
   void zoom(yy::Vec2 at, float steps) {
     if(steps==0) return;
-    framing.automatic=false;
+    restore.reset();
+    framing.manual();
     camera.zoomAt(at,camera.zoom*std::pow(1.15f,steps));
   }
   // The aim's hum grows with the pull; the last ball's is tighter: it starts higher and ends at full strength.
@@ -138,6 +191,8 @@ public:
   }
   void cancel() {
     if(aim && haptics) haptics->humStop();
+    if(aimZoom) restore=Restore{camera,aimZoom->prior};
+    aimZoom.reset();
     aim.reset();
   }
   void down(int id, yy::Vec2 p) {
@@ -148,14 +203,22 @@ public:
     const yy::Vec2 world=camera.toWorld(p);
     const auto spot=(!model.over() && model.ballsLeft>0) ? model.placeNear(world) : std::nullopt;
     if(spot) {
+      restore.reset();
       aim=Aim{id,*spot,{}};
+      if(camera.zoom<std::min(Camera::maxZoom,camera.minZoom()*Framing::openingScale))
+        aimZoom=AimZoom{camera,camera.toScreen(*spot)};
       if(haptics) haptics->humStart(humLevel());
     } else { rejected=world; rejectTime=0.45f; }
   }
   void move(int id, yy::Vec2 p) {
     Finger* f=find(id);
     if(!f) return;
-    const yy::Vec2 last=f->position; f->position=p;
+    const yy::Vec2 last=f->position;
+    if(restore && (p.x!=last.x || p.y!=last.y)) {
+      restore.reset();
+      if(pinch) startPinch();
+    }
+    f->position=p;
     if(pinch && fingers.size()==2) {
       const yy::Vec2 a=fingers[0].position, b=fingers[1].position;
       camera.hold(pinch->world, mid(a,b), pinch->zoom*distance(a,b)/pinch->distance);
@@ -164,7 +227,7 @@ public:
       aim->pull={world.x-aim->anchor.x, world.y-aim->anchor.y};
       if(haptics) haptics->humStart(humLevel());
     } else if(!aim && (p.x!=last.x || p.y!=last.y)) {
-      framing.automatic=false;
+      framing.manual();
       camera.pan({p.x-last.x, p.y-last.y});
     }
   }
@@ -174,19 +237,41 @@ public:
     bool launched=false;
     if(aim && aim->finger==id) {
       move(id,p);
-      if(haptics) haptics->humStop();
       launched=model.launch(aim->anchor, aim->pull);
-      if(launched && haptics) haptics->thump();
+      if(launched) framing.followLimit=0;
+      if(launched && haptics) { haptics->humStop(); haptics->thump(); }
+      if(!launched) cancel();
+      aimZoom.reset();
       aim.reset();
     }
     fingers.erase(std::remove_if(fingers.begin(),fingers.end(),[&](const Finger& f){ return f.id==id; }),fingers.end());
     pinch.reset();
     return launched;
   }
-  void update(float dt, bool follow=true) {
+  void update(float dt, bool follow=true, std::span<const yy::Vec2> shown={}) {
     rejectTime=std::max(0.0f, rejectTime-dt);
-    // Keep the world beneath a held finger still; the celebration borrows the camera.
-    if(follow && fingers.empty()) framing.update(camera,model,dt);
+    if(!follow || dt<=0) return; // the celebration borrows the entire camera
+    if(restore) {
+      restore->elapsed=std::min(zoomSeconds,restore->elapsed+dt);
+      const float t=restore->elapsed/zoomSeconds, k=t*t*(3-2*t);
+      const auto& a=restore->from; const auto& b=restore->to;
+      camera.zoom=a.zoom+(b.zoom-a.zoom)*k;
+      camera.offset={a.offset.x+(b.offset.x-a.offset.x)*k,a.offset.y+(b.offset.y-a.offset.y)*k};
+      if(t==1) { camera=b; restore.reset(); if(pinch) startPinch(); }
+      return;
+    }
+    if(aimZoom && aim) {
+      aimZoom->elapsed=std::min(zoomSeconds,aimZoom->elapsed+dt);
+      const float t=aimZoom->elapsed/zoomSeconds, k=t*t*(3-2*t);
+      const float target=std::min(Camera::maxZoom,camera.minZoom()*Framing::openingScale);
+      camera.zoom=aimZoom->prior.zoom+(target-aimZoom->prior.zoom)*k;
+      // Grid-edge clamping must not slide a held ball away from its finger.
+      camera.offset={aimZoom->screen.x-aim->anchor.x*camera.zoom,aimZoom->screen.y-aim->anchor.y*camera.zoom};
+      if(const auto* finger=find(aim->finger)) {
+        const auto world=camera.toWorld(finger->position);
+        aim->pull={world.x-aim->anchor.x,world.y-aim->anchor.y};
+      }
+    } else if(!aim && (fingers.empty() || !model.balls.empty())) framing.update(camera,model,dt,shown);
   }
 };
 }
