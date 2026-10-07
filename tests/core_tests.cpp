@@ -17,6 +17,7 @@ void levelBandChecks();
 void celebrationChecks();
 void fontChecks();
 void juiceChecks();
+void framingGameChecks();
 
 static void check(bool condition, const char* label) { if(!condition) { std::cerr<<label<<'\n'; std::exit(1); } }
 
@@ -418,7 +419,7 @@ static void settingsChecks() {
       check(m.columns==columns && m.rows==rows,"a plain restart keeps the size");
     }
     Model m(9); Settings s; s.gridScale=scale; m.restart(5,5,s);
-    tapdemo::Touch t(m); const auto& cam=t.camera;
+    tapdemo::Touch t(m); t.camera.fit(); const auto& cam=t.camera; // explicit whole-grid camera math
     check(near(cam.zoom,cam.minZoom()) && near(std::max(m.width()*cam.zoom/cam.view.w,m.height()*cam.zoom/cam.view.h),1),"the camera fits the whole grid");
     const auto corner=cam.toScreen({m.width(),m.height()});
     check(corner.x<=cam.view.x+cam.view.w+0.01f && corner.y<=cam.view.y+cam.view.h+0.01f && cam.toScreen({0,0}).x>=cam.view.x-0.01f,"the grid sits inside the play area");
@@ -705,7 +706,8 @@ static void tapdemoChecks() {
     // The player's path: press in a pocket, pull, release, and a brick loses a hit point.
     Model m(21); tapdemo::Touch t(m); Recorder haptics; t.haptics=&haptics;
     const auto& cam=t.camera;
-    check(near(cam.zoom,cam.minZoom()) && m.width()*cam.zoom<=cam.view.w+0.01f && m.height()*cam.zoom<=cam.view.h+0.01f,"opens on the whole grid");
+    check(cam.zoom>=cam.minZoom() && cam.zoom<=cam.minZoom()*tapdemo::Framing::openingScale+0.01f,"opens within the framing zoom clamp");
+    t.camera.fit(); // this legacy gesture regression visits both the cavity and distant fog
     const auto press=cam.toScreen(pocketCentre(m));
     check(t.instructions,"the instructions show when the game opens");
     t.down(0,press);
@@ -885,6 +887,75 @@ static void debugSettingsChecks() {
   std::cout<<"Debug settings: round-trip, defaults and clamping\n";
 }
 void gardenChecks();
+static void framingChecks() {
+  using tapdemo::Camera; using tapdemo::Framing; using tapdemo::Touch;
+  const auto contained=[](const Camera& cam, yy::Rect b) {
+    const auto a=cam.toScreen({b.x,b.y}), z=cam.toScreen({b.x+b.w,b.y+b.h});
+    return a.x>=cam.view.x-.02f && a.y>=cam.view.y-.02f &&
+           z.x<=cam.view.x+cam.view.w+.02f && z.y<=cam.view.y+cam.view.h+.02f;
+  };
+  Model m; m.play(6); Touch t(m); t.instructions=false;
+  const auto b=Framing::visibleBounds(m);
+  check(near(b.x,96) && near(b.y,192) && near(b.w,288) && near(b.h,288),"level 6 frames its 3x3 pocket, two cells of visible bricks and one margin cell");
+  check(near(t.camera.zoom,390.0f/288) && contained(t.camera,b),"level 6 uses the largest zoom fitting its visible box under the header");
+  const float opening=t.camera.zoom;
+  m.bricks[25*m.columns+15]=0; m.refreshFog();
+  const auto expanded=Framing::visibleBounds(m);
+  const float target=std::min(t.camera.view.w/expanded.w,t.camera.view.h/expanded.h);
+  t.update(1.0f/60);
+  check(t.camera.zoom<opening && t.camera.zoom>target,"revealing distant cells eases out without a jump");
+  for(int i=0; i<300; ++i) {
+    const float previous=t.camera.zoom; t.update(1.0f/60);
+    check(t.camera.zoom<=previous,"the automatic zoom only eases outward");
+  }
+  check(contained(t.camera,expanded),"the eased frame contains all revealed cells");
+  m.bricks[25*m.columns+15]=1; m.refreshFog();
+  const float widest=t.camera.zoom; t.update(1);
+  check(near(t.camera.zoom,widest),"a shrinking visible region never eases inward");
+  // Wheel and pinch ownership persists even when new cells reveal, and retry returns it.
+  t.zoom({195,462},2);
+  const Camera manual=t.camera;
+  m.bricks[0]=0; m.refreshFog(); t.update(1);
+  check(!t.framing.automatic && near(t.camera.zoom,manual.zoom) && near(t.camera.offset.x,manual.offset.x) && near(t.camera.offset.y,manual.offset.y),"wheel zoom stops all automatic framing");
+  m.restart(); t.refit();
+  check(t.framing.automatic && near(t.camera.zoom,opening),"retry resets the opening frame and automatic ownership");
+  t.down(1,{150,462}); t.down(2,{240,462}); t.move(2,{285,462});
+  check(!t.framing.automatic && t.camera.zoom>opening,"pinch takes over the opening frame");
+  t.up(2,{285,462}); t.up(1,{150,462});
+  const Camera pinched=t.camera; m.bricks[0]=0; m.refreshFog(); t.update(1);
+  check(near(t.camera.zoom,pinched.zoom) && near(t.camera.offset.y,pinched.offset.y),"pinch ownership remains after both fingers lift");
+  // Tiny cavity: the cap is relative to the original fitted cell, not absolute zoom.
+  std::fill(m.bricks.begin(),m.bricks.end(),1); m.bricks[15*m.columns+9]=0; m.refreshFog(); t.refit();
+  check(near(t.camera.zoom,t.camera.minZoom()*2.5f),"a small cavity stops at 2.5 times the original cell size");
+  m.bricks.assign(m.bricks.size(),1); m.bricks[0]=0; m.refreshFog(); t.refit();
+  const auto edge=Framing::visibleBounds(m);
+  check(edge.x==0 && edge.y==0 && contained(t.camera,edge),"margin clips to grid edges and the frame stays within the grid");
+  check(near(t.camera.offset.x,0) && near(t.camera.offset.y,t.camera.view.y),"an edge cavity does not pan beyond the grid");
+  // Physical safe area -> logical viewport -> camera -> world placement and sling.
+  m.play(6); t.refit(); t.instructions=false;
+  const auto anchor=pocketCentre(m), press=t.camera.toScreen(anchor);
+  yy::Viewport viewport{{12,44,780,1688}}; yy::PointerTracker pointers;
+  const auto window=[&](yy::Vec2 p) { return yy::Vec2{12+p.x*2,44+p.y*2}; };
+  auto down=pointers.down(71,window(press),viewport); check(down.has_value(),"zoomed press maps through the safe area");
+  t.down(down->id,down->position);
+  check(t.aim && near(t.aim->anchor.x,anchor.x) && near(t.aim->anchor.y,anchor.y),"zoomed touch holds the ball at the exact world spot");
+  const Camera held=t.camera; m.bricks[0]=0; m.refreshFog(); t.update(.5f);
+  check(near(t.camera.zoom,held.zoom) && near(t.camera.offset.y,held.offset.y),"framing stays still beneath a held finger");
+  const auto release=t.camera.toScreen({anchor.x,anchor.y+60});
+  auto move=pointers.move(71,window(release),viewport); t.move(move->id,move->position);
+  check(t.aim && near(t.aim->pull.x,0) && near(t.aim->pull.y,60),"zoomed sling drag maps to its world distance");
+  auto up=pointers.up(71,window(release),viewport);
+  check(t.up(up->id,up->position) && m.balls.size()==1 && near(m.balls[0].position.x,anchor.x) && near(m.balls[0].position.y,anchor.y) && near(m.balls[0].velocity.x,0) && near(m.balls[0].velocity.y,-Model::speed),"zoomed release fires from the intended world spot opposite the drag");
+  const int points=hitPoints(m);
+  for(int i=0; i<120 && hitPoints(m)==points; ++i) m.update(1.0f/60);
+  check(hitPoints(m)<points,"the zoomed touch shot hits the brick above the cavity");
+  for(int level=1; level<=tapdemo::levelCount; ++level) {
+    m.play(level); t.refit();
+    check(contained(t.camera,Framing::visibleBounds(m)),"every opening fits its visible area");
+    std::cout<<"Opening level "<<level<<": cell "<<Model::cell*t.camera.zoom<<", original "<<Model::cell*t.camera.minZoom()<<" logical pixels\n";
+  }
+  std::cout<<"Framing: known box, margin, clamp, outward easing, manual ownership, retry and zoomed viewport touch path\n";
+}
 int main() {
   yy::Viewport v{{10,40,780,1688}};
   auto point=v.map({400,884});
@@ -920,6 +991,8 @@ int main() {
   clock.advance(1.0/30,[&](float){++ticks;}); check(ticks==2,"fixed updates");
   clock.reset(); clock.advance(100,[&](float){++ticks;}); check(ticks==8,"resume catch-up capped");
   tapdemoChecks();
+  framingChecks();
+  framingGameChecks();
   settingsChecks();
   glowChecks();
   snapChecks();

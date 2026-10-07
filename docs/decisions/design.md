@@ -220,3 +220,30 @@ checks, live touch tests and nine inspected runtime/mockup pairs at 390 wide.
 **Evidence.** V13, `tests/palette_tests.cpp` (`juiceChecks`), the level band test unchanged, and `docs/figures/juice/`.
 
 ---
+
+### D13 — Levels open framed on the visible cavity and ease outward as it grows (2026-10-07)
+
+**Status:** active
+
+**What happened.** T24 records Yotam choosing item 2 of the gameplay review.
+The opening cavity in level 6 occupied about a fifth of a 390x844 screen.
+
+**Decision.** A game-layer camera frames all open cells and visible bricks,
+including special bricks shown by Ping, with one cell of margin clipped to the
+grid. It opens at the largest zoom fitting that box below the header, capped
+at 2.5 times the whole-grid fitted cell size. Existing grid-edge clamping and
+the manual zoom limits remain. Revealed bounds accumulate for the level; the
+camera eases toward the enlarged frame with an exponential rate of 4 per
+second, never zooming inward again. A held finger, debug panel or goal
+celebration pauses automatic following. Pinch, wheel or pan takes ownership
+until a new level or retry restores the opening frame. Placement and sling
+drag keep using the existing safe-area viewport and camera world mapping.
+
+**Why.** Larger bricks make the opening action readable, and following the
+revealed area keeps new cavities in view without mid-shot jumps or fighting
+the player's camera. This changes presentation, not the simulation or levels.
+
+**Evidence.** V14, `docs/framing-validation.md`, deterministic framing tests,
+zoomed viewport touch tests and six inspected 390x844 opening captures.
+
+---

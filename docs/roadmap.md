@@ -452,3 +452,27 @@ field with whole, cracked and badly cracked bricks, read in the one look the gam
 **Open:** only Garden Pop exists, so the crack colours were checked in that one look. Particle, trail and
 shake cost on an iPhone is unmeasured (desktop smoke only: no performance claim). How strong the 45 ms hold, the
 shake and the pitch climb feel is a call for a phone in hand.
+
+### V14 Levels open on the cavity and follow the revealed action (D13)
+
+**Status:** active
+
+Each level and retry starts with the visible cells framed below the header.
+The camera eases outward as breaks or Ping reveal more, never inward during
+the level. Pinch, wheel and pan take over until retry or the next level.
+
+**Validation.** `scripts/build.ps1 -Smoke -ToolsRoot D:/Source/Y&Y/YYEngine`:
+CTest 1/1 and the 120-frame SDL smoke passed. Tests cover level 6's exact
+visible box, one-cell margin, the relative zoom cap, edge clamping, outward
+easing, manual takeover and reset. Safe-area pointer events at automatic zoom
+place, aim and fire at the correct world point and hit a brick. The real Game
+opens levels 1, 6 and 10 at the expected zoom, preserves wheel zoom, resets on
+restart and fires through touch. Existing simulation bands and celebration
+regressions pass in their fixed manual whole-grid view. Inspected 390x844
+before/after captures show cells growing from 32.5 to 43.33 pixels in level 1,
+21.67 to 43.33 in level 6, and 13 to 32.5 in level 10. Commands and captures
+are in `docs/framing-validation.md`.
+
+**Open:** phone feel remains the owner's playtest; evidence is deterministic
+tests and desktop captures, with no iPhone performance claim. A level whose
+visible area already spans the grid may remain at its original fitted zoom.

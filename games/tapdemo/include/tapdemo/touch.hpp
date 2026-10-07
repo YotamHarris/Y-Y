@@ -37,6 +37,53 @@ struct Camera {
   void pan(yy::Vec2 by) { offset.x+=by.x; offset.y+=by.y; clamp(); }
 };
 
+// Presentation only: frame the cavity and the bricks the player can see, with a cell of
+// breathing room. Keep every area revealed this level, even after a Ping expires.
+struct Framing {
+  static constexpr float openingScale=2.5f, easeRate=4;
+  yy::Rect bounds{};
+  bool automatic{true};
+  static yy::Rect visibleBounds(const Model& model) {
+    int left=model.columns, top=model.rows, right=0, bottom=0;
+    for(int r=0; r<model.rows; ++r) for(int c=0; c<model.columns; ++c) {
+      const bool ping=(model.isGoal(c,r) || model.power(c,r)!=Power::None) && model.pinged(c,r);
+      if(model.brick(c,r)>0 && !model.visible(c,r) && !ping) continue;
+      left=std::min(left,c); top=std::min(top,r);
+      right=std::max(right,c+1); bottom=std::max(bottom,r+1);
+    }
+    if(right<=left || bottom<=top) return {0,0,model.width(),model.height()};
+    left=std::max(0,left-1); top=std::max(0,top-1);
+    right=std::min(model.columns,right+1); bottom=std::min(model.rows,bottom+1);
+    return {left*Model::cell,top*Model::cell,(right-left)*Model::cell,(bottom-top)*Model::cell};
+  }
+  Camera fitted(const Camera& camera, float limit=Camera::maxZoom) const {
+    Camera target=camera;
+    const float zoom=std::min({camera.view.w/bounds.w,camera.view.h/bounds.h,
+                               camera.minZoom()*openingScale,limit});
+    target.hold({bounds.x+bounds.w/2,bounds.y+bounds.h/2},
+                {camera.view.x+camera.view.w/2,camera.view.y+camera.view.h/2},zoom);
+    return target;
+  }
+  void reset(Camera& camera, const Model& model) {
+    automatic=true; bounds=visibleBounds(model);
+    camera.world={model.width(),model.height()}; camera=fitted(camera);
+  }
+  void update(Camera& camera, const Model& model, float dt) {
+    if(!automatic || dt<=0) return;
+    const auto visible=visibleBounds(model);
+    const float right=std::max(bounds.x+bounds.w,visible.x+visible.w);
+    const float bottom=std::max(bounds.y+bounds.h,visible.y+visible.h);
+    bounds.x=std::min(bounds.x,visible.x); bounds.y=std::min(bounds.y,visible.y);
+    bounds.w=right-bounds.x; bounds.h=bottom-bounds.y;
+    const Camera target=fitted(camera,camera.zoom); // never push in during a shot
+    const yy::Vec2 screen{camera.view.x+camera.view.w/2,camera.view.y+camera.view.h/2};
+    const auto from=camera.toWorld(screen), to=target.toWorld(screen);
+    const float k=1-std::exp(-easeRate*dt);
+    camera.hold({from.x+(to.x-from.x)*k,from.y+(to.y-from.y)*k},screen,
+                camera.zoom+(target.zoom-camera.zoom)*k);
+  }
+};
+
 // Turns pointer events into slingshot aims, pinch zoom and pans, with the aim's haptics.
 // While the instructions show, the first press only dismisses them. Then one finger on open
 // space, or within a cell of it, holds a ball there; pulling aims it and letting go launches it opposite the pull.
@@ -53,6 +100,7 @@ class Touch {
   static yy::Vec2 mid(yy::Vec2 a, yy::Vec2 b) { return {(a.x+b.x)/2, (a.y+b.y)/2}; }
   static float distance(yy::Vec2 a, yy::Vec2 b) { return std::hypot(a.x-b.x, a.y-b.y); }
   void startPinch() {
+    framing.automatic=false;
     const yy::Vec2 a=fingers[0].position, b=fingers[1].position;
     pinch=Pinch{camera.toWorld(mid(a,b)), std::max(1.0f,distance(a,b)), camera.zoom};
   }
@@ -62,12 +110,18 @@ public:
   Model& model;
   yy::Haptics* haptics{};
   Camera camera;
+  Framing framing;
   std::optional<Aim> aim;
   bool instructions{true}; // shown when the game opens and a level or free play starts; a retry skips it
   yy::Vec2 rejected{}; float rejectTime{}; // where a press could not hold a ball, while the ring shows
   explicit Touch(Model& m): model(m) { refit(); }
-  // Shows the whole grid, sized as the model's grid is now (after a restart).
-  void refit() { camera.world={model.width(),model.height()}; camera.fit(); }
+  // A new level or retry returns control to the cavity frame and clears old gestures.
+  void refit() { cancel(); fingers.clear(); pinch.reset(); framing.reset(camera,model); }
+  void zoom(yy::Vec2 at, float steps) {
+    if(steps==0) return;
+    framing.automatic=false;
+    camera.zoomAt(at,camera.zoom*std::pow(1.15f,steps));
+  }
   float humLevel() const { return aim ? 0.25f+0.5f*std::min(1.0f, std::hypot(aim->pull.x,aim->pull.y)/fullPull) : 0; }
   void cancel() {
     if(aim && haptics) haptics->humStop();
@@ -96,7 +150,10 @@ public:
       const yy::Vec2 world=camera.toWorld(p);
       aim->pull={world.x-aim->anchor.x, world.y-aim->anchor.y};
       if(haptics) haptics->humStart(humLevel());
-    } else if(!aim) camera.pan({p.x-last.x, p.y-last.y});
+    } else if(!aim && (p.x!=last.x || p.y!=last.y)) {
+      framing.automatic=false;
+      camera.pan({p.x-last.x, p.y-last.y});
+    }
   }
   // Returns true when the release launched a ball.
   bool up(int id, yy::Vec2 p) {
@@ -113,6 +170,10 @@ public:
     pinch.reset();
     return launched;
   }
-  void update(float dt) { rejectTime=std::max(0.0f, rejectTime-dt); }
+  void update(float dt, bool follow=true) {
+    rejectTime=std::max(0.0f, rejectTime-dt);
+    // Keep the world beneath a held finger still; the celebration borrows the camera.
+    if(follow && fingers.empty()) framing.update(camera,model,dt);
+  }
 };
 }

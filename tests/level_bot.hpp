@@ -58,6 +58,9 @@ struct Shot { yy::Vec2 press, release; };
 inline Result play(int level, const tapdemo::Level& table, std::uint32_t botSeed, Style style={}, bool touch=false, std::vector<Shot>* shots=nullptr) {
   Model m; m.play(level,table);
   tapdemo::Touch finger(m); finger.instructions=false;
+  // Difficulty/recorded-flight regressions use the player's whole-grid manual view.
+  // The opening camera and its moving touch mapping have their own framing checks.
+  finger.camera.fit(); finger.framing.automatic=false;
   Random random(botSeed);
   Result result;
   constexpr float dt=1.0f/60, twoPi=6.28318530718f;

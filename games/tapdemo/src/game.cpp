@@ -400,6 +400,8 @@ class TapGame final: public yy::Game {
     }
     touch.instructions=false;
     if(std::strcmp(scene,"field")==0) return;
+    // Other pinned evidence scenes explicitly stage a camera as part of their fixture.
+    touch.framing.automatic=false;
     if(std::strcmp(scene,"render-test")==0) { renderTest=true; return; }
     const auto& pocket=model.pockets.front();
     const yy::Vec2 centre{(pocket.column+pocket.columns/2.0f)*Model::cell, (pocket.row+pocket.rows/2.0f)*Model::cell};
@@ -583,7 +585,7 @@ public: void initialize(yy::Services& services) override {
     const bool playing=celebration.playing();
     celebration.step(seconds,ahead.hit);
     if(!playing && celebration.playing()) touch.cancel(); // a held aim gives way to the show
-    stepModel(seconds); touch.update(seconds);
+    stepModel(seconds); touch.update(seconds,!celebration.engaged() && !debugOpen);
     for(auto& p: pops) p.age+=seconds;
     std::erase_if(pops,[](const Pop& p){ return p.age>=popSeconds; });
     hitStop.step(seconds); shake.step(seconds); specks.step(seconds,chipGravity); lift.step(seconds);
@@ -673,7 +675,7 @@ public: void initialize(yy::Services& services) override {
     touch.up(id,p);
   }
   void zoom(yy::Vec2 at, float steps) override {
-    if(!debugOpen && !touch.instructions && !celebration.engaged() && touch.camera.contains(at)) touch.camera.zoomAt(at,touch.camera.zoom*std::pow(1.15f,steps));
+    if(!debugOpen && !touch.instructions && !celebration.engaged() && touch.camera.contains(at)) touch.zoom(at,steps);
   }
   void render(yy::Renderer& r) override {
     using yy::Color;

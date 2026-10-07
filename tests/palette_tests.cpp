@@ -302,6 +302,33 @@ void gardenChecks() {
   std::cout<<"Garden touch path: ordinary hit, simultaneous aim/shot, five powers, goal, both pinch limits and card passed\n";
 }
 
+void framingGameChecks() {
+  using namespace tapdemo;
+  for(int level: {1,6,10}) {
+    const std::string pin=std::to_string(level);
+    Session play("",pin.c_str());
+    Model reference; reference.play(level); Touch touch(reference);
+    const float opening=reference.width()*touch.camera.zoom;
+    check(std::abs(play.canvas.fieldWidth-opening)<.02f,"the real game opens on the computed cavity frame");
+    play.tap({195,600}); // instructions, no placement
+    play.game->zoom({195,462},2); play.canvas.read(*play.game);
+    const float manual=play.canvas.fieldWidth;
+    check(manual>opening,"the game's wheel handler zooms the opening frame");
+    play.play(60);
+    check(std::abs(play.canvas.fieldWidth-manual)<.02f,"the game keeps the player's wheel frame across updates");
+    play.tap({330,40}); play.tap({110,768}); // debug RESTART at the same level
+    check(std::abs(play.canvas.fieldWidth-opening)<.02f && play.canvas.has("TAP TO START"),"the game's restart returns to the opening frame");
+    play.tap({195,600});
+    const auto anchor=reference.pockets.front();
+    const yy::Vec2 world{(anchor.column+anchor.columns/2.0f)*Model::cell,(anchor.row+anchor.rows/2.0f)*Model::cell};
+    const auto press=touch.camera.toScreen(world), release=touch.camera.toScreen({world.x,world.y+60});
+    play.game->pointerDown(3,press); play.game->pointerMove(3,release); play.game->pointerUp(3,release);
+    play.canvas.read(*play.game);
+    check(std::any_of(play.canvas.texts.begin(),play.canvas.texts.end(),[&](const auto& t){return t.at.x==62 && t.at.y==13 && t.value==std::to_string(levelBalls-1);}),"the real game fires through touch at its opening zoom");
+  }
+  std::cout<<"Game framing: levels 1/6/10 open framed, wheel holds, restart resets, zoomed touch fires\n";
+}
+
 // The debug panel survives a relaunch: every change is saved as it is made, the next session opens
 // with it, and a pinned level or scene neither reads nor writes the save.
 void debugPersistenceChecks() {
@@ -412,6 +439,7 @@ Round replayRound(int level, const std::vector<levelbot::Shot>& shots) {
   Round round; round.level=level; round.shots=shots;
   Model m; m.play(level,levels[level-1]);
   Touch finger(m); finger.instructions=false;
+  finger.camera.fit(); finger.framing.automatic=false; // recorded whole-grid manual shots
   for(const auto& shot: shots) {
     finger.down(1,shot.press); finger.move(1,shot.release);
     check(finger.up(1,shot.release),"a recorded shot launches again");
@@ -467,6 +495,8 @@ struct Play {
   Session session; const Round& round; float fit{}; std::size_t impactsBefore{};
   explicit Play(const Round& r): session("",std::to_string(r.level).c_str()), round(r) {
     session.tap({195,600}); // the instructions card
+    session.game->zoom({195,462},-100); // replay in the recorded whole-grid manual view
+    session.canvas.read(*session.game);
     fit=session.canvas.fieldWidth;
     for(std::size_t i=0; i<round.shots.size(); ++i) {
       if(i+1==round.shots.size()) impactsBefore=session.quiet.impacts.size();
@@ -485,7 +515,7 @@ struct Play {
 // Reads the next level's field the way the game fits it, and presses in its first pocket.
 yy::Vec2 pocketPress(int level) {
   using namespace tapdemo;
-  Model m; m.play(level); Camera camera; camera.world={m.width(),m.height()}; camera.fit();
+  Model m; m.play(level); Touch touch(m); const Camera& camera=touch.camera;
   const auto& p=m.pockets.front();
   return camera.toScreen({(p.column+p.columns/2+0.5f)*Model::cell,(p.row+p.rows/2.0f)*Model::cell});
 }
