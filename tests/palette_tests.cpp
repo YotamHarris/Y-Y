@@ -727,5 +727,20 @@ void juiceChecks() {
     check(inks>=cracked+bad,"cracked and badly cracked bricks draw their cracks over the sprite");
     check(!damage.canvas.has("1") && !damage.canvas.has("2") && !damage.canvas.has("3"),"no digit is drawn on a brick");
   }
+  {
+    // The SHAKE control: off, low, medium, high; it saves with the debug settings and a default save stays as it was.
+    check(shakeScale(0)==0 && shakeScale(1)<shakeScale(2) && shakeScale(2)<shakeScale(3) && shakeScale(2)==1 && shakeScale(9)==shakeScale(3),"the shake levels run from off to high");
+    check(shakeFor(25,true,false,false)*shakeScale(3)<=Shake::limit && shakeFor(1,false,false,true)*shakeScale(3)<=Shake::limit*1.5f,"even high keeps the goal's shake modest");
+    Session panel("");
+    panel.tap({330,40});
+    check(panel.canvas.has("SHAKE MEDIUM"),"the debug panel shows the shake, at medium by default");
+    panel.tap({280,52}); check(panel.canvas.has("SHAKE HIGH") && panel.storage.debug.find("shake 3\n")!=std::string::npos,"a tap steps the shake and saves it");
+    panel.tap({280,52}); check(panel.canvas.has("SHAKE OFF"),"the shake steps round to off");
+    panel.tap({280,52}); panel.tap({280,52}); check(panel.canvas.has("SHAKE MEDIUM") && panel.storage.debug.find("shake")==std::string::npos,"back at medium the save has no shake line");
+    Session kept("",nullptr,nullptr,"debug 1\nshake 1\n");
+    kept.tap({330,40}); check(kept.canvas.has("SHAKE LOW"),"a saved shake is kept");
+    DebugSettings d; d.shake=3;
+    check(loadDebug(saveDebug(d)).shake==3 && loadDebug("debug 1\nshake 9\n").shake==3 && DebugSettings{}.shake==defaultShakeLevel,"the shake round-trips and is clamped");
+  }
   std::cout<<"Hit feedback: hit-stop, pitch ladder, shake, specks, cracks and fog lift passed\n";
 }

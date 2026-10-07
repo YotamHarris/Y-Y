@@ -39,7 +39,7 @@ public:
 class Shake {
   float amplitude_{}, left_{}, total_{1}, time_{};
 public:
-  static constexpr float seconds=0.28f, limit=12;
+  static constexpr float seconds=0.28f, limit=8;
   // A bump never lowers a shake still going; several together add, up to the limit.
   void bump(float amount) {
     const float current=amplitude();
@@ -57,12 +57,17 @@ public:
 
 // How big a break's shake is: a plain break barely nudges, a bomb and lightning grow it, the goal is biggest.
 inline float shakeFor(int broken, bool bomb, bool electric, bool goal) {
-  float amount=std::min(3.0f,0.8f+0.4f*static_cast<float>(broken));
-  if(electric) amount=std::max(amount,4.0f);
-  if(bomb) amount=std::max(amount,7.0f);
-  if(goal) amount=std::max(amount,10.0f);
+  float amount=std::min(1.8f,0.5f+0.25f*static_cast<float>(broken));
+  if(electric) amount=std::max(amount,2.5f);
+  if(bomb) amount=std::max(amount,4.0f);
+  if(goal) amount=std::max(amount,6.0f);
   return amount;
 }
+// The debug panel's SHAKE setting: how much of that the player gets (0 off .. 3 high).
+inline constexpr int shakeLevels=4, defaultShakeLevel=2;
+inline constexpr const char* shakeNames[shakeLevels]{"OFF","LOW","MEDIUM","HIGH"};
+inline constexpr float shakeScales[shakeLevels]{0.0f,0.5f,1.0f,1.5f};
+inline float shakeScale(int level) { return shakeScales[level<0 ? 0 : level>=shakeLevels ? shakeLevels-1 : level]; }
 
 // A fixed pool of short-lived specks: chips from a broken brick and a ball's fading trail. Nothing
 // allocates after construction; a full pool drops the newest.

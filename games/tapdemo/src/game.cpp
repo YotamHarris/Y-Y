@@ -30,6 +30,7 @@ constexpr float headingTops[]{50,282,514};
 constexpr yy::Rect minusButton(int row) { return {180,stepperTops[row],44,38}; }
 constexpr yy::Rect plusButton(int row) { return {320,stepperTops[row],44,38}; }
 constexpr yy::Rect restartButton{40,746,150,44}, closeButton{200,746,150,44};
+constexpr yy::Rect shakeButton{196,40,174,24}; // on the APPLY NOW heading's line: taps cycle the screen shake
 constexpr const char* progressFile="progress.txt"; // the reached level, in yy::Storage
 constexpr const char* debugFile="debug.txt";       // every debug panel setting, in yy::Storage
 constexpr yy::Rect overlay{24,340,342,156};          // the OUT OF BALLS card
@@ -169,6 +170,7 @@ class TapGame final: public yy::Game {
   std::vector<char> wasVisible;
   std::vector<yy::Vec2> heldBalls; // where the balls were drawn when the hit-stop began
   int lastBallsLeft{};
+  int shakeLevel{defaultShakeLevel};
   Camera drawCam;            // the camera as drawn this frame, shake included
   float clock{};             // seconds, for glow pulses and sparks
   // The goal celebration (celebration.hpp): presentation only. The model always steps by the real frame's dt,
@@ -341,7 +343,7 @@ class TapGame final: public yy::Game {
     DebugSettings d;
     d.pingRadius=model.pingRadius; d.bombSize=model.bombSize; d.electricSeconds=model.electricSeconds;
     d.electricHalves=static_cast<int>(std::lround(model.electricRadius*2)); d.snapDegrees=model.snapDegrees;
-    d.balls=debugBalls; d.bounces=debugBounces; d.grid=debugGrid;
+    d.balls=debugBalls; d.bounces=debugBounces; d.grid=debugGrid; d.shake=shakeLevel;
     storage->write(debugFile,saveDebug(d));
   }
   void openDebug() { touch.cancel(); debugLevel=model.level(); debugBalls=freeBalls; debugBounces=freeBounces; debugGrid=freeGrid; debugOpen=true; }
@@ -366,6 +368,7 @@ class TapGame final: public yy::Game {
       if(inside(minusButton(row),p)) { step(row,-1); return; }
       if(inside(plusButton(row),p)) { step(row,1); return; }
     }
+    if(inside(shakeButton,p)) { shakeLevel=(shakeLevel+1)%shakeLevels; persist(); return; }
     if(inside(restartButton,p)) {
       freeBalls=debugBalls; freeBounces=debugBounces; freeGrid=debugGrid;
       if(debugLevel>0) enter(debugLevel); else freePlay();
@@ -568,7 +571,7 @@ public: void initialize(yy::Services& services) override {
     // A level's table sets the power-up values, so the saved ones go on after it.
     if(saved) { model.setPingRadius(d.pingRadius); model.setBombSize(d.bombSize); model.setElectricSeconds(d.electricSeconds);
                 model.setElectricRadius(d.electricHalves/2.0f); }
-    model.setSnapDegrees(d.snapDegrees);
+    model.setSnapDegrees(d.snapDegrees); shakeLevel=d.shake;
     stage(scene);
     syncBricks();
   }
@@ -611,7 +614,7 @@ public: void initialize(yy::Services& services) override {
       hitStop.trigger(); heldBalls.assign(model.balls.size(),{});
       for(std::size_t i=0; i<model.balls.size(); ++i) heldBalls[i]=shown(model.balls[i]);
     }
-    if(h.bricksBroken>0) shake.bump(shakeFor(h.bricksBroken,bomb,electric,h.goalBroken));
+    if(h.bricksBroken>0 && shakeScale(shakeLevel)>0) shake.bump(shakeFor(h.bricksBroken,bomb,electric,h.goalBroken)*shakeScale(shakeLevel));
     if(h.goalBroken) { celebration.hit(); celebrate(); ladder.climb(); }
     else if(!h.fired.empty()) {
       const auto& tone=powerTones[static_cast<int>(h.fired.front().power)];
@@ -927,6 +930,8 @@ public: void initialize(yy::Services& services) override {
       r.rectangle({panel.x,panel.y,panel.w,2},teal);
       r.text({panel.x+20,panel.y+16},"DEBUG",teal);
       r.text({panel.x+150,panel.y+18},"VERSION " YY_GAME_VERSION,muted,1.25f);
+      r.rectangle(shakeButton,palette.button);
+      r.text({shakeButton.x+10,shakeButton.y+6},std::string("SHAKE ")+shakeNames[shakeLevel],white,1.5f);
       const char* headings[]{"APPLY NOW","APPLY ON RESTART","FREE PLAY WEIGHTS"};
       for(int i=0; i<3; ++i) r.text({panel.x+20,headingTops[i]},headings[i],teal,1.5f);
       const auto row=[&](int index, const std::string& label, Color labelColor, const std::string& value) {
