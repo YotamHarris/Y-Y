@@ -4,7 +4,7 @@
 #include <cmath>
 
 namespace tapdemo {
-// How fast the game clock runs (T25). Presentation only: the game takes more or fewer fixed model steps per
+// How fast the game clock runs (T25, calmed by T29). Presentation only: the game takes more or fewer fixed model steps per
 // frame, each step the same dt, so a ball's path, the electricity seconds and every outcome are what they would
 // be at 1x. Nothing here writes the model.
 
@@ -36,27 +36,28 @@ inline int takeSteps(float& debt, float seconds, float scale, int cap) {
   return steps;
 }
 
-// Game seconds per real second: 1x with nothing flying, rising with the oldest flying ball's bounces used to
-// topSpeed on its last, and dropping to dramaSpeed (overriding the rise) near the goal on the last ball.
+// Game seconds per real second: a calm constant `base` (T29), dropping to base*dramaScale (slow motion) near the
+// goal on the last ball. The debug PACE stepper moves the base within minBase..maxBase.
 class Pace {
-  float speed_{1};
+  float base_{defaultBase}, speed_{defaultBase};
 public:
-  static constexpr float topSpeed=2.5f, dramaSpeed=0.35f;
+  static constexpr float defaultBase=0.7f, minBase=0.4f, maxBase=1.0f, dramaScale=0.5f;
   static constexpr float dropRate=14, easeRate=4; // per real second: into slow motion, and back out of it
+  static constexpr float dramaSpeed=defaultBase*dramaScale;
   float speed() const { return speed_; }
-  void reset() { speed_=1; }
+  float base() const { return base_; }
+  // The base, clamped to its range; the clock moves on to it at once when nothing flies.
+  void setBase(float base) { base_=std::clamp(base,minBase,maxBase); }
+  void reset() { speed_=base_; }
   // The speed the clock is heading for.
-  static float target(const Model& m) {
-    if(m.balls.empty() || m.over()) return 1;
-    if(nearGoal(m)) return dramaSpeed;
-    const int used=std::max(0,m.bouncesPerBall-m.balls.front().bounces); // the oldest ball is first
-    const float done=m.bouncesPerBall>1 ? std::min(1.0f,static_cast<float>(used)/(m.bouncesPerBall-1)) : 0;
-    return 1+(topSpeed-1)*done;
+  static float target(const Model& m, float base=defaultBase) {
+    if(m.balls.empty() || m.over()) return base;
+    return nearGoal(m) ? base*dramaScale : base;
   }
   // One real frame; returns the speed to run it at.
   float step(const Model& m, float dt) {
-    const float to=target(m);
-    if(m.balls.empty() || m.over()) speed_=1; // nothing flies: nothing to hurry or to ease
+    const float to=target(m,base_);
+    if(m.balls.empty() || m.over()) speed_=base_; // nothing flies: nothing to ease
     else {
       speed_+=(to-speed_)*(1-std::exp(-(to<speed_ ? dropRate : easeRate)*std::max(0.0f,dt)));
       if(std::abs(speed_-to)<1e-3f) speed_=to;

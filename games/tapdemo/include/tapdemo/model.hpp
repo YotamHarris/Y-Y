@@ -76,6 +76,7 @@ int loadProgress(std::string_view text);
 // Everything the debug panel sets, kept on the device between runs. Zap reach is in half cells.
 struct DebugSettings {
   int pingRadius{6}, bombSize{5}, electricSeconds{6}, electricHalves{5}, snapDegrees{5};
+  int pace{7}; // the game speed in tenths of real time (pace.hpp; presentation only)
   int balls{10}, bounces{15};
   int shake{2}; // screen shake, 0 off to 3 high (juice.hpp; presentation only)
   int glint{2}; // the goal's glint in the fog, 0 off to 3 high (glint.hpp; presentation only)
@@ -196,8 +197,10 @@ public:
   // Where a press at `tap` holds a ball: the tap itself when open, else the closest open spot
   // within one cell of it, else nothing.
   std::optional<yy::Vec2> placeNear(yy::Vec2 tap) const;
+  // A ball is in flight, or a fired power-up (a Ghost landing, lightning) has yet to finish: one ball at a time.
+  bool flying() const { return !balls.empty() || !pending.empty(); }
   // Launches from `at` opposite `pull` (finger minus ball), snapped by snapPull. A pull shorter than minPull,
-  // no balls left, a finished round or a spot a brick covers launches nothing.
+  // no balls left, a ball still flying, a finished round or a spot a brick covers launches nothing.
   bool launch(yy::Vec2 at, yy::Vec2 pull);
   // Where a launch from `at` opposite `pull` first touches a wall or brick: the same snap, speed, sub-steps and
   // collision as launch() then update(dt), so the endpoint is the real first contact. Invalid when launch() would

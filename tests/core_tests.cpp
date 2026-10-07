@@ -614,7 +614,7 @@ static void tapdemoChecks() {
     check(!m.canPlace({-50,-50}) && !m.canPlace({m.width()+5,10}),"outside the grid is not open");
     check(m.launch(centre,{0,40}),"launch from the pocket");
     check(m.canPlace(centre),"a flying ball does not block its spot");
-    check(m.launch(centre,{0,40}) && m.balls.size()==2,"a ball launches from on top of a flying ball");
+    check(!m.launch(centre,{0,40}) && m.balls.size()==1 && m.ballsLeft==Model::defaultBalls-1,"no ball launches while one flies, even from on top of it");
   }
   powerChecks();
   {
@@ -624,7 +624,9 @@ static void tapdemoChecks() {
     const auto v=m.balls[0].velocity;
     check(near(v.x,-0.6f*Model::speed) && near(v.y,-0.8f*Model::speed),"ball flies opposite the pull at fixed speed");
     check(m.balls[0].bounces==Model::defaultBounces,"ball starts with its bounces");
-    check(m.launch(at,{0,-200}) && m.balls.size()==2 && near(m.balls[1].velocity.y,Model::speed),"several balls fly at once");
+    check(!m.launch(at,{0,-200}) && m.balls.size()==1,"a second launch waits for the first ball");
+    m.balls.push_back({at,{0,Model::speed},Model::defaultBounces}); // the model still steps several balls
+    check(m.balls.size()==2 && near(m.balls[1].velocity.y,Model::speed),"several balls can fly at once");
     m.pause(true); const auto held=m.balls[0].position; m.update(1);
     check(m.balls[0].position.x==held.x && m.balls[0].position.y==held.y && !m.launch(at,{0,30}),"pause freezes balls and launches");
   }
@@ -729,6 +731,7 @@ static void tapdemoChecks() {
     for(int i=0; i<120 && hitPoints(m)==points; ++i) m.update(1.0f/60);
     check(hitPoints(m)==points-1,"a brick loses a hit point");
 
+    m.balls.clear(); // one ball at a time: the next press waits for the field to be still
     haptics.calls.clear();
     t.down(0,press); t.up(0,{press.x+2,press.y+2});
     check(!t.aim && haptics.calls==std::vector<std::string>{"hum","hum","stop"} && m.ballsLeft==Model::defaultBalls-1,"a short pull cancels without a thump");
@@ -889,6 +892,8 @@ static void debugSettingsChecks() {
     check(d.balls==12 && d.grid.weights==std::array<int,5>{0,4,2,5,3} && d.bounces==defaults.bounces,"a saved scheme line leaves every other setting intact");
   }
   check(tapdemo::saveDebug(every).find("scheme")==std::string::npos,"a save has no scheme line");
+  check(tapdemo::DebugSettings{}.pace==7 && tapdemo::loadDebug("debug 1\npace 5\n").pace==5 && tapdemo::loadDebug("debug 1\npace 99\n").pace==10 && tapdemo::loadDebug("debug 1\npace 1\n").pace==4 && tapdemo::loadDebug("debug 1\npace x\n").pace==7,"the pace setting loads, clamps and ignores a damaged line");
+  { tapdemo::DebugSettings p; p.pace=5; check(tapdemo::loadDebug(tapdemo::saveDebug(p)).pace==5 && tapdemo::saveDebug(tapdemo::DebugSettings{}).find("pace")==std::string::npos,"the pace round-trips and a default save has no pace line"); }
   check(tapdemo::loadDebug("debug 1\nballs 99999999999\n").balls==Model::defaultBalls,"a number too large to read leaves the default");
   std::cout<<"Debug settings: round-trip, defaults and clamping\n";
 }
@@ -1072,7 +1077,9 @@ static void shotCameraChecks() {
   t.down(9,{60,200}); t.move(9,{100,220}); t.up(9,{100,220});
   check(!t.framing.automatic,"manual touch pan takes ownership before the shot");
   const Camera panned=t.camera;
-  check(m.launch({384,640},{-40,0}) && m.launch({384,640},{40,0}),"opposing live balls launch after the pan");
+  check(m.launch({384,640},{-40,0}),"a ball launches after the pan");
+  m.balls.push_back({{384,640},{Model::speed,0},m.bouncesPerBall}); // and one flying the other way
+  check(m.balls.size()==2,"opposing live balls fly");
   for(int i=0; i<100; ++i) { m.update(1.0f/60); t.update(1.0f/60); check(inView(t.camera,m),"every live ball stays inside the play area with a margin after a manual pan"); }
   check(!same(t.camera,panned),"shot follow still moves the manually panned camera");
   t.zoom({195,462},-5); const float widened=t.camera.zoom;

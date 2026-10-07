@@ -65,6 +65,7 @@ DebugSettings DebugSettings::clamped() const {
   s.bounces=std::clamp(bounces,1,Model::maxSetting);
   s.shake=std::clamp(shake,0,3);
   s.glint=std::clamp(glint,0,3);
+  s.pace=std::clamp(pace,4,10);
   s.grid=grid.clamped();
   return s;
 }
@@ -77,6 +78,7 @@ std::string saveDebug(const DebugSettings& settings) {
   line("glow",s.grid.glow);
   if(s.shake!=DebugSettings{}.shake) line("shake",s.shake); // a save at the default stays as older builds wrote it
   if(s.glint!=DebugSettings{}.glint) line("glint",s.glint);
+  if(s.pace!=DebugSettings{}.pace) line("pace",s.pace);
   text+="weights";
   for(int w: s.grid.weights) { text+=' '; text+=std::to_string(w); }
   return text+'\n';
@@ -110,7 +112,7 @@ DebugSettings loadDebug(std::string_view text) {
     struct Field { std::string_view key; int* value; };
     for(const Field& f: {Field{"ping",&s.pingRadius},{"bomb",&s.bombSize},{"zapSeconds",&s.electricSeconds},{"zapHalves",&s.electricHalves},
                          {"snap",&s.snapDegrees},{"balls",&s.balls},{"bounces",&s.bounces},{"grid",&s.grid.gridScale},
-                         {"glow",&s.grid.glow},{"shake",&s.shake},{"glint",&s.glint}})
+                         {"glow",&s.grid.glow},{"shake",&s.shake},{"glint",&s.glint},{"pace",&s.pace}})
       if(f.key==key) number(words[1],*f.value);
   }
   return s.clamped();
@@ -354,7 +356,7 @@ void Model::zap(const Ball& ball) {
 bool Model::launch(yy::Vec2 at, yy::Vec2 pull) {
   pull=snapPull(pull,static_cast<float>(snapDegrees));
   const float length=std::hypot(pull.x,pull.y);
-  if(paused_ || over() || ballsLeft<=0 || !(length>=minPull) || !open(at)) return false;
+  if(paused_ || over() || ballsLeft<=0 || flying() || !(length>=minPull) || !open(at)) return false;
   balls.push_back({at,{-pull.x/length*speed,-pull.y/length*speed},bouncesPerBall});
   --ballsLeft;
   return true;

@@ -102,14 +102,14 @@ void paletteChecks() {
   check(std::all_of(canvas.texts.begin(),canvas.texts.end(),[](const auto& t){ return t.at.x>=0 && t.at.y>=0 && t.at.y+16<=844; }),"every debug row fits the screen");
   tap({335,85}); // Existing ping control still applies immediately.
   check(canvas.valueAt(78,std::to_string(Model::defaultPingRadius+1)),"ping radius plus still works");
-  tap({335,401}); tap({335,443}); // Pending ball/bounce settings.
-  check(canvas.valueAt(394,std::to_string(Model::defaultBalls+1)) && canvas.valueAt(436,std::to_string(Model::defaultBounces+1)),"existing pending controls work");
+  tap({335,425}); tap({335,465}); // Pending ball/bounce settings.
+  check(canvas.valueAt(418,std::to_string(Model::defaultBalls+1)) && canvas.valueAt(458,std::to_string(Model::defaultBounces+1)),"existing pending controls work");
   tap({110,810}); // RESTART, where COLORS used to sit above it
   check(!canvas.has("CLOSE") && canvas.has("TAP TO START") && same(canvas.field,garden.field) && canvas.spriteHas(GardenSprite::Mist),"restart closes debug and the field is Garden Pop");
   tap({330,40});
   check(canvas.valueAt(78,std::to_string(Model::defaultPingRadius+1)),"restart also keeps the existing ping radius preference");
-  check(canvas.valueAt(394,std::to_string(Model::defaultBalls+1)) && canvas.valueAt(436,std::to_string(Model::defaultBounces+1)),"restart applies the existing pending settings");
-  tap({195,783}); // between the last weight row and RESTART: inside the panel, no button
+  check(canvas.valueAt(418,std::to_string(Model::defaultBalls+1)) && canvas.valueAt(458,std::to_string(Model::defaultBounces+1)),"restart applies the existing pending settings");
+  tap({195,789}); // between the last weight row and RESTART: inside the panel, no button
   check(canvas.has("CLOSE"),"an empty spot in the panel does nothing");
   tap({275,810}); // CLOSE
   check(!canvas.has("CLOSE") && same(canvas.field,garden.field),"CLOSE keeps Garden Pop");
@@ -117,23 +117,23 @@ void paletteChecks() {
   std::cout<<"Debug touch path: no COLORS button, restart, close, reopen passed\n";
 
   // The grid settings: the steppers change the pending values and RESTART builds the new board.
-  check(canvas.has("GRID SIZE") && canvas.valueAt(478,"24X40") && canvas.valueAt(520,"2%") && canvas.has("FREE PLAY WEIGHTS"),"debug shows the grid size and glow rate");
+  check(canvas.has("GRID SIZE") && canvas.valueAt(498,"24X40") && canvas.valueAt(538,"2%") && canvas.has("FREE PLAY WEIGHTS"),"debug shows the grid size and glow rate");
   for(const char* name: {"BOMB","ELECTRIC","PING","GHOST","SPEED"}) check(canvas.has(name),"debug shows a weight for each power-up");
   check(canvas.columns()==24,"the board starts 24 columns wide");
-  tap({205,485}); tap({205,485}); tap({205,485}); // grid size - (stops at its smallest)
-  check(canvas.valueAt(478,"12X20"),"the grid size steps down to 12x20");
-  tap({205,527}); check(canvas.valueAt(520,"1.5%"),"the glow rate steps by half a percent");
-  for(int i=0; i<10; ++i) tap({335,527});
-  check(canvas.valueAt(520,"8%"),"above 5% it steps by whole percents");
-  tap({205,591}); check(canvas.valueAt(584,"0"),"a weight steps down to 0");
-  tap({335,759}); check(canvas.valueAt(752,"2"),"a weight steps up");
+  tap({205,505}); tap({205,505}); tap({205,505}); // grid size - (stops at its smallest)
+  check(canvas.valueAt(498,"12X20"),"the grid size steps down to 12x20");
+  tap({205,545}); check(canvas.valueAt(538,"1.5%"),"the glow rate steps by half a percent");
+  for(int i=0; i<10; ++i) tap({335,545});
+  check(canvas.valueAt(538,"8%"),"above 5% it steps by whole percents");
+  tap({205,607}); check(canvas.valueAt(600,"0"),"a weight steps down to 0");
+  tap({335,767}); check(canvas.valueAt(760,"2"),"a weight steps up");
   check(canvas.columns()==24,"the pending settings leave the board alone");
   tap({110,810}); // RESTART
   check(!canvas.has("GRID SIZE") && canvas.columns()==12,"restart builds the 12x20 board, fitted to the play area");
   tap({330,40});
-  check(canvas.valueAt(478,"12X20") && canvas.valueAt(520,"8%") && canvas.valueAt(584,"0") && canvas.valueAt(752,"2"),"reopening debug shows the applied settings");
-  for(int i=0; i<12; ++i) tap({335,485});
-  check(canvas.valueAt(478,"60X100"),"the grid size steps up to 60x100");
+  check(canvas.valueAt(498,"12X20") && canvas.valueAt(538,"8%") && canvas.valueAt(600,"0") && canvas.valueAt(760,"2"),"reopening debug shows the applied settings");
+  for(int i=0; i<12; ++i) tap({335,505});
+  check(canvas.valueAt(498,"60X100"),"the grid size steps up to 60x100");
   tap({110,810});
   check(canvas.columns()==60,"restart builds the 60x100 board");
   std::cout<<"Debug touch path: grid size, glow rate and weights apply on restart passed\n";
@@ -143,16 +143,21 @@ void paletteChecks() {
   const auto press=[&](yy::Vec2 p) { tuned->pointerDown(7,p); tuned->pointerUp(7,p); panel.read(*tuned); };
   press({330,40});
   check(panel.has("BOMB SIZE") && panel.has("ZAP SECONDS") && panel.has("ZAP REACH") && panel.has("SNAP ANGLE"),"debug shows the power-up tuning rows");
-  check(panel.valueAt(120,"5X5") && panel.valueAt(162,"6") && panel.valueAt(204,"2.5") && panel.valueAt(246,"5 DEG"),"the tuning starts at its defaults");
-  press({335,127}); check(panel.valueAt(120,"7X7"),"bomb size steps by 2");
+  check(panel.valueAt(118,"5X5") && panel.valueAt(158,"6") && panel.valueAt(198,"2.5") && panel.valueAt(238,"5 DEG"),"the tuning starts at its defaults");
+  press({335,127}); check(panel.valueAt(118,"7X7"),"bomb size steps by 2");
   for(int i=0; i<9; ++i) press({205,127});
-  check(panel.valueAt(120,"3X3"),"bomb size stops at 3x3");
-  press({335,169}); check(panel.valueAt(162,"7"),"lightning seconds step up");
-  press({335,211}); check(panel.valueAt(204,"3"),"lightning reach steps by half a cell");
-  for(int i=0; i<5; ++i) press({205,253});
-  check(panel.valueAt(246,"OFF"),"a snap angle of 0 shows OFF");
+  check(panel.valueAt(118,"3X3"),"bomb size stops at 3x3");
+  press({335,167}); check(panel.valueAt(158,"7"),"lightning seconds step up");
+  press({335,207}); check(panel.valueAt(198,"3"),"lightning reach steps by half a cell");
+  for(int i=0; i<5; ++i) press({205,247});
+  check(panel.valueAt(238,"OFF"),"a snap angle of 0 shows OFF");
+  check(panel.has("PACE") && panel.valueAt(318,"0.7X"),"the debug panel shows the game speed at its calm default");
+  press({335,325}); press({335,325}); press({335,325}); press({335,325});
+  check(panel.valueAt(318,"1.0X"),"the pace steps up to 1.0x and stops");
+  for(int i=0; i<9; ++i) press({205,325});
+  check(panel.valueAt(318,"0.4X"),"and down to 0.4x and stops");
   press({110,810}); press({330,40}); // RESTART, then reopen
-  check(panel.valueAt(120,"3X3") && panel.valueAt(162,"7") && panel.valueAt(204,"3") && panel.valueAt(246,"OFF"),"restart keeps the tuning");
+  check(panel.valueAt(118,"3X3") && panel.valueAt(158,"7") && panel.valueAt(198,"3") && panel.valueAt(238,"OFF") && panel.valueAt(318,"0.4X"),"restart keeps the tuning and the pace");
   std::cout<<"Debug touch path: bomb size, lightning and snap angle apply at once and survive restart passed\n";
 }
 
@@ -252,10 +257,10 @@ void gardenChecks() {
       check(same(old.canvas.field,garden.field) || old.canvas.has("TAP TO START"),"an old save opens in Garden Pop");
       old.tap({330,40});
       check(!old.canvas.has("COLORS") && !old.canvas.has("NAVY") && !old.canvas.has("GARDEN POP"),"the debug panel of an old save has no COLORS button");
-      check(old.canvas.valueAt(394,"12") && old.canvas.valueAt(436,"9") && old.canvas.valueAt(478,"18X30") && old.canvas.valueAt(520,"6%"),"an old save keeps its balls, bounces, grid and glow");
-      check(old.canvas.valueAt(584,"0") && old.canvas.valueAt(626,"4") && old.canvas.valueAt(668,"2") && old.canvas.valueAt(710,"5") && old.canvas.valueAt(752,"3"),"an old save keeps its weights");
+      check(old.canvas.valueAt(418,"12") && old.canvas.valueAt(458,"9") && old.canvas.valueAt(498,"18X30") && old.canvas.valueAt(538,"6%"),"an old save keeps its balls, bounces, grid and glow");
+      check(old.canvas.valueAt(600,"0") && old.canvas.valueAt(640,"4") && old.canvas.valueAt(680,"2") && old.canvas.valueAt(720,"5") && old.canvas.valueAt(760,"3"),"an old save keeps its weights");
       check(old.storage.debug==text,"opening the debug panel on an old save rewrites nothing until a setting changes");
-      old.tap({205,359}); // LEVEL -: free play, which uses the saved grid
+      old.tap({205,385}); // LEVEL -: free play, which uses the saved grid
       old.tap({110,810}); // RESTART
       check(same(old.canvas.field,garden.field) && old.canvas.spriteHas(GardenSprite::Mist) && old.canvas.spriteHas(GardenSprite::Grass) && old.canvas.columns()==18,"an old save restarts into a Garden Pop field of its own grid");
       old.tap({330,40}); old.tap({335,127});
@@ -473,7 +478,7 @@ void debugPersistenceChecks() {
   {
     Session first("");
     first.tap({330,40});
-    first.tap({335,127}); first.tap({335,401}); first.tap({335,485}); first.tap({335,591}); // bomb, balls, grid, bomb weight
+    first.tap({335,127}); first.tap({335,425}); first.tap({335,505}); first.tap({335,607}); // bomb, balls, grid, bomb weight
     check(first.storage.writes==4 && first.storage.debug.rfind("debug 1\n",0)==0,"each debug change is saved as it is made");
     check(first.storage.debug.find("scheme")==std::string::npos,"a save has no scheme line");
     saved=first.storage.debug;
@@ -482,21 +487,21 @@ void debugPersistenceChecks() {
     Session second("",nullptr,nullptr,saved.c_str());
     check(second.storage.writes==0,"opening the app does not rewrite the settings");
     second.tap({330,40});
-    check(second.canvas.valueAt(120,"7X7") && second.canvas.valueAt(394,"11") && second.canvas.valueAt(478,"30X50") && second.canvas.valueAt(584,"2"),
+    check(second.canvas.valueAt(118,"7X7") && second.canvas.valueAt(418,"11") && second.canvas.valueAt(498,"30X50") && second.canvas.valueAt(600,"2"),
           "a relaunch brings the debug settings back");
   }
   {
     Session pinned("","1",nullptr,saved.c_str());
     pinned.tap({330,40}); pinned.tap({335,127});
-    check(pinned.canvas.valueAt(120,"7X7") && pinned.storage.writes==0 && pinned.storage.debug==saved,"a pinned level uses the defaults and saves nothing");
+    check(pinned.canvas.valueAt(118,"7X7") && pinned.storage.writes==0 && pinned.storage.debug==saved,"a pinned level uses the defaults and saves nothing");
     Session scene("",nullptr,"debug",saved.c_str());
     scene.tap({335,127});
-    check(scene.canvas.valueAt(120,"7X7") && scene.storage.writes==0 && scene.storage.debug==saved,"a scene uses the defaults and saves nothing");
+    check(scene.canvas.valueAt(118,"7X7") && scene.storage.writes==0 && scene.storage.debug==saved,"a scene uses the defaults and saves nothing");
   }
   {
     Session damaged("",nullptr,nullptr,"debug 1\nballs 12\nscheme 99\nbomb\n\x01");
     damaged.tap({330,40});
-    check(damaged.canvas.valueAt(394,"12") && damaged.canvas.valueAt(120,"5X5") && !damaged.canvas.has("COLORS") && same(damaged.canvas.field,tapdemo::garden.field),"a damaged save still opens, clamped and defaulted");
+    check(damaged.canvas.valueAt(418,"12") && damaged.canvas.valueAt(118,"5X5") && !damaged.canvas.has("COLORS") && same(damaged.canvas.field,tapdemo::garden.field),"a damaged save still opens, clamped and defaulted");
   }
   std::cout<<"Debug touch path: settings survive a relaunch, pins neither read nor write them passed\n";
 }
@@ -518,21 +523,21 @@ void levelFlowChecks() {
     check(third.canvas.has("EXPECTED WINS 98%"),"level 3's card gives its own expected win rate");
     const auto before=third.field();
     third.tap({330,40});
-    check(third.canvas.valueAt(352,"3"),"the debug level picker shows the current level");
+    check(third.canvas.valueAt(378,"3"),"the debug level picker shows the current level");
     third.tap({110,810}); // RESTART on level 3
     check(third.canvas.has("LEVEL 3") && sameFills(third.field(),before),"restarting a level from debug rebuilds the identical field");
-    third.tap({330,40}); third.tap({335,359}); // LEVEL +
-    check(third.canvas.valueAt(352,"4"),"the picker steps to the next level");
+    third.tap({330,40}); third.tap({335,385}); // LEVEL +
+    check(third.canvas.valueAt(378,"4"),"the picker steps to the next level");
     third.tap({110,810});
     check(third.canvas.has("LEVEL 4") && third.storage.saved=="level 4\n","a picked level opens and is saved");
     third.tap({330,40});
-    for(int i=0; i<levelCount; ++i) third.tap({205,359});
-    check(third.canvas.valueAt(352,"FREE"),"the picker's lowest entry is free play");
+    for(int i=0; i<levelCount; ++i) third.tap({205,385});
+    check(third.canvas.valueAt(378,"FREE"),"the picker's lowest entry is free play");
     third.tap({110,810});
     check(third.canvas.has("FREE PLAY") && third.canvas.columns()==24 && third.storage.saved=="level 4\n","free play opens today's random 24x40 field and keeps the saved level");
     third.tap({330,40});
-    for(int i=0; i<levelCount; ++i) third.tap({335,359});
-    check(third.canvas.valueAt(352,"10"),"the picker stops at level 10");
+    for(int i=0; i<levelCount; ++i) third.tap({335,385});
+    check(third.canvas.valueAt(378,"10"),"the picker stops at level 10");
   }
   {
     Session win("level 5\n","1","won");
@@ -626,6 +631,8 @@ bool hasTune(const std::vector<float>& tones) {
   const float tune[]{523.25f,659.25f,783.99f,1046.5f,1318.5f};
   return std::search(tones.begin(),tones.end(),std::begin(tune),std::end(tune))!=tones.end();
 }
+// Frames at the game's calm base speed that cover `updates` model steps, with a margin for slow motion near the goal.
+int settled(int updates) { return static_cast<int>(std::ceil(updates/tapdemo::Pace::defaultBase))+60; }
 // The game on `round`'s level with every shot but the winning one played out; the winning shot is pressed,
 // dragged and released, and no frame has followed it yet.
 struct Play {
@@ -641,7 +648,7 @@ struct Play {
       const auto& shot=round.shots[i];
       session.game->pointerDown(1,shot.press); session.game->pointerMove(1,shot.release); session.game->pointerUp(1,shot.release);
       session.canvas.read(*session.game);
-      if(i+1<round.shots.size()) session.play(round.flights[i]);
+      if(i+1<round.shots.size()) session.play(settled(round.flights[i])); // frames at the calm game speed, with a margin
     }
   }
   bool zoomed() const { return session.canvas.fieldWidth>fit*1.1f; }
@@ -884,7 +891,7 @@ void juiceChecks() {
   {
     // A new ball starts the pitch over: the first sound of each single-ball flight is the base pitch.
     Session shots("","1","garden-shot");
-    shots.play(150);
+    shots.play(300);
     check(!shots.quiet.tones.empty() && std::abs(shots.quiet.tones.front()-PitchLadder::hz(0))<0.01f,"the first hit of a ball plays the base pitch");
   }
   {
@@ -942,7 +949,7 @@ Outcome playPaced(int level, float scale, float& fastest) {
   Model m; m.play(level);
   const yy::Vec2 at=pocketSpot(m);
   const yy::Vec2 pulls[]{{20,40},{-40,15},{5,-40},{40,-10},{-30,-30},{0,50}};
-  Pace pace; float debt=0; int shot=0; Outcome out{}; fastest=1;
+  Pace pace; float debt=0; int shot=0; Outcome out{}; fastest=0;
   const float dt=1.0f/60;
   for(int frame=0; frame<60*600 && !m.over(); ++frame) {
     if(m.balls.empty() && m.ballsLeft>0 && !m.launch(at,pulls[shot++%6])) break;
@@ -995,38 +1002,74 @@ void paceChecks() {
   }
 
   // Game speed changes how many fixed steps a frame takes, never the steps: every level plays out the same.
-  float fastest=1;
+  float fastest=0;
   for(int level=1; level<=levelCount; ++level) {
     float f1,fp,ff,fs;
     const Outcome flat=playPaced(level,1,f1), paced=playPaced(level,0,fp), fast=playPaced(level,2.5f,ff), slow=playPaced(level,0.35f,fs);
-    check(flat==paced && flat==fast && flat==slow,"a level plays out the same at 1x, at the game's varying pace, fast and slow");
+    check(flat==paced && flat==fast && flat==slow,"a level plays out the same at 1x, at the game's calm pace, at the old 2.5x and slow");
     check(flat.bounces>0,"the compared run flew");
     fastest=std::max(fastest,fp);
   }
-  check(fastest>2,"the varying pace really ran fast on some level");
-  std::cout<<"Aim line: "<<shots<<" shots matched their first contact ("<<onBrick<<" brick, "<<onWall<<" wall); game speed left every level's outcome unchanged (fastest "<<fastest<<"x)\n";
+  check(fastest>0 && fastest<=Pace::defaultBase+1e-4f,"the game's pace never runs faster than its calm base");
+  std::cout<<"Aim line: "<<shots<<" shots matched their first contact ("<<onBrick<<" brick, "<<onWall<<" wall); game speed left every level's outcome unchanged (the game ran at most "<<fastest<<"x)\n";
 
   {
-    // The speed rises with the oldest flying ball's bounces, 1x to about 2.5x, and is 1x with nothing flying.
+    // The game speed is a calm constant, 1x or below, whatever the ball has bounced; nothing flying runs at the base.
     Model m; m.play(1);
-    check(Pace::target(m)==1,"nothing flying runs at 1x");
+    check(Pace::defaultBase<1 && Pace::target(m)==Pace::defaultBase,"nothing flying runs at the base speed");
     const yy::Vec2 at=pocketSpot(m);
-    check(m.launch(at,{20,40}) && m.launch(at,{-20,40}),"two balls fly");
-    float last=0;
+    check(m.launch(at,{20,40}),"a ball flies");
     for(int left=m.bouncesPerBall; left>=1; --left) {
-      m.balls[0].bounces=left; m.balls[1].bounces=m.bouncesPerBall;
-      const float t=Pace::target(m);
-      check(t>=last && t>=1 && t<=Pace::topSpeed+1e-4f,"the speed rises as the oldest ball uses its bounces");
-      last=t;
+      m.balls[0].bounces=left;
+      check(Pace::target(m)==Pace::defaultBase,"the speed does not rise as the ball uses its bounces");
     }
-    check(close(Pace::target(m),Pace::topSpeed,1e-4f),"the oldest ball's last bounce runs at the top speed");
-    m.balls[0].bounces=m.bouncesPerBall; m.balls[1].bounces=1;
-    check(Pace::target(m)==1,"a fresh oldest ball runs at 1x whatever the newer ball has used");
     Pace pace; m.balls[0].bounces=1;
-    float s=1; for(int i=0; i<120; ++i) s=pace.step(m,1.0f/60);
-    check(close(s,Pace::topSpeed,0.01f),"the pace eases up to the target");
+    float s=0; for(int i=0; i<120; ++i) s=pace.step(m,1.0f/60);
+    check(close(s,Pace::defaultBase,0.01f),"the pace stays at the base");
+    pace.setBase(5); check(pace.base()==Pace::maxBase,"the base is clamped to its range");
+    pace.setBase(0); check(pace.base()==Pace::minBase,"at both ends");
+    pace.setBase(0.5f);
+    for(int i=0; i<120; ++i) s=pace.step(m,1.0f/60);
+    check(close(s,0.5f,0.01f) && close(Pace::target(m,0.5f),0.5f),"the debug base sets the speed");
     m.balls.clear();
-    check(pace.step(m,1.0f/60)==1,"the pace returns to 1x the moment nothing flies");
+    check(pace.step(m,1.0f/60)==0.5f,"the pace returns to the base the moment nothing flies");
+  }
+  {
+    // One ball at a time: a launch is refused while a ball or a fired power-up is in flight, and accepted after.
+    Model m; m.play(1);
+    const yy::Vec2 at=pocketSpot(m);
+    check(!m.flying() && m.launch(at,{20,40}) && m.flying(),"a launch flies");
+    const int left=m.ballsLeft;
+    check(!m.launch(at,{-20,40}) && m.ballsLeft==left && m.balls.size()==1,"a second launch is refused while the ball flies");
+    for(int i=0; i<60*120 && m.flying() && !m.over(); ++i) m.update(1.0f/60);
+    check(m.over() || (!m.flying() && m.launch(at,{-20,40}) && m.ballsLeft==left-1),"the next launch is accepted once nothing flies");
+    // Lightning keeps its ball flying; a fired power-up never leaves the field looking still.
+    Model z; z.play(1); z.balls.push_back({at,{0,0},1}); z.balls[0].electric=3;
+    check(z.flying() && !z.launch(at,{20,40}),"an electric ball still flies, so no launch");
+    // The touch path: a press while the ball flies places nothing; a press once it is still places and fires.
+    Session play("","2");
+    play.tap({195,600}); // the instructions card
+    Model field; field.play(2); Touch whole(field); whole.camera.fit(); // the whole-grid view each press below returns to
+    const auto& pocket=field.pockets.front();
+    const yy::Vec2 press=whole.camera.toScreen({(pocket.column+pocket.columns/2+0.5f)*Model::cell,(pocket.row+pocket.rows/2.0f)*Model::cell}), release{press.x+30,press.y+50};
+    const auto counter=[&]() { for(const auto& t: play.canvas.texts) if(t.at.x==62 && t.at.y==13) return std::stoi(t.value); return -1; };
+    const auto shoot=[&]() { play.game->zoom({195,462},-100); play.game->pointerDown(3,press); play.game->pointerMove(3,release); play.game->pointerUp(3,release); play.canvas.read(*play.game); };
+    shoot();
+    check(counter()==levelBalls-1,"the first press places and fires");
+    const auto readyTones=[&]() { return std::count(play.quiet.tones.begin(),play.quiet.tones.end(),880.0f); };
+    const auto before=readyTones();
+    int refused=0, fired=0, flightFrames=0;
+    for(int frame=0; frame<3600 && fired==0; ++frame) {
+      play.play(1);
+      if(frame%4==0) {
+        const int was=counter(); shoot();
+        if(counter()<was) ++fired; else ++refused;
+      }
+      if(fired==0) ++flightFrames;
+    }
+    check(refused>=10 && flightFrames>=40,"presses while the ball flies place nothing");
+    check(fired==1 && counter()==levelBalls-2,"the press after the field is still places and fires");
+    check(readyTones()>before,"a soft cue says it is the player's turn");
   }
   {
     // Last ball: banner state and the tighter hum.
@@ -1057,7 +1100,7 @@ void paceChecks() {
     const yy::Vec2 goal{12.5f*Model::cell,8.5f*Model::cell};
     check(!m.visible(12,8),"the goal starts hidden in the fog");
     m.ballsLeft=0; m.balls.push_back({{goal.x,goal.y+1.5f*Model::cell},{0,-Model::speed},5});
-    check(!nearGoal(m) && Pace::target(m)>=1,"near a hidden, unpinged goal nothing slows");
+    check(!nearGoal(m) && Pace::target(m)==Pace::defaultBase,"near a hidden, unpinged goal nothing slows");
     // A real Ping: launch up the column into the Ping brick, then put the ball by the goal.
     Model p=m; p.balls.clear(); p.ballsLeft=1;
     check(p.launch({12.5f*Model::cell,16.5f*Model::cell},{0,40}),"the Ping shot launches");
@@ -1071,20 +1114,20 @@ void paceChecks() {
     check(!nearGoal(p),"with balls still to place it is not the last ball");
     p.ballsLeft=0; p.pingTime=0;
     check(!nearGoal(p),"once the ping has gone the fogged goal is hidden again");
-    // A visible goal needs no ping, and the slow-down overrides the speed-up.
+    // A visible goal needs no ping, and the slow-down holds whatever the ball has bounced.
     m.bricks[10*columns+12]=0; m.bricks[9*columns+12]=0; m.refreshFog();
     check(m.visible(12,8),"the goal is now visible");
     m.balls.front().bounces=1; m.bouncesPerBall=15;
-    check(nearGoal(m) && Pace::target(m)==Pace::dramaSpeed,"the slow-down overrides the speed-up");
+    check(nearGoal(m) && Pace::target(m)==Pace::dramaSpeed,"the slow-down holds whatever the ball has bounced");
     Pace pace; pace.step(m,1.0f/60);
-    check(pace.speed()<1,"the pace starts dropping at once");
+    check(pace.speed()<Pace::defaultBase,"the pace starts dropping at once");
     for(int i=0; i<60; ++i) pace.step(m,1.0f/60);
     check(close(pace.speed(),Pace::dramaSpeed,0.01f),"and reaches slow motion");
     m.balls.front().position={goal.x,goal.y+5*Model::cell};
     pace.step(m,1.0f/60);
-    check(pace.speed()>Pace::dramaSpeed && pace.speed()<1,"leaving the zone eases back rather than snapping");
+    check(pace.speed()>Pace::dramaSpeed && pace.speed()<Pace::defaultBase,"leaving the zone eases back rather than snapping");
     for(int i=0; i<240; ++i) pace.step(m,1.0f/60);
-    check(close(pace.speed(),Pace::target(m),0.01f),"and arrives at the speed the ball's bounces call for");
+    check(close(pace.speed(),Pace::target(m),0.01f),"and arrives at the base speed");
   }
   {
     // On screen: the banner shows with the last ball held and not before.
@@ -1095,7 +1138,7 @@ void paceChecks() {
     Session wall("",nullptr,"aim-wall");
     check(!wall.canvas.has("LAST BALL"),"no banner on the wall-line scene");
   }
-  std::cout<<"Game speed: bounce speed-up, slow motion near the goal, LAST BALL banner and hum passed\n";
+  std::cout<<"Game speed: calm constant pace, one ball at a time, slow motion near the goal, LAST BALL banner and hum passed\n";
 }
 
 // The goal's glint in the fog and the loss screen's near miss (T26).
@@ -1164,9 +1207,9 @@ void glintChecks() {
       const auto& shot=loss.shots[i];
       s.game->pointerDown(1,shot.press); s.game->pointerMove(1,shot.release); s.game->pointerUp(1,shot.release);
       s.canvas.read(*s.game);
-      if(i+1<loss.shots.size()) s.play(flights[i]);
+      if(i+1<loss.shots.size()) s.play(settled(flights[i]));
     }
-    for(int i=0; i<1200 && !s.canvas.has("OUT OF BALLS"); ++i) s.play(1);
+    for(int i=0; i<4000 && !s.canvas.has("OUT OF BALLS"); ++i) s.play(1);
     check(s.canvas.has("OUT OF BALLS"),"the last ball runs out");
     const std::string away=std::to_string(loss.distance)+(loss.distance==1 ? " BRICK AWAY" : " BRICKS AWAY");
     check(s.canvas.has(away),"the loss card says how many bricks away the goal was");
@@ -1203,15 +1246,15 @@ void glintChecks() {
   {
     Session panel("");
     panel.tap({330,40});
-    check(panel.canvas.has("GLINT") && panel.canvas.valueAt(288,"MEDIUM"),"the panel shows GLINT, at medium");
-    panel.tap({335,290}); check(panel.canvas.valueAt(288,"HIGH") && panel.storage.debug.find("glint 3\n")!=std::string::npos,"plus raises the glint and saves it");
-    panel.tap({335,290}); check(panel.canvas.valueAt(288,"HIGH"),"it stops at high");
+    check(panel.canvas.has("GLINT") && panel.canvas.valueAt(278,"MEDIUM"),"the panel shows GLINT, at medium");
+    panel.tap({335,290}); check(panel.canvas.valueAt(278,"HIGH") && panel.storage.debug.find("glint 3\n")!=std::string::npos,"plus raises the glint and saves it");
+    panel.tap({335,290}); check(panel.canvas.valueAt(278,"HIGH"),"it stops at high");
     for(int i=0; i<3; ++i) panel.tap({205,290});
-    check(panel.canvas.valueAt(288,"OFF") && panel.storage.debug.find("glint 0\n")!=std::string::npos,"minus lowers it to off, and off is saved");
+    check(panel.canvas.valueAt(278,"OFF") && panel.storage.debug.find("glint 0\n")!=std::string::npos,"minus lowers it to off, and off is saved");
     panel.tap({335,290}); panel.tap({335,290});
-    check(panel.canvas.valueAt(288,"MEDIUM") && panel.storage.debug.find("glint")==std::string::npos,"back at medium the save has no glint line");
+    check(panel.canvas.valueAt(278,"MEDIUM") && panel.storage.debug.find("glint")==std::string::npos,"back at medium the save has no glint line");
     Session kept("",nullptr,nullptr,"debug 1\nglint 1\n"); kept.tap({330,40});
-    check(kept.canvas.valueAt(288,"LOW"),"a saved glint is kept");
+    check(kept.canvas.valueAt(278,"LOW"),"a saved glint is kept");
   }
   std::cout<<"Glint and near miss: falloff, debug stepper, loss screen by touch, retry field unchanged passed\n";
 }
