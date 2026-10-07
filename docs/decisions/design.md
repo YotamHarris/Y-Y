@@ -207,3 +207,16 @@ checks, live touch tests and nine inspected runtime/mockup pairs at 390 wide.
 **Evidence.** V11, `tests/palette_tests.cpp` (`celebrationChecks`: the look-ahead exact on a plain win, a win through a power-up and a win through a Ghost landing, none on lost shots; the same winning shot through the game's touch path with the slow motion ends with the balls left the bare model ends with; skip, pause and next tap) and `docs/figures/celebration/`.
 
 ---
+
+### D12 — Every hit has feedback, bricks show cracks, and the fog peels away (2026-10-07)
+
+**Status:** active
+**What happened.** Yotam: "Something feels off with the gameplay it's not fun enough", and from the review he chose a hit that registers, bricks that read as damage instead of a spreadsheet, and a reward for uncovering the field.
+
+**Decision.** Presentation only (`juice.hpp`, `game.cpp`); the model, seeds and levels are unchanged. A brick hit holds the drawn balls for 45 ms (the simulation keeps running). A break throws chips in the brick's colour (a power-up's glow, the goal's pink) from a fixed pool of 320 specks, and shakes the board a little, more for lightning (4), a bomb (7) and the goal (10), within 12. Balls leave a fading trail from the same pool. Each hit or break of a flight raises the break sound one pentatonic step (660 Hz up to two octaves); a launch resets it. A bomb adds a full-strength haptic. Hit points show as cracks over the brick (whole at 3, cracked at 2, badly cracked at 1) on top of the existing materials, which keep the colours distinct; glowing bricks and the goal breathe a soft halo under their unchanged icons. Cells a break uncovers keep their fog for 0.3 s while it peels away with a soft sound; a power-up brick or the goal found that way also gets a ring of sparkles for 0.7 s.
+
+**Why.** A hit should be felt, damage should be seen without reading a number, and finding something in the fog should be a moment. Effects only read `Hits` and the brick changes, so no shot or level result can move.
+
+**Evidence.** V13, `tests/palette_tests.cpp` (`juiceChecks`), the level band test unchanged, and `docs/figures/juice/`.
+
+---

@@ -16,6 +16,7 @@ void debugPersistenceChecks();
 void levelBandChecks();
 void celebrationChecks();
 void fontChecks();
+void juiceChecks();
 
 static void check(bool condition, const char* label) { if(!condition) { std::cerr<<label<<'\n'; std::exit(1); } }
 
@@ -930,6 +931,7 @@ int main() {
   debugPersistenceChecks();
   levelBandChecks();
   celebrationChecks();
+  juiceChecks();
   fontChecks();
   std::cout<<"Engine and TapDemo checks passed\n";
 }

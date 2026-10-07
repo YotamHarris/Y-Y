@@ -3,6 +3,7 @@
 #include <tapdemo/palette.hpp>
 #include <tapdemo/garden.hpp>
 #include <tapdemo/celebration.hpp>
+#include <tapdemo/juice.hpp>
 #include <yy/runtime.hpp>
 #include <algorithm>
 #include <cmath>
@@ -44,6 +45,9 @@ constexpr const char* weightNames[]{"","BOMB","ELECTRIC","PING","GHOST","SPEED"}
 // Each power-up's line on the instructions card; Bomb's names its size, so render writes it.
 constexpr const char* powerLines[]{"","","THE BALL ZAPS BRICKS NEAR IT","SHOWS NEARBY POWER-UPS + GOAL",
   "THE BALL JUMPS DEEP INTO FOG","THE BALL FLIES TWICE AS FAST"};
+constexpr float chipGravity=520, chipLife=0.55f;      // a broken brick's chips, in world units per second
+constexpr float trailLife=0.22f;                     // how long a point of a ball's trail lasts
+constexpr yy::Color chipColors[]{{88,150,9},{172,129,35},{222,124,55}}; // the 3, 2 and 1 hit-point sprites' own colours
 // Each power-up's sound: pitch and length.
 constexpr float powerTones[][2]{{0,0},{110,0.2f},{1320,0.12f},{1760,0.1f},{392,0.18f},{880,0.1f}};
 // The glow rate steps by half a percent up to 5%, then by whole percents.
@@ -107,13 +111,33 @@ void icon(yy::Renderer& r, const Palette& palette, Power power, yy::Vec2 at, flo
   }
 }
 // A glowing (or goal) brick: its icon in a holder above a bar in its colour.
-void iconBrick(yy::Renderer& r, const Palette& palette, Power power, yy::Rect cell) {
+// `pulse` (0..1) breathes a soft halo of the power-up's colour under the brick; the icon stays on top and unchanged.
+void iconBrick(yy::Renderer& r, const Palette& palette, Power power, yy::Rect cell, float pulse=0) {
   const float inset=cell.w*0.045f;
+  if(pulse>0) {
+    yy::Color halo=glow(palette,power); halo.a=static_cast<unsigned char>(28+70*pulse);
+    const float grow=cell.w*(0.02f+0.05f*pulse);
+    r.rectangle({cell.x-grow,cell.y-grow,cell.w+2*grow,cell.h+2*grow},halo);
+  }
   r.rectangle({cell.x+inset,cell.y+cell.h*0.82f,cell.w-2*inset,cell.h*0.14f},glow(palette,power));
   gardenSprite(r,GardenSprite::Holder,cell);
   const yy::Rect inner{cell.x+cell.w*0.20f,cell.y+cell.h*0.18f,cell.w*0.60f,cell.h*0.62f};
   if(power==Power::None) gardenSprite(r,GardenSprite::Flag,inner);
   else icon(r,palette,power,{inner.x+inner.w/2,inner.y+inner.h/2},inner.w);
+}
+// Crack stages over a brick's face (juice.hpp): whole, cracked, badly cracked. Each cell flips them a little
+// differently so a field of damage does not repeat.
+void cracks(yy::Renderer& r, int hp, int column, int row, yy::Rect box) {
+  int count=0;
+  const CrackPiece* pieces=crackPieces(crackStage(hp),count);
+  if(!count) return;
+  const bool flip=((column*7+row*13)&1)!=0;
+  const yy::Color ink{38,22,12,215};
+  for(int i=0; i<count; ++i) {
+    const CrackPiece& c=pieces[i];
+    const float x=flip ? 1-c.x-c.w : c.x;
+    r.rectangle({box.x+x*box.w,box.y+c.y*box.h,std::max(1.0f,c.w*box.w),std::max(1.0f,c.h*box.h)},ink);
+  }
 }
 }
 
@@ -136,6 +160,16 @@ class TapGame final: public yy::Game {
   struct Pop { int cell; float age; };
   std::vector<Pop> pops; // cosmetic only: never part of Model, input or the shot clock
   std::vector<int> lastBricks;
+  // Hit feedback (juice.hpp): presentation only, driven by model.hits and the brick changes. Pools are sized once.
+  HitStop hitStop;
+  PitchLadder ladder;
+  Shake shake;
+  SpeckPool specks;          // brick chips and the ball's trail, in world units
+  FogLift lift;              // cells the fog is peeling off
+  std::vector<char> wasVisible;
+  std::vector<yy::Vec2> heldBalls; // where the balls were drawn when the hit-stop began
+  int lastBallsLeft{};
+  Camera drawCam;            // the camera as drawn this frame, shake included
   float clock{};             // seconds, for glow pulses and sparks
   // The goal celebration (celebration.hpp): presentation only. The model always steps by the real frame's dt,
   // on the frames the scaled clock crosses a step, so slow motion cannot change where a ball goes.
@@ -154,8 +188,42 @@ class TapGame final: public yy::Game {
   bool frozenScene{}; // only an explicitly staged screenshot (mid-hit, a celebration beat), never ordinary play
 
   void reset(bool instructions) {
-    bursts.clear(); pops.clear(); petals.clear(); frozenScene=false; lastBricks=model.bricks; touch.refit(); touch.instructions=instructions;
+    bursts.clear(); pops.clear(); petals.clear(); frozenScene=false; specks.clear(); hitStop={}; shake={}; ladder.reset(); lastBallsLeft=model.ballsLeft; lift.resize(model.columns*model.rows); heldBalls.reserve(16); syncBricks(); touch.refit(); touch.instructions=instructions;
     celebration.reset(); framing.reset(); focused=false; timeDebt=0; rainDebt=0; countedBalls=0; cheered=false;
+  }
+  // The cell's bricks and visibility as the effects last saw them: changes after this are what they react to.
+  void syncBricks() {
+    lastBricks=model.bricks; lift.clear();
+    wasVisible.resize(model.bricks.size());
+    for(std::size_t i=0; i<wasVisible.size(); ++i) wasVisible[i]=model.visible(static_cast<int>(i)%model.columns,static_cast<int>(i)/model.columns);
+  }
+  // Cells that came out of the fog since the last look start to peel; a power-up or the goal among them is highlighted.
+  void liftFog() {
+    if(wasVisible.size()!=model.bricks.size()) { syncBricks(); return; }
+    int freed=0; bool special=false;
+    for(std::size_t i=0; i<wasVisible.size(); ++i) {
+      const int column=static_cast<int>(i)%model.columns, row=static_cast<int>(i)/model.columns;
+      const bool now=model.visible(column,row);
+      if(now && !wasVisible[i] && model.bricks[i]>0) {
+        const bool found=model.isGoal(column,row) || model.power(column,row)!=Power::None;
+        lift.begin(static_cast<int>(i),found); ++freed; special=special||found;
+      }
+      wasVisible[i]=now;
+    }
+    if(freed>0 && audio) audio->tone(fogLiftHz(freed),0.12f);
+    if(special && audio) audio->tone(fogLiftHz(freed)*1.5f,0.1f);
+  }
+  // Chips fly from a broken brick in its own colour: a power-up's glow, the goal's, else the sprite it was.
+  void chips(int cell, int previousHp) {
+    yy::Color color=chipColors[std::clamp(3-previousHp,0,2)];
+    if(cell==model.goal) color=glow(garden,Power::None);
+    for(const auto& f: model.hits.fired) if(f.cell==cell) color=glow(garden,f.power);
+    const yy::Vec2 centre{(cell%model.columns+0.5f)*Model::cell,(cell/model.columns+0.5f)*Model::cell};
+    for(int i=0; i<7; ++i) {
+      const float angle=unit()*6.2831853f, speed=60+unit()*150;
+      specks.add({{centre.x+(unit()-0.5f)*Model::cell*0.6f,centre.y+(unit()-0.5f)*Model::cell*0.6f},
+                  {std::cos(angle)*speed,std::sin(angle)*speed-90},0,chipLife*(0.7f+unit()*0.3f),3+unit()*3.5f,color,false,false});
+    }
   }
   float unit() { petalState=petalState*1664525u+1013904223u; return static_cast<float>(petalState>>8)*(1.0f/16777216.0f); }
   yy::Vec2 goalCentre() const { return {(model.goal%model.columns+0.5f)*Model::cell,(model.goal/model.columns+0.5f)*Model::cell}; }
@@ -231,7 +299,7 @@ class TapGame final: public yy::Game {
   void skipCelebration() {
     if(!model.over()) {
       for(int i=0, n=static_cast<int>(Celebration::window*2/frameSeconds)+1; i<n && !model.over(); ++i) model.update(frameSeconds);
-      lastBricks=model.bricks; pops.clear(); bursts.clear();
+      syncBricks(); pops.clear(); bursts.clear();
       if(!model.won()) { celebration.reset(); timeDebt=0; releaseCamera(); return; }
     }
     celebration.skip(); petals.clear(); timeDebt=0; countedBalls=0; releaseCamera();
@@ -355,7 +423,7 @@ class TapGame final: public yy::Game {
       }
       set(column,pocket.row-1,power);
       if(power==Power::None) model.bricks[(pocket.row-1)*model.columns+column]=3;
-      lastBricks=model.bricks;
+      syncBricks();
       sling(touch.camera.toScreen(below),{0,40});
       if(!model.balls.empty()) model.balls.back().bounces=1;
       if(std::strcmp(scene,"garden-hit")==0) {
@@ -365,6 +433,26 @@ class TapGame final: public yy::Game {
         pointerDown(9,at); pointerMove(9,{at.x+40,at.y+70});
         frozenScene=true;
       }
+      return;
+    }
+    // juice-break, juice-bomb and juice-fog: a real sling into a brick of one hit point, a Bomb brick, or a brick whose
+    // break uncovers fogged cells (a Bomb and the goal among them), stepped to the moment worth a screenshot and frozen.
+    if(std::strncmp(scene,"juice-",6)==0) {
+      const std::string kind=scene+6;
+      touch.camera.hold({centre.x,centre.y-3*Model::cell},{195,480},1.3f);
+      for(int d=-2; d<=2; ++d) set(column+d,pocket.row-1,kind=="bomb" && d==0 ? Power::Bomb : Power::None);
+      for(int d=-2; d<=2; ++d) if(model.bricks[(pocket.row-2)*model.columns+column+d]>0) model.bricks[(pocket.row-2)*model.columns+column+d]=2;
+      if(kind=="fog") { set(column-1,pocket.row-3,Power::Bomb); setGoal(column+1,pocket.row-3); }
+      syncBricks();
+      sling(touch.camera.toScreen(below),{0,40});
+      const auto runTo=[&](auto reached, int extra) {
+        for(int i=0; i<600 && !reached(); ++i) update(1.0f/60);
+        for(int i=0; i<extra; ++i) update(1.0f/60);
+        frozenScene=true;
+      };
+      if(kind=="break") runTo([&]{ return specks.live()>8; },3);
+      else if(kind=="bomb") runTo([&]{ return !bursts.empty(); },5);
+      else if(kind=="fog") runTo([&]{ return !lift.entries().empty(); },5);
       return;
     }
     if(std::strcmp(scene,"debug")==0) { openDebug(); return; }
@@ -400,7 +488,7 @@ class TapGame final: public yy::Game {
       set(column,row,Power::Bomb); set(column+1,row,Power::Ping);
       setGoal(column+2,row);
       set(pocket.column+pocket.columns+2,pocket.row,Power::Speed);
-      lastBricks=model.bricks;
+      syncBricks();
       if(std::strcmp(scene,"fogedge-fit")==0) touch.camera.fit();
       else touch.camera.hold({centre.x,(row+1.0f)*Model::cell},{195,480},std::strcmp(scene,"fogedge-near")==0 ? 2.0f : 3.0f);
       return;
@@ -423,7 +511,7 @@ class TapGame final: public yy::Game {
     if(std::strncmp(scene,"won-",4)==0) {
       const int goalRow=std::max(1,pocket.row-9);
       for(int row=goalRow+1; row<pocket.row; ++row) model.bricks[row*model.columns+column]=0;
-      setGoal(column,goalRow); lastBricks=model.bricks;
+      setGoal(column,goalRow); syncBricks();
       sling(touch.camera.toScreen(below),{0,40});
       const std::string beat=scene+4;
       const auto runTo=[&](auto reached) { for(int i=0; i<1800 && !reached(); ++i) update(1.0f/60); frozenScene=true; };
@@ -482,7 +570,7 @@ public: void initialize(yy::Services& services) override {
                 model.setElectricRadius(d.electricHalves/2.0f); }
     model.setSnapDegrees(d.snapDegrees);
     stage(scene);
-    lastBricks=model.bricks;
+    syncBricks();
   }
   void update(float seconds) override {
     if(frozenScene) return;
@@ -495,28 +583,52 @@ public: void initialize(yy::Services& services) override {
     stepModel(seconds); touch.update(seconds);
     for(auto& p: pops) p.age+=seconds;
     std::erase_if(pops,[](const Pop& p){ return p.age>=popSeconds; });
+    hitStop.step(seconds); shake.step(seconds); specks.step(seconds,chipGravity); lift.step(seconds);
+    bool changed=false;
     if(lastBricks.size()==model.bricks.size()) for(std::size_t i=0; i<lastBricks.size(); ++i) {
       if(model.bricks[i]<lastBricks[i]) {
+        changed=true;
+        if(model.bricks[i]==0) chips(static_cast<int>(i),lastBricks[i]);
         const auto found=std::find_if(pops.begin(),pops.end(),[&](const Pop& p){ return p.cell==static_cast<int>(i); });
         if(found!=pops.end()) found->age=0;
         else pops.push_back({static_cast<int>(i),0});
       }
     }
     lastBricks=model.bricks;
+    if(changed) liftFog();
     clock+=seconds;
     for(auto& b: bursts) b.age+=seconds;
     bursts.erase(std::remove_if(bursts.begin(),bursts.end(),[](const Burst& b){ return b.age>1.2f; }),bursts.end());
     // The goal's celebration, or a power-up's thump and tone, stands in for the plain break's tap that frame.
-    for(const auto& f: model.hits.fired) bursts.push_back({f,0});
-    if(model.hits.goalBroken) { celebration.hit(); celebrate(); }
-    else if(!model.hits.fired.empty()) {
-      const auto& tone=powerTones[static_cast<int>(model.hits.fired.front().power)];
-      if(haptics) haptics->thump();
-      if(audio) audio->tone(tone[0],tone[1]);
-    } else if(model.hits.bricksBroken>0) {
-      if(haptics) haptics->impact(std::min(1.0f,0.55f+0.15f*(model.hits.bricksBroken-1)));
-      if(audio) audio->tone(660.0f,0.05f);
+    // Every hit or break of a ball's flight climbs the pitch ladder a step; the next launch starts it over.
+    const Hits& h=model.hits;
+    for(const auto& f: h.fired) bursts.push_back({f,0});
+    if(model.ballsLeft<lastBallsLeft) ladder.reset();
+    lastBallsLeft=model.ballsLeft;
+    bool bomb=false, electric=false;
+    for(const auto& f: h.fired) { bomb=bomb||f.power==Power::Bomb; electric=electric||f.power==Power::Electricity; }
+    if(!h.goalBroken && (h.bricksHit>0 || h.bricksBroken>0)) {
+      hitStop.trigger(); heldBalls.assign(model.balls.size(),{});
+      for(std::size_t i=0; i<model.balls.size(); ++i) heldBalls[i]=shown(model.balls[i]);
     }
+    if(h.bricksBroken>0) shake.bump(shakeFor(h.bricksBroken,bomb,electric,h.goalBroken));
+    if(h.goalBroken) { celebration.hit(); celebrate(); ladder.climb(); }
+    else if(!h.fired.empty()) {
+      const auto& tone=powerTones[static_cast<int>(h.fired.front().power)];
+      if(haptics) { haptics->thump(); if(bomb) haptics->impact(1); }
+      if(audio) audio->tone(tone[0],tone[1]);
+      ladder.climb();
+    } else if(h.bricksBroken>0) {
+      if(haptics) haptics->impact(std::min(1.0f,0.55f+0.15f*(h.bricksBroken-1)));
+      if(audio) audio->tone(ladder.hz(),0.05f);
+      ladder.climb();
+    } else if(h.bricksHit>0) {
+      if(haptics) haptics->impact(0.3f);
+      if(audio) audio->tone(ladder.hz(),0.025f);
+      ladder.climb();
+    }
+    if(!hitStop.holding()) for(const auto& b: model.balls)
+      specks.add({shown(b),{},0,trailLife,Model::ballRadius*0.8f,garden.white,true,true});
     rain(seconds);
     for(auto& p: petals) {
       p.age+=seconds; p.velocity.y+=petalGravity*seconds;
@@ -565,7 +677,11 @@ public: void initialize(yy::Services& services) override {
     const Palette& palette=garden;
     const auto muted=palette.muted, teal=palette.teal, dark=palette.dark;
     const auto ballRed=palette.ballRed, field=palette.field, white=palette.white, tile=palette.tile;
-    const Camera& cam=touch.camera;
+    // The board draws shaken; input and the model keep the real camera.
+    drawCam=touch.camera;
+    const yy::Vec2 jolt=shake.offset();
+    drawCam.offset.x+=jolt.x; drawCam.offset.y+=jolt.y;
+    const Camera& cam=drawCam;
     const float z=cam.zoom, cellSize=Model::cell*z;
     const auto origin=cam.toScreen({0,0});
     // At fit zoom the grid leaves margins; give those the backdrop too.
@@ -590,13 +706,18 @@ public: void initialize(yy::Services& services) override {
     const auto& fogColors=palette.fog;
     // A brick with its hit points, or the icon brick of a power-up or the goal.
     const auto cellContents=[&](int column,int row,yy::Vec2 p,yy::Rect box,int hp,bool goal,Power power) {
-      if(goal || power!=Power::None) { iconBrick(r,palette,power,box); return; }
+      if(goal || power!=Power::None) {
+        iconBrick(r,palette,power,box,0.5f+0.5f*std::sin(clock*3+column*0.7f+row*1.3f));
+        return;
+      }
       float squash=0;
       for(const auto& pop: pops) if(pop.cell==row*model.columns+column) {
         squash=std::sin(std::min(1.0f,pop.age/0.12f)*3.14159265f); break;
       }
       const float w=cellSize-gap-cellSize*0.06f*squash, h=cellSize-gap-cellSize*0.16f*squash;
-      gardenSprite(r,gardenDamage(hp),{p.x+(cellSize-w)/2,p.y+(cellSize-h)/2,w,h});
+      const yy::Rect face{p.x+(cellSize-w)/2,p.y+(cellSize-h)/2,w,h};
+      gardenSprite(r,gardenDamage(hp),face);
+      cracks(r,hp,column,row,face);
     };
     for(int row=r0; row<=r1; ++row) for(int column=c0; column<=c1; ++column) {
       const int hp=model.brick(column,row);
@@ -644,6 +765,30 @@ public: void initialize(yy::Services& services) override {
       gardenCellTexture(r,GardenSprite::Clear,column,row,box);
       if(hp>0) cellContents(column,row,p,box,hp,goal,power);
     }
+    // Fog peeling off cells a break just uncovered, and the highlight on a power-up brick or the goal found there.
+    for(const auto& e: lift.entries()) {
+      const int column=e.cell%model.columns, row=e.cell/model.columns;
+      if(column<c0 || column>c1 || row<r0 || row>r1) continue;
+      const auto p=cam.toScreen({column*Model::cell,row*Model::cell});
+      const float u=lift.progress(e.cell);
+      if(u<1) {
+        auto fog=fogColors[(column+row)%2]; fog.a=static_cast<unsigned char>(fogEdgeSolid*(1-u*u));
+        r.rectangle({p.x,p.y+cellSize*u,cellSize,cellSize*(1-u)},fog);
+      }
+      const float pop=lift.highlight(e.cell);
+      if(pop>0) {
+        const auto at=yy::Vec2{p.x+cellSize/2,p.y+cellSize/2};
+        const yy::Color tint=e.cell==model.goal ? glow(palette,Power::None) : glow(palette,model.power(column,row));
+        yy::Color ring=mix(tint,white,0.5f); ring.a=static_cast<unsigned char>(235*pop);
+        const float reach=cellSize*(0.55f+0.5f*(1-pop));
+        for(int i=0; i<8; ++i) {
+          const float a=i*0.7853982f+e.age*3;
+          r.circle({at.x+std::cos(a)*reach,at.y+std::sin(a)*reach},std::max(1.5f,cellSize*0.07f*pop),ring);
+        }
+        yy::Color halo=tint; halo.a=static_cast<unsigned char>(110*pop);
+        r.circle(at,cellSize*(0.5f+0.25f*pop),halo);
+      }
+    }
     // The entire 200 ms flash/clipping sequence stays inside the struck cell. Aim and balls
     // draw after it, so a second shot can be held and released while the previous hit settles.
     for(const auto& pop: pops) {
@@ -678,10 +823,24 @@ public: void initialize(yy::Services& services) override {
         }
       }
     }
+    // Brick chips and the ball's fading trail.
+    for(const auto& sp: specks.all()) {
+      if(!sp.live) continue;
+      const float left=1-sp.age/sp.life;
+      const auto at=cam.toScreen(sp.at);
+      if(sp.trail) { Color c=sp.color; c.a=static_cast<unsigned char>(120*left); r.circle(at,std::max(1.0f,sp.size*z*left),c); }
+      else {
+        Color c=sp.color; c.a=static_cast<unsigned char>(255*std::min(1.0f,left*3));
+        const float side=std::max(1.5f,sp.size*z*(0.5f+0.5f*left));
+        r.rectangle({at.x-side/2,at.y-side/2,side,side},c);
+      }
+    }
     const float ballSize=Model::ballRadius*z;
     const Color spark=glow(palette,Power::Electricity), streak=glow(palette,Power::Speed);
-    for(const auto& b: model.balls) {
-      const auto at=shown(b);
+    const bool holding=hitStop.holding() && heldBalls.size()==model.balls.size();
+    for(std::size_t index=0; index<model.balls.size(); ++index) {
+      const Ball& b=model.balls[index];
+      const auto at=holding ? heldBalls[index] : shown(b);
       const auto p=cam.toScreen(at);
       if(b.fast) for(int i=3; i>=1; --i)
         r.circle(cam.toScreen({at.x-b.velocity.x*0.012f*i,at.y-b.velocity.y*0.012f*i}),ballSize*(1-0.2f*i),mix(streak,field,0.25f*i));
@@ -798,7 +957,7 @@ public: void initialize(yy::Services& services) override {
   }
   // The goal brick's burst, bigger than a power-up's: a flash, a gold glow and three rings.
   void drawGoalBurst(yy::Renderer& r, const Palette& palette, float age) const {
-    const Camera& cam=touch.camera;
+    const Camera& cam=drawCam;
     const auto at=cam.toScreen(goalCentre());
     const float cell=Model::cell*cam.zoom;
     const yy::Color gold=glow(palette,Power::Electricity), pink=glow(palette,Power::None);
@@ -898,6 +1057,7 @@ public: void initialize(yy::Services& services) override {
     gardenLabel(r,{195,teaching},"EACH HIT STRIPS A LAYER",18,green,yy::Align::Center);
     for(int i=0; i<3; ++i) {
       gardenSprite(r,gardenDamage(3-i),{78.0f+i*86,teaching+31,58,58});
+      cracks(r,3-i,0,0,{78.0f+i*86,teaching+31,58,58});
       if(i<2) gardenLabel(r,{144.0f+i*86,teaching+46},">",20,green);
     }
     gardenLabel(r,{195,teaching+102},"LAST HIT OPENS THE PATH",13,mutedInk,yy::Align::Center);

@@ -3,6 +3,7 @@
 #include <tapdemo/model.hpp>
 #include <tapdemo/touch.hpp>
 #include <tapdemo/celebration.hpp>
+#include <tapdemo/juice.hpp>
 #include "level_bot.hpp"
 #include <optional>
 #include <yy/runtime.hpp>
@@ -618,4 +619,113 @@ void celebrationChecks() {
     }
   }
   std::cout<<"Goal celebration: look-ahead exact, same win with slow motion, skip, pause and next tap passed\n";
+}
+
+// Hit feedback (T23): effect timing, pitch stepping, shake, the particle pool, crack stages and the fog lift, all without
+// a window; then the game's own sounds through a real shot.
+void juiceChecks() {
+  using namespace tapdemo;
+  {
+    HitStop stop;
+    check(!stop.holding(),"no hit-stop before a hit");
+    stop.trigger(); stop.step(0.02f);
+    check(stop.holding() && HitStop::seconds>=0.03f && HitStop::seconds<=0.06f,"a hit-stop of 30 to 60 ms still holds at 20 ms");
+    stop.step(0.04f);
+    check(!stop.holding(),"the hit-stop is over by 60 ms");
+  }
+  {
+    PitchLadder ladder;
+    check(std::abs(ladder.hz()-660)<1e-3f,"the first break plays the base pitch");
+    float last=ladder.hz();
+    for(int i=0; i<PitchLadder::topStep; ++i) {
+      ladder.climb();
+      check(ladder.hz()>last,"every further hit or break raises the pitch a step");
+      last=ladder.hz();
+    }
+    ladder.climb(); ladder.climb();
+    check(ladder.step()==PitchLadder::topStep && ladder.hz()==last,"the ladder stops at its top step");
+    check(std::abs(PitchLadder::hz(PitchLadder::topStep)-660*4)<1,"the top step is two octaves up");
+    ladder.reset();
+    check(ladder.step()==0 && std::abs(ladder.hz()-660)<1e-3f,"a new ball starts the ladder over");
+  }
+  {
+    check(shakeFor(1,false,false,false)<shakeFor(4,false,false,false) && shakeFor(4,false,false,false)<shakeFor(4,false,true,false)
+          && shakeFor(4,false,true,false)<shakeFor(25,true,false,false) && shakeFor(25,true,false,false)<shakeFor(1,false,false,true),
+          "the shake grows from a break to lightning, a bomb and the goal");
+    Shake shake;
+    check(shake.amplitude()==0 && shake.offset().x==0 && shake.offset().y==0,"a still screen has no offset");
+    shake.bump(7);
+    check(std::abs(shake.amplitude()-7)<1e-4f,"a bump starts at its size");
+    shake.step(Shake::seconds/2);
+    check(shake.amplitude()>0 && shake.amplitude()<7,"the shake fades");
+    shake.step(Shake::seconds);
+    check(shake.amplitude()==0 && shake.offset().x==0,"the shake is over after its time");
+    for(int i=0; i<20; ++i) shake.bump(10);
+    check(shake.amplitude()<=Shake::limit,"stacked bumps stay within the limit");
+  }
+  {
+    SpeckPool pool;
+    const auto capacity=pool.all().capacity();
+    bool refused=false;
+    for(int i=0; i<SpeckPool::capacity+50; ++i) refused=!pool.add({{},{0,0},0,0.5f,3,{},false,false}) || refused;
+    check(refused && pool.live()==SpeckPool::capacity && pool.all().size()==SpeckPool::capacity && pool.all().capacity()==capacity,"the pool caps its specks and never grows");
+    pool.step(0.4f,100);
+    check(pool.live()==SpeckPool::capacity && pool.all().front().velocity.y>30 && pool.all().front().at.y>0,"chips fall under gravity");
+    pool.step(0.2f,100);
+    check(pool.live()==0,"specks end with their life");
+    pool.add({{5,5},{9,9},0,1,3,{},true,true}); pool.step(0.5f,100);
+    check(pool.all().front().at.x==5 && pool.all().front().at.y==5,"a trail point stays where it was dropped");
+  }
+  {
+    check(crackStage(3)==0 && crackStage(2)==1 && crackStage(1)==2 && crackStage(5)==0,"hit points map to whole, cracked and badly cracked");
+    int whole=-1, cracked=0, bad=0;
+    check(crackPieces(0,whole)==nullptr && whole==0,"a whole brick has no cracks");
+    const auto* a=crackPieces(1,cracked); const auto* b=crackPieces(2,bad);
+    check(a && b && cracked>0 && bad>cracked,"a badly cracked brick shows more cracks than a cracked one");
+    for(int i=0; i<bad; ++i) check(b[i].x>=0 && b[i].y>=0 && b[i].x+b[i].w<=1 && b[i].y+b[i].h<=1,"every crack lies inside its brick");
+  }
+  {
+    FogLift lift(100);
+    check(lift.progress(7)==1 && !lift.lifting(7) && lift.highlight(7)==0,"a cell that is not lifting reads as clear");
+    lift.begin(7,false); lift.begin(8,true);
+    check(lift.progress(7)==0 && lift.lifting(7) && lift.highlight(7)==0,"the fog covers a cell at the start of its lift");
+    lift.step(FogLift::seconds/2);
+    check(std::abs(lift.progress(7)-0.5f)<1e-4f,"half the lift is half peeled");
+    check(lift.highlight(8)>0.1f && lift.highlight(7)==0,"only a power-up brick or the goal is highlighted");
+    lift.step(FogLift::seconds/2+1e-4f);
+    check(lift.progress(7)==1 && lift.entries().size()==1 && lift.highlight(8)>0.5f,"the peel ends after 0.3 s and the highlight outlasts it");
+    lift.step(FogLift::highlightSeconds);
+    check(lift.entries().empty(),"the highlight ends too");
+    check(FogLift::seconds==0.3f,"the fog lifts in about 0.3 s");
+  }
+  {
+    // The model is untouched: the same level and shots give the same field with or without the game's effects watching.
+    Model a, b; a.play(3); b.play(3);
+    check(a.bricks==b.bricks && a.goal==b.goal,"effects do not touch the field");
+  }
+  {
+    // Through the game: a real flight of four shots climbs the break sound's pitch and every tone is a ladder step or a power-up's.
+    Session breaks("","1","breaks");
+    breaks.play(300);
+    std::vector<float> ladderTones;
+    for(float hz: breaks.quiet.tones) for(int k=0; k<=PitchLadder::topStep; ++k) if(std::abs(hz-PitchLadder::hz(k))<0.01f) { ladderTones.push_back(hz); break; }
+    check(ladderTones.size()>=3 && ladderTones.front()==PitchLadder::hz(0),"a flight's first hit plays the base pitch and the flight keeps hitting");
+    check(std::is_sorted(ladderTones.begin(),ladderTones.end()) && ladderTones.back()>ladderTones.front(),"within one flight each further hit or break plays higher");
+    check(!breaks.quiet.impacts.empty(),"hits and breaks give haptics");
+  }
+  {
+    // A new ball starts the pitch over: the first sound of each single-ball flight is the base pitch.
+    Session shots("","1","garden-shot");
+    shots.play(150);
+    check(!shots.quiet.tones.empty() && std::abs(shots.quiet.tones.front()-PitchLadder::hz(0))<0.01f,"the first hit of a ball plays the base pitch");
+  }
+  {
+    // Cracks: the staged fixture's 2 and 1 hit-point bricks draw cracks, in the one ink colour.
+    Session damage("","10","garden-damage");
+    const auto inks=std::count_if(damage.canvas.fills.begin(),damage.canvas.fills.end(),[](yy::Color c){ return c.r==38 && c.g==22 && c.b==12; });
+    int cracked=0, bad=0; crackPieces(1,cracked); crackPieces(2,bad);
+    check(inks>=cracked+bad,"cracked and badly cracked bricks draw their cracks over the sprite");
+    check(!damage.canvas.has("1") && !damage.canvas.has("2") && !damage.canvas.has("3"),"no digit is drawn on a brick");
+  }
+  std::cout<<"Hit feedback: hit-stop, pitch ladder, shake, specks, cracks and fog lift passed\n";
 }

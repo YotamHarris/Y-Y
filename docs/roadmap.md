@@ -432,3 +432,23 @@ iPhone Safari, the safe-area insets under a notch and the audio start after the 
 real iPhone. No haptics in a browser. Browser speed is not iPhone speed: no performance claim. The game's own
 save writes (`progress.txt`) reach IndexedDB by the same flush; only a file written in the page was reloaded.
 
+
+### V13 Hits are felt, bricks crack, the fog peels away (D12)
+
+**Status:** active
+
+A brick hit holds the ball's drawing for 45 ms, a break bursts chips in the brick's colour and shakes the board
+(more for lightning, a bomb and the goal), balls leave a trail, and the break sound climbs a step with each hit
+of a flight and starts over with the next ball. Bricks show hit points as cracks instead of numbers; power-up
+bricks breathe. Uncovered cells lose their fog over 0.3 s with a soft sound, and a power-up brick or the goal
+found that way sparkles. The model, seeds and levels are unchanged.
+
+**Validation.** `scripts/build.ps1` and `-Smoke`: the existing tests and the level band test pass unchanged, and
+`juiceChecks` covers the hit-stop's timing, the pitch ladder, the shake, the capped particle pool, crack stages
+and the fog lift's state, and a real flight's rising break sound through the game. `tests/capture_juice.py`
+(through `fe_manager.py gpu`) wrote `docs/figures/juice/`: 390x844 frames mid-break, mid-bomb, mid-fog-lift and a
+field with whole, cracked and badly cracked bricks, read in the one look the game has (Garden Pop).
+
+**Open:** only Garden Pop exists, so the crack colours were checked in that one look. Particle, trail and
+shake cost on an iPhone is unmeasured (desktop smoke only: no performance claim). How strong the 45 ms hold, the
+shake and the pitch climb feel is a call for a phone in hand.
