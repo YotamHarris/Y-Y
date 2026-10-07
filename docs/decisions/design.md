@@ -278,7 +278,7 @@ test holds unchanged.
 
 ---
 
-### D15 — The board is cut to the logical frame, and the cull covers what is left (2026-10-07)
+### D15 — The board and its cull share the play area (2026-10-07)
 
 **Status:** active
 
@@ -286,13 +286,15 @@ test holds unchanged.
 the field and its mist drew unclipped, so in a window that is not 390x844 (the engine letterboxes the frame) they spilled
 into the strips beside it, where no brick was ever drawn.
 
-**Decision.** The board draws inside a clip to the logical frame (`Renderer::clip`); the strips keep the engine's clear
-colour. The cull is `Camera::visibleCells`, the cells meeting the play area plus one on every side, the same rectangle the
-clip leaves. Off-screen cells stay skipped.
+**Decision.** The field, mist and all board effects draw inside the play-area clip (`Camera::view`, below the header).
+`Renderer::clip` is required of every renderer; SDL maps it through the safe-area viewport to framebuffer pixels.
+`Camera::visibleCells` uses the same rectangle with one extra cell on every side, including the drawing camera's shake.
+Cells beyond that margin stay skipped. The clip is lifted before drawing the header and other UI; letterbox strips keep
+the engine's backdrop.
 
-**Why.** Cutting the board is simpler and cheaper than drawing bricks across the strips, and a phone's frame already fills
-the safe area, so the strips only show on other shapes.
+**Why.** A clean backdrop beside the game keeps the board's visible boundary consistent across phone safe-area shapes,
+wider windows and taller windows. A phone's safe area can have a different aspect ratio from the logical frame too.
 
-**Evidence.** V16, `tests/core_tests.cpp` (`visibleCellChecks`) and `docs/figures/letterbox/`.
+**Evidence.** V16, `visibleCellChecks`, `boardRenderingChecks` and [the matched phone and shake captures](../letterbox-validation.md).
 
 ---

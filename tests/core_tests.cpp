@@ -2,6 +2,7 @@
 #include <yy/input.hpp>
 #include <tapdemo/model.hpp>
 #include <tapdemo/touch.hpp>
+#include <tapdemo/juice.hpp>
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
@@ -20,6 +21,7 @@ void fontChecks();
 void juiceChecks();
 void paceChecks();
 void framingGameChecks();
+void boardRenderingChecks();
 
 static void check(bool condition, const char* label) { if(!condition) { std::cerr<<label<<'\n'; std::exit(1); } }
 
@@ -901,21 +903,36 @@ static void visibleCellChecks() {
   cam.hold({0,0},{cam.view.x,cam.view.y},Camera::maxZoom); // the top-left corner, close up
   auto edge=cam.visibleCells(columns,rows,0);
   check(edge.c0==0 && edge.r0==0,"the top-left edge starts at cell 0");
-  // The shake moves the board a few pixels either way: a margin of one cell still covers every touched cell.
-  for(float dx: {-12.0f,0.0f,12.0f}) for(float dy: {-12.0f,0.0f,12.0f}) {
-    Camera shaken=cam; shaken.offset.x+=dx; shaken.offset.y+=dy;
-    const auto seen=shaken.visibleCells(columns,rows,1);
+  const auto coverage=[&](const Camera& shaken) {
+    const auto seen=shaken.visibleCells(columns,rows);
     for(int row=0; row<rows; ++row) for(int column=0; column<columns; ++column) {
       const auto a=shaken.toScreen({column*Model::cell,row*Model::cell}), z=shaken.toScreen({(column+1)*Model::cell,(row+1)*Model::cell});
       const bool touches=z.x>shaken.view.x && a.x<shaken.view.x+shaken.view.w && z.y>shaken.view.y && a.y<shaken.view.y+shaken.view.h;
       const bool inside=column>=seen.c0 && column<=seen.c1 && row>=seen.r0 && row<=seen.r1;
       check(!touches || inside,"a cell on screen is never culled");
     }
-    check(seen.c1-seen.c0<columns-1,"a close-up still culls the cells far off screen");
+    check(seen.c0>=0 && seen.c1<columns && seen.r0>=0 && seen.r1<rows,"the range stays on the grid");
+  };
+  // All four corners and the middle, at fitted, intermediate and maximum zoom, throughout an actual shake.
+  for(float zoom: {cam.minZoom(),1.6f,Camera::maxZoom}) for(float x: {0.0f,0.5f,1.0f}) for(float y: {0.0f,0.5f,1.0f}) {
+    Camera at=cam;
+    at.hold({at.world.x*x,at.world.y*y},{at.view.x+at.view.w*x,at.view.y+at.view.h*y},zoom);
+    tapdemo::Shake shake; shake.bump(tapdemo::Shake::limit);
+    for(int tick=0; tick<20; ++tick) {
+      Camera shaken=at; const auto jolt=shake.offset();
+      shaken.offset.x+=jolt.x; shaken.offset.y+=jolt.y;
+      coverage(shaken); shake.step(1.0f/60);
+    }
   }
   const auto far=cam.visibleCells(columns,rows,0);
   check(far.c1<columns-1 && far.r1<rows-1,"cells beyond the far edge are skipped");
-  std::cout<<"Visible cells: whole grid fitted, edges clamped, shake covered, far cells culled\n";
+  Camera fractional; fractional.view={12,95,192,256}; fractional.zoom=1; fractional.offset={28,111};
+  const auto margin=fractional.visibleCells(columns,rows);
+  check(margin.c0==0 && margin.c1==6 && margin.r0==0 && margin.r1==8,"negative fractional world coordinates use floor and one-cell margin");
+  fractional.offset={-100000,-100000};
+  const auto empty=fractional.visibleCells(columns,rows);
+  check(empty.c0>empty.c1 && empty.r0>empty.r1,"a view wholly outside the board draws no cells");
+  std::cout<<"Visible cells: all corners and centre, fit/intermediate/max zoom, full shake, fractional bounds, far cells culled\n";
 }
 static void framingChecks() {
   using tapdemo::Camera; using tapdemo::Framing; using tapdemo::Touch;
@@ -1023,6 +1040,7 @@ int main() {
   tapdemoChecks();
   framingChecks(); visibleCellChecks();
   framingGameChecks();
+  boardRenderingChecks();
   settingsChecks();
   glowChecks();
   snapChecks();

@@ -25,7 +25,7 @@ python studio/fe_docs.py category design
 
 #### Active — the current rules
 
-- **D15** (2026-10-07) The board is cut to the logical frame, and the cull covers what is left
+- **D15** (2026-10-07) The board and its cull share the play area
 - **D14** (2026-10-07) The aim line shows the first bounce, and game speed follows the shot
 - **D13** (2026-10-07) Levels open framed on the visible cavity and ease outward as it grows
 - **D12** (2026-10-07) Every hit has feedback, bricks show cracks, and the fog peels away

@@ -16,7 +16,7 @@ python studio/fe_docs.py show V58
 
 ## Open — known gaps in what ships today
 
-- **V16** the strips are the engine's plain backdrop; a themed one is a design call. Panning and pinching by touch is covered by the existing touch tests; no device pass was made.
+- **V16** none for this rendering fix. Device performance is outside this task.
 - **V15** how 2.5x and 0.35x feel is for a phone in hand; no iPhone performance claim. The line stops at the first contact only; it does not trace later bounces or what a power-up does. The goal's own celebration slow-motion keeps its own look-ahead and takes the slower of the two speeds.
 - **V14** phone feel remains the owner's playtest; evidence is deterministic tests and desktop captures, with no iPhone performance claim. A level whose visible area already spans the grid may remain at its original fitted zoom.
 - **V13** only Garden Pop exists, so the crack colours were checked in that one look. Particle, trail and shake cost on an iPhone is unmeasured (desktop smoke only: no performance claim). How strong the 45 ms hold, the shake and the pitch climb feel is a call for a phone in hand.

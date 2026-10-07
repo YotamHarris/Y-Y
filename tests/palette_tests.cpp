@@ -31,19 +31,26 @@ struct Canvas final: yy::Renderer {
   struct Text { yy::Vec2 at; std::string value; };
   std::vector<yy::Color> fills;
   std::vector<Text> texts;
-  struct Sprite { std::string asset; yy::Rect source, destination; int order; };
+  struct Sprite { std::string asset; yy::Rect source, destination; int order; std::optional<yy::Rect> clip; };
   std::vector<Sprite> sprites;
   struct Frame { std::vector<yy::Color> fills; std::vector<Sprite> sprites; };
   Frame frame() const { return {fills,sprites}; }
   int order{}, lastAimDot{};
   yy::Color field;
+  yy::Rect fieldRect{};
+  std::optional<yy::Rect> activeClip, fieldClip;
+  std::vector<std::optional<yy::Rect>> clips;
+  struct Fill { yy::Rect rect; yy::Color color; std::optional<yy::Rect> clip; };
+  std::vector<Fill> rectangles;
+  void clip(std::optional<yy::Rect> area) override { activeClip=area; clips.push_back(area); }
   float fieldWidth{}, cellWidth{}; bool afterField{};
   void rectangle(yy::Rect r, yy::Color c) override {
     fills.push_back(c);
+    rectangles.push_back({r,c,activeClip});
     // The first cell drawn after the field is the fogged top-left corner, one whole cell.
     if(afterField) { cellWidth=r.w; afterField=false; }
     constexpr float shape=static_cast<float>(tapdemo::Settings::shapeRows)/tapdemo::Settings::shapeColumns;
-    if(r.w>0 && std::abs(r.h/r.w-shape)<0.0001f) { field=c; fieldWidth=r.w; afterField=true; }
+    if(r.w>0 && std::abs(r.h/r.w-shape)<0.0001f) { field=c; fieldWidth=r.w; fieldRect=r; fieldClip=activeClip; afterField=true; }
   }
   int columns() const { return static_cast<int>(std::lround(fieldWidth/cellWidth)); }
   void circle(yy::Vec2 p, float, yy::Color c) override { ++order; if(p.y>=80 && same(c,tapdemo::garden.white)) lastAimDot=order; }
@@ -52,9 +59,9 @@ struct Canvas final: yy::Renderer {
   bool sprite(std::string_view a, yy::Rect d) override { return sprite(a,{},d); }
   bool sprite(std::string_view a, yy::Rect s, yy::Rect d) override {
     if(afterField && a=="garden/tiles.bmp") { cellWidth=d.w/tapdemo::gardenTextureCells; afterField=false; }
-    sprites.push_back({std::string(a),s,d,++order}); return true;
+    sprites.push_back({std::string(a),s,d,++order,activeClip}); return true;
   }
-  void read(yy::Game& game) { fills.clear(); texts.clear(); sprites.clear(); order=lastAimDot=0; game.render(*this); }
+  void read(yy::Game& game) { fills.clear(); rectangles.clear(); texts.clear(); sprites.clear(); clips.clear(); order=lastAimDot=0; game.render(*this); }
   bool spriteHas(tapdemo::GardenSprite kind) const {
     const auto rect=tapdemo::gardenSource(kind);
     return std::any_of(sprites.begin(),sprites.end(),[&](const Sprite& s){return s.asset=="garden/tiles.bmp" && s.source.x>=rect.x && s.source.x+s.source.w<=rect.x+rect.w && s.source.y>=rect.y && s.source.y+s.source.h<=rect.y+rect.h;});
@@ -331,6 +338,117 @@ void framingGameChecks() {
     check(std::any_of(play.canvas.texts.begin(),play.canvas.texts.end(),[&](const auto& t){return t.at.x==62 && t.at.y==13 && t.value==std::to_string(levelBalls-1);}),"the real game fires through touch at its opening zoom");
   }
   std::cout<<"Game framing: levels 1/6/10 open framed, wheel holds, restart resets, zoomed touch fires\n";
+}
+
+void boardRenderingChecks() {
+  using namespace tapdemo;
+  const auto rectNear=[](yy::Rect a,yy::Rect b) {
+    return std::abs(a.x-b.x)<.02f && std::abs(a.y-b.y)<.02f && std::abs(a.w-b.w)<.02f && std::abs(a.h-b.h)<.02f;
+  };
+  const auto within=[](yy::Rect a, yy::Rect b) {
+    return a.x>=b.x && a.y>=b.y && a.x+a.w<=b.x+b.w && a.y+a.h<=b.y+b.h;
+  };
+  const auto clipping=[&](const Canvas& canvas) {
+    const yy::Rect view{0,80,390,764};
+    check(canvas.clips.size()==2 && canvas.clips.front() && rectNear(*canvas.clips.front(),view)
+          && !canvas.clips.back() && !canvas.activeClip,"board uses the play-area clip and releases it before UI and the next frame");
+    check(canvas.fieldClip && rectNear(*canvas.fieldClip,view),"the field uses the same clip as the cell cull");
+    for(const auto& s: canvas.sprites) {
+      if(s.asset=="garden/header.bmp") { check(!s.clip,"the header is outside the board clip"); continue; }
+      if(s.asset!="garden/tiles.bmp") continue;
+      for(auto kind: {GardenSprite::Grass,GardenSprite::Cut,GardenSprite::Soil,GardenSprite::Clear,
+                     GardenSprite::Holder,GardenSprite::Mist,GardenSprite::Flash,GardenSprite::Burst,
+                     GardenSprite::Clippings,GardenSprite::RimH,GardenSprite::RimV,GardenSprite::RimCorner}) {
+        if(within(s.source,gardenSource(kind)))
+          check(s.clip && rectNear(*s.clip,view),"bricks, mist, rims and pops share the board clip");
+      }
+    }
+    for(const auto& fill: canvas.rectangles) for(auto fog: garden.fog) {
+      if(fill.color.r==fog.r && fill.color.g==fog.g && fill.color.b==fog.b)
+        check(fill.clip && rectNear(*fill.clip,view),"fog gradients and fog lifts share the board clip");
+    }
+  };
+  Model model; model.play(6);
+  for(int row=0; row<model.rows; ++row) for(int column=0; column<model.columns; ++column)
+    if(row%3==0 || column==model.columns-1 || column==0) model.bricks[row*model.columns+column]=0;
+  model.refreshFog();
+  // Check cell drawing independently of visibleCells: derive the actual drawn transform and
+  // intersect every model cell with the clip. An omitted on-screen cell fails, even mid-gesture.
+  const auto coverage=[&](const Canvas& canvas) {
+    clipping(canvas);
+    Camera cam; cam.world={model.width(),model.height()};
+    cam.zoom=canvas.fieldRect.w/model.width(); cam.offset={canvas.fieldRect.x,canvas.fieldRect.y};
+    std::vector<bool> ground(model.columns*model.rows), bricks(ground.size());
+    int drawn=0;
+    for(const auto& s: canvas.sprites) {
+      if(s.asset!="garden/tiles.bmp") continue;
+      const bool clear=within(s.source,gardenSource(GardenSprite::Clear));
+      const bool brick=within(s.source,gardenSource(GardenSprite::Grass)) || within(s.source,gardenSource(GardenSprite::Cut))
+                       || within(s.source,gardenSource(GardenSprite::Soil)) || within(s.source,gardenSource(GardenSprite::Holder));
+      if(!clear && !brick) continue;
+      const auto centre=cam.toWorld({s.destination.x+s.destination.w/2,s.destination.y+s.destination.h/2});
+      const int c=static_cast<int>(std::floor(centre.x/Model::cell)), r=static_cast<int>(std::floor(centre.y/Model::cell));
+      check(c>=0 && c<model.columns && r>=0 && r<model.rows,"every drawn cell belongs to the board");
+      if(clear) { ground[r*model.columns+c]=true; ++drawn; }
+      if(brick) bricks[r*model.columns+c]=true;
+    }
+    for(int r=0; r<model.rows; ++r) for(int c=0; c<model.columns; ++c) {
+      const auto at=cam.toScreen({c*Model::cell,r*Model::cell}); const float cell=Model::cell*cam.zoom;
+      if(at.x+cell<=cam.view.x || at.x>=cam.view.x+cam.view.w || at.y+cell<=cam.view.y || at.y>=cam.view.y+cam.view.h) continue;
+      check(ground[r*model.columns+c],"every on-screen field cell draws its ground");
+      check(model.brick(c,r)==0 || bricks[r*model.columns+c],"every on-screen brick is drawn during touch or shake");
+    }
+    if(cam.zoom>1) check(drawn<model.columns*model.rows/2,"zoomed rendering still skips off-screen cells");
+    return cam;
+  };
+  for(yy::Rect safe: {yy::Rect{0,0,393,759},yy::Rect{0,0,600,844},yy::Rect{0,0,390,1000},yy::Rect{0,0,800,600},yy::Rect{12,59,786,1518}}) {
+    Session play("","6","edge"); yy::Viewport viewport{safe}; yy::PointerTracker pointers;
+    const auto window=[&](yy::Vec2 p) { const auto content=viewport.content(); return yy::Vec2{content.x+p.x*viewport.scale(),content.y+p.y*viewport.scale()}; };
+    const auto deliver=[&](std::optional<yy::PointerEvent> event) {
+      check(event.has_value(),"a phone-safe-area touch reaches the game");
+      using Phase=yy::PointerEvent::Phase;
+      if(event->phase==Phase::Down) play.game->pointerDown(event->id,event->position);
+      else if(event->phase==Phase::Move) play.game->pointerMove(event->id,event->position);
+      else play.game->pointerUp(event->id,event->position);
+      play.canvas.read(*play.game); coverage(play.canvas);
+    };
+    const auto pinch=[&](float from, float to) {
+      deliver(pointers.down(71,window({195-from,462}),viewport)); deliver(pointers.down(92,window({195+from,462}),viewport));
+      deliver(pointers.move(71,window({195-to,462}),viewport)); deliver(pointers.move(92,window({195+to,462}),viewport));
+      deliver(pointers.up(71,window({195-to,462}),viewport)); deliver(pointers.up(92,window({195+to,462}),viewport));
+    };
+    pinch(50,100);
+    check(std::abs(coverage(play.canvas).zoom-Camera::maxZoom)<.001f,"two fingers spread to maximum zoom");
+    // Pinch, lift one finger, then drag with the other; repeat without leaving the phone.
+    const auto pan=[&](float dx,float dy) {
+      for(int drag=0; drag<15; ++drag) {
+        deliver(pointers.down(71,window({195,462}),viewport)); deliver(pointers.down(92,window({245,462}),viewport));
+        deliver(pointers.up(92,window({245,462}),viewport));
+        for(int step=1; step<=10; ++step) deliver(pointers.move(71,window({195+dx*step/10,462+dy*step/10}),viewport));
+        deliver(pointers.up(71,window({195+dx,462+dy}),viewport));
+      }
+    };
+    pan(150,300); auto cam=coverage(play.canvas);
+    check(std::abs(cam.offset.x)<.02f && std::abs(cam.offset.y-80)<.02f,"touch reaches the top-left board edge");
+    pan(-150,0); cam=coverage(play.canvas);
+    check(std::abs(cam.offset.x+cam.world.x*cam.zoom-390)<.02f && std::abs(cam.offset.y-80)<.02f,"touch reaches the top-right board edge");
+    pan(0,-300); cam=coverage(play.canvas);
+    check(std::abs(cam.offset.y+cam.world.y*cam.zoom-844)<.02f,"touch reaches the bottom-right board edge");
+    pan(150,0); cam=coverage(play.canvas);
+    check(std::abs(cam.offset.x)<.02f && std::abs(cam.offset.y+cam.world.y*cam.zoom-844)<.02f,"touch reaches the bottom-left board edge");
+    pinch(100,10); cam=coverage(play.canvas);
+    check(std::abs(cam.zoom-cam.minZoom())<.001f,"two fingers close to the fitted view without missing cells");
+    check(pointers.active()==0 && play.storage.writes==0,"gestures release every finger and pinned evidence changes no save");
+  }
+  Session shaken("","6","edge-shake"); coverage(shaken.canvas);
+  const auto right=shaken.canvas.fieldRect.x+shaken.canvas.fieldRect.w;
+  check(std::abs(right-390)>1,"shake evidence includes a nonzero horizontal jolt");
+  for(const char* scene: {"fogedge-near","juice-break","juice-fog"}) { Session effects("","6",scene); clipping(effects.canvas); }
+  Session lift("","6","juice-fog");
+  check(std::any_of(lift.canvas.rectangles.begin(),lift.canvas.rectangles.end(),[](const auto& f){
+    return f.color.a<255 && (f.color.r==garden.fog[0].r || f.color.r==garden.fog[1].r);
+  }),"fog-lift clip evidence contains translucent lifting fog");
+  std::cout<<"Board touch/render path: safe phone/wide/tall/landscape/2x area, pinch limits, four edges, shake, fog and effects clipped, off-screen cells skipped\n";
 }
 
 // The debug panel survives a relaunch: every change is saved as it is made, the next session opens

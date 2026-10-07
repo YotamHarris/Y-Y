@@ -501,15 +501,19 @@ own look-ahead and takes the slower of the two speeds.
 
 **Status:** active
 
-The board is clipped to the logical frame and bricks, fog, rims, pops and fog-lift effects are culled to the same
-rectangle with a one-cell margin (`Camera::visibleCells`), so no field is drawn without its bricks. `YY_WINDOW_SIZE=WxH`
-opens another window shape; the debug scene `edge` pins the camera at the grid's far corner.
+The board is clipped to its play area. Bricks, fog, rims, pops and fog-lift effects use the same cell range with a
+one-cell margin (`Camera::visibleCells`), computed from the drawing camera including shake. The header and UI draw
+after lifting the clip, and letterbox strips keep the engine's backdrop. `YY_WINDOW_SIZE=WxH` opens another window
+shape; debug scenes `edge-touch` and `edge-shake` reach the far corner through pinch and pan handlers.
 
-**Validation.** `scripts/build.ps1 -ToolsRoot D:/Source/Y&Y/YYEngine -Smoke`: CTest 1/1 and the SDL smoke passed.
-`visibleCellChecks`: the fitted view sees the whole grid, a corner view starts at cell 0, every on-screen cell survives a
-12 px shake either way, far cells are skipped. Captures of the `edge` scene (`tests/capture_letterbox.py`) at 600x844 and
-390x844: before, the left strip shows mist with no bricks and the field spills over the header's side; after, it is cut
-at the frame (`docs/figures/letterbox/before-600x844.png`, `after-600x844.png`).
+**Validation.** `./scripts/build.ps1 -ToolsRoot 'D:/Source/Y&Y/YYEngine' -Smoke`: CTest 1/1 and the 120-frame SDL smoke
+passed. `visibleCellChecks` covers all corners and the centre at fitted, intermediate and maximum zoom throughout a
+full shake, fractional negative coordinates and off-screen skipping. `boardRenderingChecks` sends mapped finger events
+through the real game's handlers, checking every visible cell at each pinch and pan step across all four edges on phone,
+wide, tall, landscape and scaled safe areas. Fog, rims, pops and fog-lift drawing share the clip.
+Eight before/after pairs at 393x759, 600x844, 390x1000 and 800x600 include touch and shake. All were visually inspected;
+all final letterbox strips pass pixel checks, and each pair has identical interior board pixels. The original renderer
+fails the new clipping regression test; the restored final renderer passes. Commands and fixture provenance are in
+[letterbox-validation.md](letterbox-validation.md).
 
-**Open:** the strips are the engine's plain backdrop; a themed one is a design call. Panning and pinching by touch is
-covered by the existing touch tests; no device pass was made.
+**Open:** none for this rendering fix. Device performance is outside this task.

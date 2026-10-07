@@ -451,6 +451,7 @@ class TapGame final: public yy::Game {
   // palette-max (all icons, a real Ping revealing fogged bricks, frozen at activation),
   // grid-min or grid-max (the debug steppers pick free play and the smallest or largest grid, then RESTART),
   // render-test (the opening field under soft-edged cutouts, a cropped sheet cell and baked-font text).
+  // edge pins a cleared-corridor corner; edge-touch reaches it by gestures, and edge-shake freezes a jolt there.
   // YY_TAPDEMO_LEVEL (1..10, or 0 for free play) opens that level instead of the saved one, and saves nothing.
   void stage(const char* scene) {
     if(!scene || model.pockets.empty() || std::strcmp(scene,"instructions")==0) return;
@@ -469,14 +470,30 @@ class TapGame final: public yy::Game {
     // Other pinned evidence scenes explicitly stage a camera as part of their fixture.
     touch.framing.automatic=false;
     if(std::strcmp(scene,"render-test")==0) { renderTest=true; return; }
-    if(std::strcmp(scene,"edge")==0) {
+    if(std::strcmp(scene,"edge")==0 || std::strcmp(scene,"edge-touch")==0 || std::strcmp(scene,"edge-shake")==0) {
       // Evidence for the cull: corridors cleared to the grid's far corner, the camera pinned there close up, so the
       // field fills the play area's edge and the bricks beside the corridors must too.
       for(int row=0; row<model.rows; ++row) for(int column=0; column<model.columns; ++column)
         if(row%3==0 || column==model.columns-1 || column==0) model.bricks[row*model.columns+column]=0;
       model.refreshFog(); syncBricks();
       const auto& view=touch.camera.view;
-      touch.camera.hold({model.width(),model.height()},{view.x+view.w,view.y+view.h},1.6f);
+      if(std::strcmp(scene,"edge")==0) {
+        touch.camera.hold({model.width(),model.height()},{view.x+view.w,view.y+view.h},1.6f);
+      } else {
+        // The same corner, reached through the player's pinch and pan handlers. Lifting the second
+        // finger cancels the aim and leaves the first free to pan, even over a cleared corridor.
+        touch.camera.hold({0,0},{view.x,view.y},1.0f);
+        pointerDown(0,{145,462}); pointerDown(1,{245,462});
+        pointerMove(0,{115,462}); pointerMove(1,{275,462});
+        pointerUp(0,{115,462}); pointerUp(1,{275,462});
+        for(int i=0; i<12; ++i) {
+          pointerDown(0,{195,462}); pointerDown(1,{245,462}); pointerUp(1,{245,462});
+          for(int step=1; step<=10; ++step) pointerMove(0,{195.0f-step*15,462.0f-step*30});
+          pointerUp(0,{45,162});
+        }
+        if(std::strcmp(scene,"edge-shake")==0) { shake.bump(Shake::limit); shake.step(0.025f); }
+        frozenScene=true;
+      }
       return;
     }
     const auto& pocket=model.pockets.front();
@@ -798,9 +815,9 @@ public: void initialize(yy::Services& services) override {
     const float z=cam.zoom, cellSize=Model::cell*z;
     const auto origin=cam.toScreen({0,0});
     // At fit zoom the grid leaves margins; give those the backdrop too.
-    // The board is cut to the logical frame: beside it (a wider or taller window) is the engine's backdrop, never
-    // field without its bricks, because the cull below covers exactly what this clip leaves.
-    r.clip(yy::Rect{0,0,cam.view.w,cam.view.y+cam.view.h});
+    // Field, mist and every board effect share the play area's clip and cull. Letterbox strips
+    // keep the engine's backdrop; the header is drawn separately after lifting the clip.
+    r.clip(cam.view);
     r.rectangle({0,0,cam.view.w,cam.view.y+cam.view.h},dark);
     r.rectangle({origin.x,origin.y,model.width()*z,model.height()*z},field);
     // A mist patch spans eight cells, as in the concept: dew stays soft instead of
