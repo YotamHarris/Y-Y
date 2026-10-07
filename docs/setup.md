@@ -176,3 +176,35 @@ archive, or upload another binary. Leave `build_number` empty for normal builds.
 First dispatch **iOS TestFlight** manually with `game=tapdemo`, a published 40-character main SHA, and a unique task ID such as `initial-setup`. Confirm `Verify TestFlight readiness` succeeds and install the build from your internal TestFlight invitation. Hosted macOS minutes/storage and any explicitly configured API usage use their respective billing accounts.
 
 Then start the bot and describe “Award two points for each successful tap and update the scoring test” in the project channel, refine the plan and approve it. Watch the publication/checks/build messages, install the new TestFlight version, and confirm the scoring change. Check touch alignment, pause/resume, audio, safe areas, 60 FPS behavior, memory, battery/thermal behavior, and installation size on your actual iPhone. Desktop/simulator measurements do not establish iPhone performance.
+
+## 7. Play a change in a browser (web build)
+
+A browser build of TapDemo lets you try a change on an iPhone in minutes, without a TestFlight build. Every
+**Checks** run uploads it as the `tapdemo-web` artifact (download, unzip, serve the folder) next to the
+`tapdemo-web-smoke` screenshots.
+
+To build and serve it locally you need emsdk at the version pinned in `cmake/web/emsdk-version.txt` (the only
+place it is named), CMake and Ninja:
+
+```
+git clone https://github.com/emscripten-core/emsdk.git
+./emsdk install 4.0.10 && ./emsdk activate 4.0.10     # the pinned version
+source ./emsdk_env.sh                                   # emsdk_env.ps1 in PowerShell; sets EMSDK
+cmake --preset web
+cmake --build build/web
+python -m http.server 8000 --directory build/web/site   # then open http://localhost:8000
+```
+
+Use a path without `&` or spaces for the checkout (Ninja runs through cmd.exe on Windows), or build in WSL.
+On an iPhone on the same Wi-Fi open `http://<your computer's address>:8000`; Safari needs HTTPS for nothing
+here, since the build uses no camera, motion or storage permissions. `python tests/web_smoke.py
+build/web/site build/web/smoke` (needs `pip install playwright pillow` and `playwright install chromium`) is
+the check CI runs.
+
+The preferences (the reached level, debug settings) live in the browser's IndexedDB for that address, so a
+different address or a cleared site starts at level 1.
+
+Limits: there are no haptics (`NoHaptics`), and browser performance is not iPhone performance (WebGL, not
+Metal; a different JS and memory budget), so use the web build for looks, touch and rules and never to claim
+speed. The decision is D11.
+

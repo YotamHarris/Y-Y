@@ -11,6 +11,8 @@
 #define NOMINMAX
 #include <windows.h>
 #include <psapi.h>
+#elif defined(__EMSCRIPTEN__)
+#include <emscripten.h>
 #elif defined(__APPLE__)
 #include <mach/mach.h>
 #include <TargetConditionals.h>
@@ -21,6 +23,11 @@
 
 namespace yy {
 namespace {
+#ifdef __EMSCRIPTEN__
+// Set by the page (yy_web_set_safe_insets): the browser's safe-area insets, in window units.
+float webInsets[4]{}; // top, right, bottom, left
+std::uint64_t webFrames{};
+#endif
 std::uint64_t memoryBytes() {
 #ifdef _WIN32
   PROCESS_MEMORY_COUNTERS info{};
@@ -200,7 +207,11 @@ public:
       out.write(text.data(),static_cast<std::streamsize>(text.size()));
       if(!out.flush()) return false;
     }
-    return SDL_RenamePath(temporary.c_str(),path.c_str());
+    if(!SDL_RenamePath(temporary.c_str(),path.c_str())) return false;
+#ifdef __EMSCRIPTEN__
+    EM_ASM({ if(Module['yySync']) Module['yySync'](); }); // flush the preference folder to IndexedDB
+#endif
+    return true;
   }
 };
 #if defined(__APPLE__) && TARGET_OS_IOS
@@ -226,6 +237,10 @@ struct Runtime::Impl {
   void viewport() {
     int w=0,h=0,pw=0,ph=0; SDL_GetWindowSize(window,&w,&h); SDL_GetWindowSizeInPixels(window,&pw,&ph);
     SDL_Rect safe{0,0,w,h}; SDL_GetWindowSafeArea(window,&safe);
+#ifdef __EMSCRIPTEN__
+    safe.x+=static_cast<int>(webInsets[3]); safe.y+=static_cast<int>(webInsets[0]);
+    safe.w=std::max(0,safe.w-static_cast<int>(webInsets[3]+webInsets[1])); safe.h=std::max(0,safe.h-static_cast<int>(webInsets[0]+webInsets[2]));
+#endif
     renderer.viewport.safe={static_cast<float>(safe.x),static_cast<float>(safe.y),static_cast<float>(safe.w),static_cast<float>(safe.h)};
     renderer.pixelScale=w>0 ? static_cast<float>(pw)/w : 1;
   }
@@ -307,14 +322,20 @@ bool Runtime::initialize() {
 bool Runtime::event(const void* raw) {
   const auto& event=*static_cast<const SDL_Event*>(raw);
   if(event.type==SDL_EVENT_QUIT) return false;
-  if(event.type==SDL_EVENT_WILL_ENTER_BACKGROUND || event.type==SDL_EVENT_WINDOW_MINIMIZED) {
+#ifdef __EMSCRIPTEN__
+  // A hidden tab is the browser's way of backgrounding.
+  const bool background=event.type==SDL_EVENT_WINDOW_HIDDEN, foreground=event.type==SDL_EVENT_WINDOW_SHOWN;
+#else
+  const bool background=false, foreground=false;
+#endif
+  if(event.type==SDL_EVENT_WILL_ENTER_BACKGROUND || event.type==SDL_EVENT_WINDOW_MINIMIZED || background) {
     // Pause first so a game can tell these forced releases from a player letting go.
     impl->paused=true; impl->clock.reset(); impl->game->pause(true);
     for(const auto& ended: impl->pointers.cancel()) impl->deliver(ended);
     if(impl->haptics) impl->haptics->humStop();
     if(impl->audio.stream) SDL_PauseAudioStreamDevice(impl->audio.stream);
   }
-  if(event.type==SDL_EVENT_DID_ENTER_FOREGROUND || event.type==SDL_EVENT_WINDOW_RESTORED) {
+  if(event.type==SDL_EVENT_DID_ENTER_FOREGROUND || event.type==SDL_EVENT_WINDOW_RESTORED || foreground) {
     impl->paused=false; impl->clock.reset(); impl->previous=SDL_GetTicksNS(); impl->game->pause(false);
     if(impl->audio.stream) SDL_ResumeAudioStreamDevice(impl->audio.stream);
   }
@@ -323,7 +344,12 @@ bool Runtime::event(const void* raw) {
 }
 bool Runtime::iterate() {
   const auto now=SDL_GetTicksNS(); const double elapsed=static_cast<double>(now-impl->previous)/1e9; impl->previous=now;
+#ifdef __EMSCRIPTEN__
+  if(impl->paused) return true; // the browser stops calling a hidden tab anyway; a delay would only spin
+  ++webFrames;
+#else
   if(impl->paused) { SDL_Delay(20); return true; }
+#endif
   impl->clock.advance(elapsed,[&](float step){ impl->game->update(step); }); impl->viewport();
   impl->renderer.color({9,20,33}); SDL_RenderClear(impl->renderer.handle); impl->game->render(impl->renderer);
   ++impl->frames; const double ms=elapsed*1000; impl->totalMs+=ms; impl->worstMs=std::max(impl->worstMs,ms);
@@ -337,3 +363,12 @@ bool Runtime::iterate() {
   SDL_RenderPresent(impl->renderer.handle); return !done;
 }
 }
+#ifdef __EMSCRIPTEN__
+extern "C" {
+EMSCRIPTEN_KEEPALIVE void yy_web_set_safe_insets(float top,float right,float bottom,float left) {
+  yy::webInsets[0]=top; yy::webInsets[1]=right; yy::webInsets[2]=bottom; yy::webInsets[3]=left;
+}
+// Frames the game has drawn since the page opened: the smoke test waits on it.
+EMSCRIPTEN_KEEPALIVE int yy_web_frames() { return static_cast<int>(yy::webFrames); }
+}
+#endif

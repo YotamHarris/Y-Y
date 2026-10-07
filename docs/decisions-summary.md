@@ -9,12 +9,12 @@ python studio/fe_docs.py show D64
 python studio/fe_docs.py category design
 ```
 
-10 entries: 8 active, 2 amended.
+11 entries: 9 active, 2 amended.
 
 | category | file | entries | covers |
 |---|---|---|---|
 | Design | [design.md](decisions/design.md) | 8, 8 holding | game rules, touch interaction, look and feel |
-| Engine | [engine.md](decisions/engine.md) | 1, 1 holding | C++20, SDL3, iOS and deterministic simulation |
+| Engine | [engine.md](decisions/engine.md) | 2, 2 holding | C++20, SDL3, iOS and deterministic simulation |
 | Process | [process.md](decisions/process.md) | 1, 1 holding | Agent Studio, Discord and TestFlight delivery |
 
 ---
@@ -39,10 +39,11 @@ python studio/fe_docs.py category design
 
 ## Engine
 
-1 entries: 1 active. [decisions/engine.md](decisions/engine.md)
+2 entries: 2 active. [decisions/engine.md](decisions/engine.md)
 
 #### Active — the current rules
 
+- **D11** (2026-10-07) TapDemo also builds for the browser, to check a change without a TestFlight build
 - **D7** (2026-10-06) Sprites blend premultiplied alpha; real text comes from a font baked ahead of time
 
 ## Process

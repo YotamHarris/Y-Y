@@ -6,6 +6,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(YY_BUILD_APP "Build SDL game applications" ON)
 option(YY_BUILD_TESTS "Build deterministic tests" ON)
 
+if(EMSCRIPTEN)
+  # The one place the web toolchain version is pinned; CI installs this emsdk (docs/setup.md).
+  file(STRINGS "${CMAKE_SOURCE_DIR}/cmake/web/emsdk-version.txt" YY_EMSDK_VERSION LIMIT_COUNT 1)
+  if(NOT EMSCRIPTEN_VERSION VERSION_EQUAL YY_EMSDK_VERSION)
+    message(FATAL_ERROR "Emscripten ${EMSCRIPTEN_VERSION} found, cmake/web/emsdk-version.txt pins ${YY_EMSDK_VERSION}")
+  endif()
+endif()
+
 add_library(yy_core INTERFACE)
 target_include_directories(yy_core INTERFACE engine/include)
 add_library(tapdemo_logic games/tapdemo/src/model.cpp)
@@ -29,9 +37,10 @@ if(YY_BUILD_APP)
   set(SDL_STATIC ON CACHE BOOL "" FORCE)
   set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
   set(SDL_TESTS OFF CACHE BOOL "" FORCE)
-  if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR EMSCRIPTEN)
     # Touch/audio games do not access cameras, Bluetooth controllers, or sensors.
-    # Remove the SDK backends so Apple does not require unused privacy permissions.
+    # Remove the SDK backends so Apple does not require unused privacy permissions
+    # (and the browser build neither asks for them nor ships them).
     foreach(subsystem CAMERA JOYSTICK HAPTIC HIDAPI SENSOR)
       set(SDL_${subsystem} OFF CACHE BOOL "Unused on iOS" FORCE)
     endforeach()

@@ -5,7 +5,8 @@
     {"name":"headless","generator":"Ninja","binaryDir":"${sourceDir}/build/headless","cacheVariables":{"YY_BUILD_APP":"OFF","CMAKE_BUILD_TYPE":"Release"}},
     {"name":"ios-simulator","generator":"Xcode","binaryDir":"${sourceDir}/build/ios-simulator","cacheVariables":{"CMAKE_SYSTEM_NAME":"iOS","CMAKE_OSX_SYSROOT":"iphonesimulator","CMAKE_OSX_ARCHITECTURES":"arm64","CMAKE_OSX_DEPLOYMENT_TARGET":"16.0","YY_BUILD_TESTS":"OFF"}},
     {"name":"ios-device","generator":"Xcode","binaryDir":"${sourceDir}/build/ios-device","cacheVariables":{"CMAKE_SYSTEM_NAME":"iOS","CMAKE_OSX_SYSROOT":"iphoneos","CMAKE_OSX_ARCHITECTURES":"arm64","CMAKE_OSX_DEPLOYMENT_TARGET":"16.0","YY_BUILD_TESTS":"OFF"}}
+    ,{"name":"web","generator":"Ninja","binaryDir":"${sourceDir}/build/web","toolchainFile":"$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake","cacheVariables":{"CMAKE_BUILD_TYPE":"Release","YY_BUILD_TESTS":"OFF","YY_GAME":"tapdemo"}}
   ],
-  "buildPresets":[{"name":"windows","configurePreset":"windows"},{"name":"headless","configurePreset":"headless"}],
+  "buildPresets":[{"name":"windows","configurePreset":"windows"},{"name":"headless","configurePreset":"headless"},{"name":"web","configurePreset":"web"}],
   "testPresets":[{"name":"windows","configurePreset":"windows","output":{"outputOnFailure":true}},{"name":"headless","configurePreset":"headless","output":{"outputOnFailure":true}}]
 }

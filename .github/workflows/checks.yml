@@ -84,3 +84,38 @@ jobs:
         with:
           name: ios-simulator-metrics
           path: build/ios-simulator/metrics.json
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/prefetch-sdl
+      - name: Install the pinned emsdk
+        shell: bash
+        run: |
+          version=$(head -n 1 cmake/web/emsdk-version.txt)
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install "$version"
+          "$RUNNER_TEMP/emsdk/emsdk" activate "$version"
+          echo "EMSDK=$RUNNER_TEMP/emsdk" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/emsdk/upstream/emscripten" >> "$GITHUB_PATH"
+      - run: cmake --preset web
+      - run: cmake --build build/web --parallel 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tapdemo-web
+          path: build/web/site
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Smoke-test the web build in a phone-sized browser
+        run: |
+          python -m pip install playwright pillow
+          python -m playwright install --with-deps chromium
+          python tests/web_smoke.py build/web/site build/web/smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: tapdemo-web-smoke
+          path: build/web/smoke
+

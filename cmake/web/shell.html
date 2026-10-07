@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#091421">
+<link rel="icon" href="data:,">
+<title>TapDemo</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #091421; overscroll-behavior: none; }
+  body { position: fixed; inset: 0; width: 100%; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  #canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; display: block; touch-action: none; outline: none; }
+  #insets { position: fixed; visibility: hidden; pointer-events: none; padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  #status { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: #9fb4c8; font: 16px/1.4 system-ui, sans-serif; text-align: center; padding: 24px; pointer-events: none; }
+  #status.done { display: none; }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="-1"></canvas>
+<div id="insets"></div>
+<div id="status">Loading…</div>
+<script>
+  // Errors are kept where the CI smoke test can read them.
+  window.yyErrors = [];
+  var statusEl = document.getElementById('status');
+  function fail(text) { window.yyErrors.push(String(text)); statusEl.className = ''; statusEl.textContent = 'Something went wrong: ' + text; }
+  window.addEventListener('error', function (e) { fail(e.message || e.error); });
+  window.addEventListener('unhandledrejection', function (e) { fail(e.reason); });
+
+  // A drag on the board must never scroll, zoom or select: the canvas takes every touch.
+  var opts = { passive: false };
+  ['touchstart', 'touchmove', 'touchend', 'gesturestart', 'gesturechange', 'gestureend', 'contextmenu', 'dblclick'].forEach(function (name) {
+    document.addEventListener(name, function (e) { e.preventDefault(); }, opts);
+  });
+
+  // The page's safe-area insets (the notch, the home bar) go to the runtime in CSS pixels, which are window units.
+  var probe = document.getElementById('insets');
+  function sendInsets() {
+    if (!window.Module || !Module._yy_web_set_safe_insets) return;
+    var s = getComputedStyle(probe), px = function (v) { return parseFloat(v) || 0; };
+    Module.ccall('yy_web_set_safe_insets', null, ['number', 'number', 'number', 'number'],
+      [px(s.paddingTop), px(s.paddingRight), px(s.paddingBottom), px(s.paddingLeft)]);
+  }
+  window.addEventListener('resize', sendInsets);
+  window.addEventListener('orientationchange', sendInsets);
+
+  var Module = {
+    canvas: document.getElementById('canvas'),
+    print: function (text) { console.log(text); },
+    printErr: function (text) { console.warn(text); },
+    onAbort: function (reason) { fail('aborted: ' + reason); },
+    onRuntimeInitialized: function () { statusEl.className = 'done'; sendInsets(); }
+  };
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

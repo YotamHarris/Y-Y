@@ -411,3 +411,24 @@ Desktop captures of each beat through `fe_manager.py gpu` (`tests/capture_celebr
 
 **Open:** desktop captures and tests only; the feel of the slow motion, the haptic and the tune on a phone is the
 owner's TestFlight check. No device measurement: the confetti is under 200 small shapes (not a performance task).
+
+### V12 TapDemo runs in a phone browser (D11)
+
+**Status:** active
+
+`cmake --preset web` builds TapDemo for the browser: one folder (`build/web/site`: index.html, .js, .wasm and the
+packaged assets) that plays like the app, with touch, the saved level kept across reloads and a pause when the
+tab is hidden. `docs/setup.md` says how to build and serve it. CI builds it, uploads it as `tapdemo-web`, and
+plays level 1 in headless Chromium at 390x844.
+
+**Validation.** `cmake --preset web` and `cmake --build build/web` with emsdk 4.0.10; `python
+tests/web_smoke.py build/web/site build/web/smoke`: no JS error, frames after load and after play, the level 1
+card and the board read in the screenshots, a touch drag from the fog's hole placed a ball and showed its aim,
+the release fired it (balls 4 to 3, bounces counted, a brick hit) and the page neither scrolled nor zoomed; a
+preference file written in the page was still there after a reload. `scripts/build.ps1` still passes.
+
+**Open:** headless Chromium on a software GL stack, not Safari: a drag never scrolling or zooming the page in
+iPhone Safari, the safe-area insets under a notch and the audio start after the first touch need a look on a
+real iPhone. No haptics in a browser. Browser speed is not iPhone speed: no performance claim. The game's own
+save writes (`progress.txt`) reach IndexedDB by the same flush; only a file written in the page was reloaded.
+

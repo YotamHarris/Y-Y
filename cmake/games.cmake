@@ -45,7 +45,21 @@ foreach(index RANGE ${YY_GAME_LAST})
     target_sources(${target} PRIVATE "${CMAKE_SOURCE_DIR}/platform/ios/Assets.xcassets")
     set_source_files_properties("${CMAKE_SOURCE_DIR}/platform/ios/Assets.xcassets" PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
   endif()
-  if(EXISTS "${CMAKE_SOURCE_DIR}/${directory}/assets")
+  if(EMSCRIPTEN)
+    # One folder holds the page and everything it loads: index.html, .js, .wasm and the packaged assets.
+    set_target_properties(${target} PROPERTIES OUTPUT_NAME index SUFFIX ".html" RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/site")
+    target_link_options(${target} PRIVATE
+      --shell-file "${CMAKE_SOURCE_DIR}/cmake/web/shell.html" --pre-js "${CMAKE_SOURCE_DIR}/cmake/web/idbfs.js"
+      -lidbfs.js -sFORCE_FILESYSTEM=1 -sALLOW_MEMORY_GROWTH=1 -sEXPORTED_RUNTIME_METHODS=ccall,FS)
+    set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS
+      "${CMAKE_SOURCE_DIR}/cmake/web/shell.html" "${CMAKE_SOURCE_DIR}/cmake/web/idbfs.js")
+  endif()
+  if(EXISTS "${CMAKE_SOURCE_DIR}/${directory}/assets" AND EMSCRIPTEN)
+    # Packaged where the runtime looks: SDL_GetBasePath is "/" in the browser.
+    file(GLOB_RECURSE assets "${CMAKE_SOURCE_DIR}/${directory}/assets/*")
+    target_link_options(${target} PRIVATE --preload-file "${CMAKE_SOURCE_DIR}/${directory}/assets@/assets/${id}")
+    set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS ${assets})
+  elseif(EXISTS "${CMAKE_SOURCE_DIR}/${directory}/assets")
     file(GLOB_RECURSE assets "${CMAKE_SOURCE_DIR}/${directory}/assets/*")
     if(APPLE)
       target_sources(${target} PRIVATE ${assets})
