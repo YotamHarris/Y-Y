@@ -701,7 +701,8 @@ class TapGame final: public yy::Game {
     if(std::strcmp(scene,"aim-brick")==0 || std::strcmp(scene,"aim-wall")==0 || std::strcmp(scene,"aim-far")==0 || std::strcmp(scene,"lastball")==0) {
       // A held aim straight up from the pocket: onto the brick above it, or (aim-wall) up an emptied column to the wall.
       if(std::strcmp(scene,"aim-wall")==0 || std::strcmp(scene,"aim-far")==0) {
-        for(int row=0; row<pocket.row; ++row) model.bricks[row*model.columns+column]=0;
+        // aim-far leaves the top brick of the column, so the block the line ends on is the one to see.
+        for(int row=std::strcmp(scene,"aim-far")==0 ? 1 : 0; row<pocket.row; ++row) model.bricks[row*model.columns+column]=0;
         model.refreshFog(); syncBricks();
       }
       if(std::strcmp(scene,"lastball")==0) model.ballsLeft=1;

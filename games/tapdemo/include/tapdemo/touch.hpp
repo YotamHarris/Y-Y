@@ -244,14 +244,14 @@ public:
         const float t=aimZoom->elapsed/zoomSeconds, k=t*t*(3-2*t);
         base=aimZoom->prior.zoom+(aimFit->cap-aimZoom->prior.zoom)*k;
       }
-      // Zoom out about the held ball just far enough to keep the line's first contact (and its stub) in view;
+      // Zoom out about the held ball just far enough to keep the line's first contact, the whole block it meets (a cell and a ball radius around the contact) and its stub in view;
       // an invalid path leaves the fit where it is.
       if(std::hypot(aim->pull.x,aim->pull.y)>=Model::minPull) {
         const AimPath path=model.aimPath(aim->anchor,aim->pull);
         if(path.valid) {
           const float stub=fitStubCells*Model::cell;
           const yy::Vec2 end{path.contact.x+path.after.x*stub,path.contact.y+path.after.y*stub};
-          const float need=std::min(zoomToFit(aimFit->screen,aim->anchor,path.contact,Model::cell,aimFit->cap),
+          const float need=std::min(zoomToFit(aimFit->screen,aim->anchor,path.contact,Model::cell+Model::ballRadius,aimFit->cap),
                                     zoomToFit(aimFit->screen,aim->anchor,end,0,aimFit->cap));
           aimFit->zoom+=(need-aimFit->zoom)*(1-std::exp(-fitRate*dt));
         }

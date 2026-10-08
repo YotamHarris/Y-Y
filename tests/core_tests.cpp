@@ -1105,6 +1105,13 @@ static void shotCameraChecks() {
     f.move(1,{at.x-60,at.y});
     for(int i=0; i<90; ++i) { f.update(1.0f/60); check(f.camera.zoom<=cap+1e-5f,"never above the zoom the aim started at"); }
     check(f.camera.zoom>farZoom+.01f,"a near target eases back in");
+    {
+      const auto hit=far.aimPath(f.aim->anchor,f.aim->pull); check(hit.valid,"the near aim has a path");
+      const float dx=hit.contact.x-hit.start.x, dy=hit.contact.y-hit.start.y, run=std::hypot(dx,dy);
+      const yy::Vec2 probe{hit.contact.x+dx/run*(Model::ballRadius+2),hit.contact.y+dy/run*(Model::ballRadius+2)};
+      const float x0=std::floor(probe.x/Model::cell)*Model::cell, y0=std::floor(probe.y/Model::cell)*Model::cell;
+      check(inView({x0,y0}) && inView({x0+Model::cell,y0+Model::cell}),"the whole block the line ends on is on screen");
+    }
     // A short pull leaves the zoom where it is.
     f.move(1,{at.x,at.y+60}); for(int i=0; i<90; ++i) f.update(1.0f/60);
     const float again=f.camera.zoom;

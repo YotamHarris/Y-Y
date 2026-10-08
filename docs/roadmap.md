@@ -618,8 +618,8 @@ requested or measured.
 **Status:** active
 
 Holding a ball on a zoomed-in field now zooms out about the ball, eased, just
-far enough that the aim line's first contact (a brick or wall) and the start
-of its stub are on screen with a cell of margin. Swinging back to something
+far enough that the aim line's end, the whole block it meets and the start
+of its stub are on screen (a cell and a ball radius around the contact). Swinging back to something
 close eases back in, never past the zoom the aim started at. The ball stays
 under the finger; release and cancel return to the view from before.
 
@@ -630,8 +630,8 @@ zoom never above the start, easing back in for a near target, a short pull,
 the hum and the restore. The `aim-far` scene on level 6 was captured before
 and after at 390×844 with `python studio/fe_manager.py gpu -- python
 tests/capture_aimline.py --only aim-far --tag before|after --frames 60
---level 6`: before, the line leaves the top of the board with no end mark;
-after, the end ring sits inside the board under a margin and the ball is still
-on screen. Device performance is not applicable.
+--level 6`: before, the line's end ring sits on the top edge and the brick it hits is
+cut off; after, the ring and the whole top brick are on screen and the ball is
+still in view. Device performance is not applicable.
 
 **Open:** owner acceptance. Fit and aim-zoom constants are first values.

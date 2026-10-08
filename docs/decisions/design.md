@@ -369,9 +369,9 @@ captures in `docs/figures/shot-camera/`.
 
 **Status:** active
 
-**What happened.** Yotam said: "When we are aiming and zoomed in adjust the camera to also fit the aimed at brick while aiming". T36 reads this as any held aim while zoomed in: the aim zoom, or a zoom the player pinched in to.
+**What happened.** Yotam said: "When we are aiming and zoomed in adjust the camera to also fit the aimed at brick while aiming", then "We need to see the block we are going to hit". T36 reads this as any held aim while zoomed in: the aim zoom, or a zoom the player pinched in to.
 
-**Decision.** While a ball is held, each frame takes the aim line's first contact (`Model::aimPath`) and the end of its stub. If either, with a cell of margin on the contact, falls outside the view, the camera eases (rate 8 per second) to the largest zoom about the held ball's screen point that brings them in. It never goes below the whole-grid fit or above the zoom the aim started at, and zooming back in stops at that zoom. A pull under the minimum or an invalid path leaves the zoom where it is. A fogged brick is fitted like a wall. The ball stays under the finger. The hum follows the finger's screen distance, so zooming out does not change it. Release and cancel ease back to the view held before the aim, whether the aim zoom or the fit changed it.
+**Decision.** While a ball is held, each frame takes the aim line's first contact (`Model::aimPath`) and the end of its stub. If either, with a cell and a ball radius around the contact (so the whole block it meets shows), falls outside the view, the camera eases (rate 8 per second) to the largest zoom about the held ball's screen point that brings them in. It never goes below the whole-grid fit or above the zoom the aim started at, and zooming back in stops at that zoom. A pull under the minimum or an invalid path leaves the zoom where it is. A fogged brick is fitted like a wall. The ball stays under the finger. The hum follows the finger's screen distance, so zooming out does not change it. Release and cancel ease back to the view held before the aim, whether the aim zoom or the fit changed it.
 
 **Why.** The line's end, the thing the player aims at, no longer runs off screen on a zoomed-in field.
 
