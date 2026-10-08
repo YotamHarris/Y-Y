@@ -1066,6 +1066,54 @@ static void shotCameraChecks() {
   f.camera.zoom=f.camera.minZoom()*1.2f; f.camera.clamp(); const float held=f.camera.zoom;
   check(a.launch(pocketCentre(a),{0,30}),"an automatic-framing shot launches");
   for(int i=0; i<120; ++i) { f.update(1.0f/60); check(f.camera.zoom<=held+1e-4f,"automatic framing never zooms in during a shot"); }
+  // A held aim at a far target keeps its first contact in view, zooming out about the held ball.
+  for(const bool pinched: {false,true}) {
+    Model far; far.play(6); Touch f(far); f.instructions=false; f.framing.automatic=false; // the player's own view
+    const auto& pocket=far.pockets.front();
+    const int column=pocket.column+pocket.columns/2;
+    for(int row=0; row<pocket.row; ++row) far.bricks[row*far.columns+column]=0;
+    far.refreshFog();
+    const yy::Vec2 spot{(column+0.5f)*Model::cell,(pocket.row+pocket.rows/2.0f)*Model::cell};
+    const float opening=std::min(Camera::maxZoom,f.camera.minZoom()*tapdemo::Framing::openingScale);
+    f.camera.hold(spot,{195,480},pinched ? opening : f.camera.minZoom()*1.2f);
+    const Camera start=f.camera; const auto at=f.camera.toScreen(spot);
+    f.down(1,at); check(f.aim.has_value() && f.aim->anchor.x==spot.x,"the far aim holds a ball");
+    for(int i=0; i<60; ++i) f.update(1.0f/60);
+    const float cap=f.camera.zoom;
+    check(near(cap,opening,.001f),"the aim starts at the aim zoom, or at the player's own zoom when pinched in");
+    check(near(f.camera.toScreen(spot).x,at.x,.001f) && near(f.camera.toScreen(spot).y,at.y,.001f),"anchor stays put");
+    const auto inView=[&](yy::Vec2 world) { return f.camera.contains(f.camera.toScreen(world)); };
+    const yy::Vec2 pull{0,60};
+    const auto wall=[&] { return far.aimPath(f.aim->anchor,f.aim->pull); };
+    f.move(1,{at.x,at.y+pull.y});
+    check(!inView(wall().contact),"without the fit the wall would be off screen");
+    float last=f.camera.zoom;
+    for(int i=0; i<90; ++i) {
+      f.update(1.0f/60);
+      check(f.camera.zoom<=last+1e-5f && f.camera.zoom<=cap+1e-5f && f.camera.zoom>=f.camera.minZoom()-1e-5f,"the fit eases out, never past its bounds");
+      check(near(f.camera.toScreen(spot).x,at.x,.001f) && near(f.camera.toScreen(spot).y,at.y,.001f),"the fit keeps the anchor under the finger");
+      last=f.camera.zoom;
+    }
+    check(f.camera.zoom<cap-.01f,"a far target zooms out");
+    check(inView(wall().contact),"after the ease the contact is on screen");
+    const auto contact=f.camera.toScreen(wall().contact);
+    check(contact.y>=f.camera.view.y+Model::cell*f.camera.zoom-1,"with a cell of margin");
+    const float screenPull=std::min(1.0f,60/cap/Touch::fullPull);
+    check(near(f.humLevel(),far.ballsLeft==1 ? 0.5f+0.5f*screenPull : 0.25f+0.5f*screenPull,.01f),"the hum follows the finger's screen distance, not the stretched world pull");
+    const float farZoom=f.camera.zoom;
+    // Swing to something close: a pull sideways meets a pocket-side brick, so the camera eases back in, never past the start.
+    f.move(1,{at.x-60,at.y});
+    for(int i=0; i<90; ++i) { f.update(1.0f/60); check(f.camera.zoom<=cap+1e-5f,"never above the zoom the aim started at"); }
+    check(f.camera.zoom>farZoom+.01f,"a near target eases back in");
+    // A short pull leaves the zoom where it is.
+    f.move(1,{at.x,at.y+60}); for(int i=0; i<90; ++i) f.update(1.0f/60);
+    const float again=f.camera.zoom;
+    f.move(1,{at.x+3,at.y+3}); for(int i=0; i<30; ++i) f.update(1.0f/60);
+    check(near(f.camera.zoom,again,1e-5f),"a pull under the minimum leaves the zoom unchanged");
+    check(!f.up(1,{at.x+3,at.y+3}),"a short release cancels");
+    for(int i=0; i<60; ++i) f.update(1.0f/60);
+    check(near(f.camera.zoom,start.zoom,1e-5f) && near(f.camera.offset.x,start.offset.x,1e-3f) && near(f.camera.offset.y,start.offset.y,1e-3f),"release still eases back to the view held before");
+  }
   std::cout<<"Shot camera: aim zoom-in, exact restore on cancel and launch, edge anchor, no chase after a manual pan\n";
 }
 int main() {

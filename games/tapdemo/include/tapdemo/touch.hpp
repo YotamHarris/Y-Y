@@ -102,16 +102,39 @@ class Touch {
   std::vector<Finger> fingers;
   std::optional<Pinch> pinch;
   struct AimZoom { Camera prior; yy::Vec2 screen; float elapsed{}; };
+  // The zoom a held aim may not exceed (where it started), and the eased zoom that keeps its first contact in view.
+  struct AimFit { Camera prior; yy::Vec2 screen; float cap, zoom; };
   struct Restore { Camera from, to; float elapsed{}; };
+  std::optional<AimFit> aimFit;
   std::optional<AimZoom> aimZoom;
   std::optional<Restore> restore;
-  static constexpr float zoomSeconds=0.28f;
+  static constexpr float zoomSeconds=0.28f, fitRate=8, fitStubCells=1.6f;
   Finger* find(int id) {
     for(auto& f: fingers) if(f.id==id) return &f;
     return nullptr;
   }
   static yy::Vec2 mid(yy::Vec2 a, yy::Vec2 b) { return {(a.x+b.x)/2, (a.y+b.y)/2}; }
   static float distance(yy::Vec2 a, yy::Vec2 b) { return std::hypot(a.x-b.x, a.y-b.y); }
+  // The largest zoom about screen point `at` (capped, never below the grid fit) that keeps world point
+  // `to` (seen from `from`) inside the view with `margin` world units around it.
+  float zoomToFit(yy::Vec2 at, yy::Vec2 from, yy::Vec2 to, float margin, float cap) const {
+    float z=cap;
+    const auto axis=[&](float s, float d, float lo, float hi) {
+      if(hi-s<=0 || s-lo<=0) return; // the held ball is already at the edge: nothing to gain
+      if(d+margin>0) z=std::min(z,(hi-s)/(d+margin));
+      if(margin-d>0) z=std::min(z,(s-lo)/(margin-d));
+    };
+    axis(at.x,to.x-from.x,camera.view.x,camera.view.x+camera.view.w);
+    axis(at.y,to.y-from.y,camera.view.y,camera.view.y+camera.view.h);
+    return std::max(z,camera.minZoom());
+  }
+  // Ends the aim: the camera eases back to the view held before it (the aim zoom and the fit both undo).
+  void endAim() {
+    if(aimFit && (aimZoom || camera.zoom!=aimFit->prior.zoom)) restore=Restore{camera,aimFit->prior};
+    aimZoom.reset();
+    aimFit.reset();
+    aim.reset();
+  }
   void startPinch() {
     framing.automatic=false;
     const yy::Vec2 a=fingers[0].position, b=fingers[1].position;
@@ -139,14 +162,14 @@ public:
   // The aim's hum grows with the pull; the last ball's is tighter: it starts higher and ends at full strength.
   float humLevel() const {
     if(!aim) return 0;
-    const float pulled=std::min(1.0f, std::hypot(aim->pull.x,aim->pull.y)/fullPull);
+    // Zooming out to fit the aim stretches the pull in world units; the hum follows the finger's screen distance.
+    const float scale=aimFit ? aimFit->zoom/aimFit->cap : 1;
+    const float pulled=std::min(1.0f, std::hypot(aim->pull.x,aim->pull.y)*scale/fullPull);
     return model.ballsLeft==1 ? 0.5f+0.5f*pulled : 0.25f+0.5f*pulled;
   }
   void cancel() {
     if(aim && haptics) haptics->humStop();
-    if(aimZoom) restore=Restore{camera,aimZoom->prior};
-    aimZoom.reset();
-    aim.reset();
+    endAim();
   }
   void down(int id, yy::Vec2 p) {
     if(instructions) { instructions=false; return; } // that finger's moves and release find nothing
@@ -158,8 +181,10 @@ public:
     if(spot) {
       restore.reset();
       aim=Aim{id,*spot,{}};
-      if(camera.zoom<std::min(Camera::maxZoom,camera.minZoom()*Framing::openingScale))
-        aimZoom=AimZoom{camera,camera.toScreen(*spot)};
+      const float opening=std::min(Camera::maxZoom,camera.minZoom()*Framing::openingScale);
+      if(camera.zoom<opening) aimZoom=AimZoom{camera,camera.toScreen(*spot)};
+      const float cap=aimZoom ? opening : camera.zoom;
+      aimFit=AimFit{camera,camera.toScreen(*spot),cap,cap};
       if(haptics) haptics->humStart(humLevel());
     } else { rejected=world; rejectTime=0.45f; }
   }
@@ -193,9 +218,7 @@ public:
       launched=model.launch(aim->anchor, aim->pull);
       if(launched && haptics) { haptics->humStop(); haptics->thump(); }
       if(launched) { // the aim zoom eases back to the view held before the ball was placed
-        if(aimZoom) restore=Restore{camera,aimZoom->prior};
-        aimZoom.reset();
-        aim.reset();
+        endAim();
       } else cancel();
     }
     fingers.erase(std::remove_if(fingers.begin(),fingers.end(),[&](const Finger& f){ return f.id==id; }),fingers.end());
@@ -214,13 +237,28 @@ public:
       if(t==1) { camera=b; restore.reset(); if(pinch) startPinch(); }
       return;
     }
-    if(aimZoom && aim) {
-      aimZoom->elapsed=std::min(zoomSeconds,aimZoom->elapsed+dt);
-      const float t=aimZoom->elapsed/zoomSeconds, k=t*t*(3-2*t);
-      const float target=std::min(Camera::maxZoom,camera.minZoom()*Framing::openingScale);
-      camera.zoom=aimZoom->prior.zoom+(target-aimZoom->prior.zoom)*k;
+    if(aim && aimFit) {
+      float base=aimFit->cap;
+      if(aimZoom) {
+        aimZoom->elapsed=std::min(zoomSeconds,aimZoom->elapsed+dt);
+        const float t=aimZoom->elapsed/zoomSeconds, k=t*t*(3-2*t);
+        base=aimZoom->prior.zoom+(aimFit->cap-aimZoom->prior.zoom)*k;
+      }
+      // Zoom out about the held ball just far enough to keep the line's first contact (and its stub) in view;
+      // an invalid path leaves the fit where it is.
+      if(std::hypot(aim->pull.x,aim->pull.y)>=Model::minPull) {
+        const AimPath path=model.aimPath(aim->anchor,aim->pull);
+        if(path.valid) {
+          const float stub=fitStubCells*Model::cell;
+          const yy::Vec2 end{path.contact.x+path.after.x*stub,path.contact.y+path.after.y*stub};
+          const float need=std::min(zoomToFit(aimFit->screen,aim->anchor,path.contact,Model::cell,aimFit->cap),
+                                    zoomToFit(aimFit->screen,aim->anchor,end,0,aimFit->cap));
+          aimFit->zoom+=(need-aimFit->zoom)*(1-std::exp(-fitRate*dt));
+        }
+      }
+      camera.zoom=std::clamp(std::min(base,aimFit->zoom),camera.minZoom(),Camera::maxZoom);
       // Grid-edge clamping must not slide a held ball away from its finger.
-      camera.offset={aimZoom->screen.x-aim->anchor.x*camera.zoom,aimZoom->screen.y-aim->anchor.y*camera.zoom};
+      camera.offset={aimFit->screen.x-aim->anchor.x*camera.zoom,aimFit->screen.y-aim->anchor.y*camera.zoom};
       if(const auto* finger=find(aim->finger)) {
         const auto world=camera.toWorld(finger->position);
         aim->pull={world.x-aim->anchor.x,world.y-aim->anchor.y};

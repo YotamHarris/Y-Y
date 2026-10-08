@@ -9,11 +9,11 @@ python studio/fe_docs.py show D64
 python studio/fe_docs.py category design
 ```
 
-18 entries: 14 active, 4 amended.
+19 entries: 15 active, 4 amended.
 
 | category | file | entries | covers |
 |---|---|---|---|
-| Design | [design.md](decisions/design.md) | 15, 15 holding | game rules, touch interaction, look and feel |
+| Design | [design.md](decisions/design.md) | 16, 16 holding | game rules, touch interaction, look and feel |
 | Engine | [engine.md](decisions/engine.md) | 2, 2 holding | C++20, SDL3, iOS and deterministic simulation |
 | Process | [process.md](decisions/process.md) | 1, 1 holding | Agent Studio, Discord and TestFlight delivery |
 
@@ -21,10 +21,11 @@ python studio/fe_docs.py category design
 
 ## Design
 
-15 entries: 11 active, 4 amended. [decisions/design.md](decisions/design.md)
+16 entries: 12 active, 4 amended. [decisions/design.md](decisions/design.md)
 
 #### Active — the current rules
 
+- **D19** (2026-10-08) A held aim zooms out to keep its first contact on screen
 - **D18** (2026-10-08) Generated Bomb squares exclude the goal and Ghost bricks
 - **D16** (2026-10-07) Aim zoom restores on cancel, and every shot regains camera follow
 - **D15** (2026-10-07) The board and its cull share the play area

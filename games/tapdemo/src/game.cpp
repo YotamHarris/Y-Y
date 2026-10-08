@@ -455,7 +455,7 @@ class TapGame final: public yy::Game {
   }
   void sling(yy::Vec2 at, yy::Vec2 pull) { pointerDown(0,at); pointerMove(0,{at.x+pull.x,at.y+pull.y}); pointerUp(0,{at.x+pull.x,at.y+pull.y}); }
   // YY_TAPDEMO_SCENE stages a moment for smoke screenshots: instructions (as the game opens),
-  // field (the opening field with the card dismissed, untouched), glint (the camera on the goal's glint), header (one ball flying), aim, aim-brick or aim-wall (a held aim whose line ends on a brick, or on the wall above an emptied column), lastball (that aim with one ball left), snap (an aim 3 degrees off horizontal), debug, play, zoom, icons (one of each power-up and the goal
+  // field (the opening field with the card dismissed, untouched), glint (the camera on the goal's glint), header (one ball flying), aim, aim-brick, aim-wall or aim-far (a held aim whose line ends on a brick, or on the wall above an emptied column, aim-far zoomed in so the camera must fit it), lastball (that aim with one ball left), snap (an aim 3 degrees off horizontal), debug, play, zoom, icons (one of each power-up and the goal
   // beside the pocket) or glow (the same close up), breaks (four launches), electric (a launch
   // into that power-up), pingin or pingout (a launch into a Ping brick with the goal inside or
   // outside the ping radius), won (a launch into the goal; won-approach, won-burst, won-goal and won-card freeze its celebration at a beat), lost (the last ball, spent on a brick), palette / palette-fit /
@@ -698,14 +698,15 @@ class TapGame final: public yy::Game {
       if((pingIn || pingOut) && !model.balls.empty()) model.balls.back().bounces=1; // spent on the Ping brick
       return;
     }
-    if(std::strcmp(scene,"aim-brick")==0 || std::strcmp(scene,"aim-wall")==0 || std::strcmp(scene,"lastball")==0) {
+    if(std::strcmp(scene,"aim-brick")==0 || std::strcmp(scene,"aim-wall")==0 || std::strcmp(scene,"aim-far")==0 || std::strcmp(scene,"lastball")==0) {
       // A held aim straight up from the pocket: onto the brick above it, or (aim-wall) up an emptied column to the wall.
-      if(std::strcmp(scene,"aim-wall")==0) {
+      if(std::strcmp(scene,"aim-wall")==0 || std::strcmp(scene,"aim-far")==0) {
         for(int row=0; row<pocket.row; ++row) model.bricks[row*model.columns+column]=0;
         model.refreshFog(); syncBricks();
       }
       if(std::strcmp(scene,"lastball")==0) model.ballsLeft=1;
       if(std::strcmp(scene,"aim-wall")==0) touch.camera.hold({centre.x,pocket.row*Model::cell/2},{195,440},1.0f); // the wall and the pocket both in view
+      else if(std::strcmp(scene,"aim-far")==0) touch.camera.hold({centre.x,centre.y-3*Model::cell},{195,480},std::min(Camera::maxZoom,touch.camera.minZoom()*Framing::openingScale)); // zoomed in: the wall is off screen without the fit
       else touch.camera.hold({centre.x,centre.y-3*Model::cell},{195,480},1.3f);
       const auto from=touch.camera.toScreen(below);
       pointerDown(0,from); pointerMove(0,{from.x,from.y+50});

@@ -364,3 +364,17 @@ captures in `docs/figures/shot-camera/`.
 **Evidence.** V19 and [the current level measurements](../levels.md): R15 checked 279,252 Bomb squares across all ten levels, all supported sizes and many free-play seeds. The band test and touch replays pass. Levels 1, 2 and 10 fired 4,252 Bombs through touch with zero goal breaks or Ghost firings inside their blast squares. Levels 1 and 2 are won by ball contact after earlier Bomb activity. Five levels were re-searched and their cards and opening captures refreshed.
 
 ---
+
+### D19 — A held aim zooms out to keep its first contact on screen (2026-10-08)
+
+**Status:** active
+
+**What happened.** Yotam said: "When we are aiming and zoomed in adjust the camera to also fit the aimed at brick while aiming". T36 reads this as any held aim while zoomed in: the aim zoom, or a zoom the player pinched in to.
+
+**Decision.** While a ball is held, each frame takes the aim line's first contact (`Model::aimPath`) and the end of its stub. If either, with a cell of margin on the contact, falls outside the view, the camera eases (rate 8 per second) to the largest zoom about the held ball's screen point that brings them in. It never goes below the whole-grid fit or above the zoom the aim started at, and zooming back in stops at that zoom. A pull under the minimum or an invalid path leaves the zoom where it is. A fogged brick is fitted like a wall. The ball stays under the finger. The hum follows the finger's screen distance, so zooming out does not change it. Release and cancel ease back to the view held before the aim, whether the aim zoom or the fit changed it.
+
+**Why.** The line's end, the thing the player aims at, no longer runs off screen on a zoomed-in field.
+
+**Evidence.** V20, `shotCameraChecks`, and the `aim-far` captures before and after.
+
+---

@@ -612,3 +612,26 @@ applicable to this rule change.
 **Open:** owner acceptance of Bomb behavior on levels 1, 2 and 10. No known
 implementation or automated-validation gap; real iPhone performance was not
 requested or measured.
+
+### V20 The aimed-at contact stays on screen while aiming zoomed in (D19)
+
+**Status:** active
+
+Holding a ball on a zoomed-in field now zooms out about the ball, eased, just
+far enough that the aim line's first contact (a brick or wall) and the start
+of its stub are on screen with a cell of margin. Swinging back to something
+close eases back in, never past the zoom the aim started at. The ball stays
+under the finger; release and cancel return to the view from before.
+
+**Validation.** `scripts/build.ps1 -ToolsRoot 'D:/Source/Y&Y/YYEngine'`
+passes `yy_tests`: new Touch checks cover a far wall after the aim zoom and
+after the player's pinch, the anchor's screen point unmoved every frame, the
+zoom never above the start, easing back in for a near target, a short pull,
+the hum and the restore. The `aim-far` scene on level 6 was captured before
+and after at 390×844 with `python studio/fe_manager.py gpu -- python
+tests/capture_aimline.py --only aim-far --tag before|after --frames 60
+--level 6`: before, the line leaves the top of the board with no end mark;
+after, the end ring sits inside the board under a margin and the ball is still
+on screen. Device performance is not applicable.
+
+**Open:** owner acceptance. Fit and aim-zoom constants are first values.
