@@ -25,14 +25,14 @@ bool inside(yy::Rect r, yy::Vec2 p) { return p.x>=r.x && p.y>=r.y && p.x<r.x+r.w
 constexpr yy::Rect debugButton{286,22,88,36};
 // The debug panel covers the screen: sixteen stepper rows (a label, -, value, +) under three
 // headings (what applies now; what RESTART applies: the level, or free play's settings; free
-// play's weights), then RESTART and CLOSE.
+// play's weights), then RESTART, DEFAULTS and CLOSE.
 constexpr yy::Rect panel{20,12,350,820};
 enum Stepper { PingRadius, BombSize, ZapSeconds, ZapReach, SnapAngle, GlintStrength, LevelPick, Balls, Bounces, GridSize, GlowRate, Weight0, steppers=Weight0+powerKinds };
 constexpr float stepperTops[steppers]{66,108,150,192,234,276, 340,382,424,466,508, 572,614,656,698,740};
 constexpr float headingTops[]{50,324,556};
 constexpr yy::Rect minusButton(int row) { return {180,stepperTops[row],44,38}; }
 constexpr yy::Rect plusButton(int row) { return {320,stepperTops[row],44,38}; }
-constexpr yy::Rect restartButton{40,788,150,44}, closeButton{200,788,150,44};
+constexpr yy::Rect restartButton{36,788,104,44}, defaultsButton{146,788,104,44}, closeButton{256,788,104,44};
 constexpr yy::Rect shakeButton{196,40,174,24}; // on the APPLY NOW heading's line: taps cycle the screen shake
 constexpr const char* progressFile="progress.txt"; // the reached level, in yy::Storage
 constexpr const char* debugFile="debug.txt";       // every debug panel setting, in yy::Storage
@@ -429,6 +429,16 @@ class TapGame final: public yy::Game {
     }
     persist();
   }
+  // Every panel value back to the shipped one (DebugSettings{}): the apply-now values take effect at once, the
+  // pending ones (balls, bounces, grid) wait for RESTART as hand edits do. The level picker and saved progress stay.
+  void restoreDefaults() {
+    const DebugSettings d;
+    model.setPingRadius(d.pingRadius); model.setBombSize(d.bombSize); model.setElectricSeconds(d.electricSeconds);
+    model.setElectricRadius(d.electricHalves/2.0f); model.setSnapDegrees(d.snapDegrees);
+    shakeLevel=d.shake; glintLevel=d.glint;
+    debugBalls=d.balls; debugBounces=d.bounces; debugGrid=d.grid;
+    persist();
+  }
   void pressDebug(yy::Vec2 p) {
     for(int row=0; row<steppers; ++row) {
       if(inside(minusButton(row),p)) { step(row,-1); return; }
@@ -440,6 +450,7 @@ class TapGame final: public yy::Game {
       if(debugLevel>0) enter(debugLevel); else freePlay();
       debugOpen=false;
     }
+    else if(inside(defaultsButton,p)) restoreDefaults();
     else if(inside(closeButton,p) || !inside(panel,p)) debugOpen=false;
   }
   void sling(yy::Vec2 at, yy::Vec2 pull) { pointerDown(0,at); pointerMove(0,{at.x+pull.x,at.y+pull.y}); pointerUp(0,{at.x+pull.x,at.y+pull.y}); }
@@ -449,7 +460,7 @@ class TapGame final: public yy::Game {
   // into that power-up), pingin or pingout (a launch into a Ping brick with the goal inside or
   // outside the ping radius), won (a launch into the goal; won-approach, won-burst, won-goal and won-card freeze its celebration at a beat), lost (the last ball, spent on a brick), palette / palette-fit /
   // palette-max (all icons, a real Ping revealing fogged bricks, frozen at activation),
-  // grid-min or grid-max (the debug steppers pick free play and the smallest or largest grid, then RESTART),
+  // debug-defaults (values stepped away, then DEFAULTS pressed), grid-min or grid-max (the debug steppers pick free play and the smallest or largest grid, then RESTART),
   // render-test (the opening field under soft-edged cutouts, a cropped sheet cell and baked-font text).
   // edge pins a cleared-corridor corner; edge-touch reaches it by gestures, and edge-shake freezes a jolt there.
   // YY_TAPDEMO_LEVEL (1..10, or 0 for free play) opens that level instead of the saved one, and saves nothing.
@@ -462,6 +473,16 @@ class TapGame final: public yy::Game {
       const yy::Rect button=std::strcmp(scene,"grid-min")==0 ? minusButton(GridSize) : plusButton(GridSize);
       for(int i=0; i<Settings::maxScale; ++i) press(button);
       press(restartButton);
+      touch.instructions=false;
+      return;
+    }
+    if(std::strcmp(scene,"debug-defaults")==0) {
+      // Step several values away from the shipped ones, then press DEFAULTS on the real button.
+      const auto press=[&](yy::Rect b) { const yy::Vec2 p{b.x+b.w/2,b.y+b.h/2}; pointerDown(0,p); pointerUp(0,p); };
+      press(debugButton);
+      for(int row: {PingRadius,BombSize,ZapSeconds,ZapReach,SnapAngle,GlintStrength,Balls,Bounces,GridSize,GlowRate,Weight0}) { press(plusButton(row)); press(plusButton(row)); }
+      press(shakeButton);
+      press(defaultsButton);
       touch.instructions=false;
       return;
     }
@@ -1146,8 +1167,12 @@ public: void initialize(yy::Services& services) override {
       row(GridSize,"GRID SIZE",freeLabel,std::to_string(Settings::shapeColumns*debugGrid.gridScale)+"X"+std::to_string(Settings::shapeRows*debugGrid.gridScale));
       row(GlowRate,"GLOWING",freeLabel,percent(debugGrid.glow));
       for(int k=1; k<=powerKinds; ++k) row(Weight0+k-1,weightNames[k],debugLevel>0 ? muted : glow(palette,static_cast<Power>(k)),std::to_string(debugGrid.weights[k-1]));
-      r.rectangle(restartButton,palette.teal); r.text({restartButton.x+19,restartButton.y+14},"RESTART",dark);
-      r.rectangle(closeButton,palette.button); r.text({closeButton.x+35,closeButton.y+14},"CLOSE",white);
+      const auto bottom=[&](yy::Rect b, Color fill, const char* label, Color ink) {
+        r.rectangle(b,fill); r.text({b.x+(b.w-8*1.5f*std::strlen(label))/2,b.y+16},label,ink,1.5f);
+      };
+      bottom(restartButton,palette.teal,"RESTART",dark);
+      bottom(defaultsButton,palette.button,"DEFAULTS",white);
+      bottom(closeButton,palette.button,"CLOSE",white);
     }
     if(renderTest) drawRenderTest(r);
   }

@@ -498,6 +498,24 @@ void debugPersistenceChecks() {
     damaged.tap({330,40});
     check(damaged.canvas.valueAt(394,"12") && damaged.canvas.valueAt(120,"5X5") && !damaged.canvas.has("COLORS") && same(damaged.canvas.field,tapdemo::garden.field),"a damaged save still opens, clamped and defaulted");
   }
+  {
+    // DEFAULTS, from a non-default state, puts every panel value back to DebugSettings{} and saves it; progress stays.
+    Session reset("level 4\n",nullptr,nullptr,saved.c_str());
+    reset.tap({330,40});
+    check(reset.canvas.valueAt(120,"7X7") && reset.canvas.valueAt(394,"11"),"the reset starts from edited values");
+    reset.tap({335,85}); reset.tap({280,52}); reset.tap({335,127}); // ping radius, shake, bomb size
+    const tapdemo::DebugSettings shipped;
+    check(reset.storage.debug!=tapdemo::saveDebug(shipped),"the panel is away from the shipped values before the reset");
+    reset.tap({200,810}); // DEFAULTS
+    check(reset.storage.debug==tapdemo::saveDebug(shipped) && reset.storage.saved=="level 4\n","DEFAULTS saves the shipped values and leaves the saved level");
+    const auto back=tapdemo::loadDebug(reset.storage.debug);
+    check(back.pingRadius==shipped.pingRadius && back.bombSize==shipped.bombSize && back.shake==shipped.shake && back.balls==shipped.balls &&
+          back.grid.gridScale==shipped.grid.gridScale && back.grid.weights==shipped.grid.weights,"the saved reset loads back equal to the shipped values");
+    check(reset.canvas.valueAt(120,"5X5") && reset.canvas.valueAt(394,"10") && reset.canvas.has("SHAKE MEDIUM") && reset.canvas.has("LEVEL"),"the panel shows the shipped values, still open");
+    Session again("",nullptr,nullptr,reset.storage.debug.c_str());
+    again.tap({330,40});
+    check(again.canvas.valueAt(120,"5X5") && again.canvas.valueAt(394,"10"),"a relaunch keeps the reset");
+  }
   std::cout<<"Debug touch path: settings survive a relaunch, pins neither read nor write them passed\n";
 }
 
