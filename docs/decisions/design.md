@@ -336,3 +336,17 @@ deterministic touch and Game render checks, and nine inspected 390x844 SDL
 captures in `docs/figures/shot-camera/`.
 
 ---
+
+### D17 — Level generation follows an ordered recipe with a test per rule (2026-10-08)
+
+**Status:** active
+
+**What happened.** T34 implements Yotam's selected approach: "A recipe doc of ordered steps and rules, with the code reorganised to match and a test per rule".
+
+**Decision.** Keep the existing rules in [the level-generation recipe](../level-generation.md), numbered R1–R14. Field construction calls named steps in recipe order: grid and hit points, pockets, glowing bricks, then the goal; Ghost landing is the during-play step. Each rule has a named test in `yy_tests` across all ten level configurations and many seeds, with controlled fixtures for fallbacks. A refactor keeps every random draw in order. A rule that changes fields must re-check the bot bands before updating seeds or tuning within its approved scope.
+
+**Why.** A single ordered recipe makes the current fairness rules easy to find and gives each future rule a clear place and a test.
+
+**Evidence.** V18, the recipe and `tests/level_generation_tests.cpp`. Against pre-change commit `ba8094952d0b503009031c059df6cf2d6ce05a03`, `tests/level_recipe_regression.ps1` compared 39,094,808 identical bytes of fields and subsequent Ghost landings. The original band test and every number in `docs/levels.md` remain unchanged. The manager runs `fe_land.py --refactor` before publication.
+
+---

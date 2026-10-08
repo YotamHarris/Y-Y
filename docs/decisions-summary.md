@@ -9,11 +9,11 @@ python studio/fe_docs.py show D64
 python studio/fe_docs.py category design
 ```
 
-16 entries: 13 active, 3 amended.
+17 entries: 14 active, 3 amended.
 
 | category | file | entries | covers |
 |---|---|---|---|
-| Design | [design.md](decisions/design.md) | 13, 13 holding | game rules, touch interaction, look and feel |
+| Design | [design.md](decisions/design.md) | 14, 14 holding | game rules, touch interaction, look and feel |
 | Engine | [engine.md](decisions/engine.md) | 2, 2 holding | C++20, SDL3, iOS and deterministic simulation |
 | Process | [process.md](decisions/process.md) | 1, 1 holding | Agent Studio, Discord and TestFlight delivery |
 
@@ -21,10 +21,11 @@ python studio/fe_docs.py category design
 
 ## Design
 
-13 entries: 10 active, 3 amended. [decisions/design.md](decisions/design.md)
+14 entries: 11 active, 3 amended. [decisions/design.md](decisions/design.md)
 
 #### Active — the current rules
 
+- **D17** (2026-10-08) Level generation follows an ordered recipe with a test per rule
 - **D16** (2026-10-07) Aim zoom restores on cancel, and every shot regains camera follow
 - **D15** (2026-10-07) The board and its cull share the play area
 - **D14** (2026-10-07) The aim line shows the first bounce, and game speed follows the shot

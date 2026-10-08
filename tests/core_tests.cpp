@@ -15,7 +15,7 @@ void paletteChecks();
 void glintChecks();
 void levelFlowChecks();
 void debugPersistenceChecks();
-void levelBandChecks();
+void levelGenerationChecks();
 void celebrationChecks();
 void fontChecks();
 void juiceChecks();
@@ -1112,7 +1112,7 @@ int main() {
   levelFlowChecks();
   glintChecks();
   debugPersistenceChecks();
-  levelBandChecks();
+  levelGenerationChecks();
   celebrationChecks();
   juiceChecks();
   paceChecks();

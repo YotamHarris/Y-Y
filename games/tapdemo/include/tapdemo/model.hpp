@@ -109,6 +109,8 @@ struct Hits { int bricksHit{}, bricksBroken{}, bounces{}, ballsSpent{}; std::vec
 // Bricks further than `fogReach` straight steps from every empty cell are under fog. Ping shows
 // glowing bricks and the goal within `pingRadius` cells of the pinged brick.
 class Model {
+  // Rule tests can supply fields for fallbacks that seeded levels rarely reach.
+  friend struct LevelRecipeTestAccess;
   std::uint32_t randomState;
   int level_{}; // 1..levelCount, or 0 in free play
   bool paused_{};
@@ -118,6 +120,10 @@ class Model {
   bool goalBroken_{};
   float random();
   void generate();
+  void buildGridAndHitPoints();
+  void carvePockets();
+  void placeGlowingBricks();
+  void placeGoal();
   int brickIndexHit(yy::Vec2 p) const;
   bool open(yy::Vec2 p) const;
   void damage(int index, int points);

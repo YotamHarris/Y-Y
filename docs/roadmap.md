@@ -551,3 +551,28 @@ details and captures are in [shot camera validation](shot-camera-validation.md).
 ease and fast Ghost swing. Evidence is deterministic tests and desktop SDL
 captures; device measurements are not applicable to this camera task, and
 there is no iPhone performance claim.
+
+### V18 Level generation has an ordered recipe and a test per rule (D17)
+
+**Status:** active
+
+[The level-generation recipe](level-generation.md) lists the existing rules
+as R1–R14, with their ordered steps and code functions. Field construction
+now calls those named steps; Ghost remains the during-play step. Each rule
+has a named test covering all ten levels and 64 alternate seeds per level,
+including controlled fixtures for the goal and Ghost fallbacks.
+
+**Validation.** `tests/level_recipe_regression.ps1 -Base ba80949 -ToolsRoot
+'D:/Source/Y&Y/YYEngine'` invokes the normal Release build and `yy_tests`:
+CTest 1/1 passes, including all rule tests and the unchanged band test.
+It compiles the pre-change and refactored models with the same canonical dump
+and compares 39,094,808 bytes exactly: all ten shipped opening fields,
+128 alternate seeds per level, later free-play fields and the Ghost landing
+and resulting field after each generation. Both dumps have SHA256
+`90fa5948e79688f25471c6019fe7e6a2edd89d0cf0240d1a53cc538e1ffbe11e`.
+The ten shipped field hashes are also pinned in `yy_tests`.
+Every number in `levels.md` is unchanged. The manager runs
+`fe_land.py --refactor` before publication.
+
+**Open:** none for this refactor; player path, visual and device evidence
+are not applicable because fields and gameplay are unchanged.

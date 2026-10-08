@@ -126,8 +126,18 @@ int loadProgress(std::string_view text) {
 }
 
 void Model::generate() {
+  // The ordered recipe and its R-numbered tests: docs/level-generation.md.
+  buildGridAndHitPoints();
+  carvePockets();
+  placeGlowingBricks();
+  placeGoal();
+}
+void Model::buildGridAndHitPoints() {
+  columns=Settings::shapeColumns*settings.gridScale; rows=Settings::shapeRows*settings.gridScale;
   bricks.assign(columns*rows, 0);
   for(auto& b: bricks) { const float r=random(); b = r<0.5f ? 1 : r<0.8f ? 2 : 3; }
+}
+void Model::carvePockets() {
   // One or two pockets of 3 to 5 cells a side, a cell in from the walls and apart from each other.
   pockets.clear();
   const int count = random()<0.5f ? 1 : 2;
@@ -142,6 +152,8 @@ void Model::generate() {
     pockets.push_back(p);
     for(int r=p.row; r<p.row+p.rows; ++r) for(int c=p.column; c<p.column+p.columns; ++c) bricks[r*columns+c]=0;
   }
+}
+void Model::placeGlowingBricks() {
   // Glowing bricks, each power-up picked in proportion to its weight; all weights 0 means none glow.
   // Where a bomb's blast would pass a wall, the pick is among the other kinds, so Bomb's weight
   // leaves their proportions alone; with only Bomb weighted that brick stays plain.
@@ -165,6 +177,8 @@ void Model::generate() {
     powers[i]=static_cast<Power>(1+kind);
     bricks[i]=1;
   }
+}
+void Model::placeGoal() {
   refreshFog();
   // The goal: a plain brick under the fog (any plain brick if none is fogged).
   std::vector<int> hidden, plain;
@@ -192,7 +206,6 @@ void Model::play(int level, const Level& l) {
 void Model::restart(int balls_, int bounces, const Settings& grid) {
   level_=0;
   settings=grid.clamped();
-  columns=Settings::shapeColumns*settings.gridScale; rows=Settings::shapeRows*settings.gridScale;
   ballCount=std::clamp(balls_,1,maxSetting); bouncesPerBall=std::clamp(bounces,1,maxSetting);
   ballsLeft=ballCount; balls.clear(); hits={}; pending.clear(); pingCells_.clear(); pingTime=0; paused_=false;
   generate();

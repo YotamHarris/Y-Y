@@ -5,6 +5,9 @@ level's intended experience (T11, D6). The numbers below are 2,000 bot games per
 level (bot seeds 1 to 2,000); the band test in `yy_tests` replays the first 200
 of them on every build and fails if a level leaves its band.
 
+The [level-generation recipe](level-generation.md) gives the ordered steps,
+current rules, code functions and one numbered test per rule.
+
 **The bot is not a person.** It plays one ball at a time. Each shot starts at
 the centre of a random open cell of a cavity. 60% of shots aim at something it
 can see, give or take 4 degrees: the goal once it shows (out of the fog or
