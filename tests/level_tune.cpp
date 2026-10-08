@@ -34,10 +34,10 @@ static float miss(Feel feel, const levelbot::Metrics& m) {
   return 4*d+std::abs(w-middle)*0.2f+lesson;
 }
 static void print(int level, const Level& l, const levelbot::Metrics& m) {
-  std::printf("L%-2d %-9s seed %-8u balls %2d bounces %2d  wins %5.1f%%  last %5.1f%%  chain %5.1f%%  last+chain %5.1f%%  near %5.1f%%  seen %5.1f%%  dist %.2f  miss %.3f\n",
+  std::printf("L%-2d %-9s seed %-8u balls %2d bounces %2d  wins %5.1f%%  last %5.1f%%  chain %5.1f%%  last+chain %5.1f%%  near %5.1f%%  seen %5.1f%%  dist %.2f  miss %.3f  card %ld%% (%d/%d)\n",
     level,feelName(l.feel),l.seed,l.balls,l.bounces,100*m.winRate(),100*m.lastBallShare(),100*m.chainShare(),
     m.wins ? 100.0f*m.lastChainWins/m.wins : 0.0f,100*m.nearShare(),m.runs>m.wins ? 100.0f*m.seenLosses/(m.runs-m.wins) : 0.0f,
-    m.meanLossDistance(),miss(l.feel,m));
+    m.meanLossDistance(),miss(l.feel,m),std::lround(100*m.winRate()),m.wins,m.runs);
 }
 // Runs fn(i) for i in 0..count-1 across the machine's threads.
 template<class F> static void parallel(int count, F fn) {

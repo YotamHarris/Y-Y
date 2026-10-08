@@ -6,7 +6,7 @@
 #include <iostream>
 #include <numeric>
 
-void levelBandChecks(); // Existing band gate, unchanged.
+void levelBandChecks();
 
 namespace tapdemo {
 struct LevelRecipeTestAccess {
@@ -47,18 +47,6 @@ std::uint64_t fieldHash(const Model& m) {
   }
   return hash;
 }
-void seededFieldsUnchanged() {
-  // Captured with ba80949's model.cpp before extracting the recipe steps.
-  constexpr std::array<std::uint64_t,levelCount> before{
-    4465901617141586073ull,3495574635567188002ull,10743978662179541491ull,7413345101900285566ull,
-    6065245357140630002ull,4964636765703347554ull,3734234545185738262ull,621690589082315072ull,
-    16444185347337181642ull,4918079018109933961ull};
-  for(int n=1; n<=levelCount; ++n) {
-    Model m; m.play(n);
-    check(fieldHash(m)==before[n-1],"shipped field differs from pre-refactor bytes");
-  }
-}
-
 void R1_gridSizeAndHitPoints() {
   std::array<int,4> counts{};
   eachField([&](Model m) {
@@ -189,6 +177,66 @@ void R10_goalHasOneHitPoint() {
   eachField([](const Model& m) { check(m.goal>=0 && m.bricks[m.goal]==1,"R10 goal hit points"); });
 }
 
+void R15_bombSquaresExcludeGoalAndGhost() {
+  int bombs=0, ghostFirst=0, bombFirst=0, allowedPowers=0;
+  std::array<int,3> otherKinds{}; // Electricity, Ping, Speed at constrained picks.
+  const auto inspect=[&](const Model& m) {
+    check(m.goal>=0,"R15 generated field still has a goal");
+    for(int i=0; i<m.columns*m.rows; ++i) {
+      const int c=i%m.columns, r=i/m.columns, half=m.bombSize/2;
+      bool earlierGhost=false, earlierBomb=false;
+      for(int y=std::max(0,r-half); y<=std::min(m.rows-1,r+half); ++y)
+        for(int x=std::max(0,c-half); x<=std::min(m.columns-1,c+half); ++x) {
+          const int j=y*m.columns+x;
+          if(j<i) { earlierGhost|=m.powers[j]==Power::Ghost; earlierBomb|=m.powers[j]==Power::Bomb; }
+          if(m.powers[i]==Power::Bomb) {
+            check(j!=m.goal,"R15 goal outside every Bomb square, including corners");
+            check(m.powers[j]!=Power::Ghost,"R15 Ghost outside every Bomb square");
+            allowedPowers+=m.powers[j]!=Power::None && j!=i;
+          }
+        }
+      bombs+=m.powers[i]==Power::Bomb;
+      if(m.bricks[i]>0 && !edge(m,c,r)) {
+        ghostFirst+=earlierGhost; bombFirst+=earlierBomb;
+        if(earlierGhost || earlierBomb) {
+          if(m.powers[i]==Power::Electricity) ++otherKinds[0];
+          if(m.powers[i]==Power::Ping) ++otherKinds[1];
+          if(m.powers[i]==Power::Speed) ++otherKinds[2];
+        }
+      }
+    }
+  };
+  for(int size: {3,5,7,9,11}) {
+    for(int level=1; level<=levelCount; ++level) {
+      Level l=levels[level-1]; l.bombSize=size;
+      Model m; m.play(level,l); inspect(m);
+    }
+    for(int scale: {2,4,10}) for(std::uint32_t seed=1; seed<=256; ++seed) {
+      Model m(seed); m.setBombSize(size);
+      Settings grid; grid.gridScale=scale; grid.glow=50; grid.weights={9,1,3,9,5};
+      m.restart(4,15,grid); inspect(m);
+    }
+    // Boundary fallback: the only hidden/visible plain cell inside the
+    // square must lose to a visible safe one just beyond its diagonal corner.
+    Model m; m.setBombSize(size);
+    std::fill(m.bricks.begin(),m.bricks.end(),0); std::fill(m.powers.begin(),m.powers.end(),Power::None);
+    const int centre=(size/2+1)*m.columns+size/2+1;
+    const int corner=centre+(size/2)*m.columns+size/2, safe=corner+1;
+    m.bricks[centre]=1; m.powers[centre]=Power::Bomb;
+    m.bricks[corner]=3; m.bricks[safe]=3;
+    LevelRecipeTestAccess::goal(m);
+    check(m.goal==safe && m.bricks[safe]==1 && m.bricks[corner]==3 && m.visible(safe%m.columns,safe/m.columns),"R15 safe visible goal fallback and exact square boundary");
+    m.bricks[safe]=0; LevelRecipeTestAccess::goal(m);
+    check(m.goal==-1 && !m.won(),"R15 no safe plain brick leaves no goal");
+  }
+  check(bombs>10000 && ghostFirst>10000 && bombFirst>10000,"R15 both placement orders sampled");
+  check(allowedPowers>10000,"R15 Bomb squares still contain other power-ups and Bombs");
+  const int total=std::accumulate(otherKinds.begin(),otherKinds.end(),0);
+  for(int k=0; k<3; ++k)
+    check(std::abs(static_cast<float>(otherKinds[k])/total-std::array{1.0f,3.0f,5.0f}[k]/9)<0.01f,"R15 other kinds keep their weight proportions at excluded picks");
+  std::cout<<"R15: ten levels at five Bomb sizes; 256 free-play seeds at each size and scales 2/4/10; "<<bombs<<" Bomb squares checked\n";
+}
+
 // Collision-driven Ghost fixtures use each level's dimensions and random state.
 // An upward shot hits (columns/2,2); candidates are snapshotted after that brick
 // breaks but before the new cavity, matching the point at which Ghost chooses.
@@ -303,9 +351,9 @@ void R14_ghostFallbackPowersVanishWithoutFiring() {
 }
 
 void levelGenerationChecks() {
-  seededFieldsUnchanged();
   const auto run=[](const char* rule, auto test) { test(); std::cout<<"Level recipe "<<rule<<": passed\n"; };
   run("R1",R1_gridSizeAndHitPoints);
+  run("R15",R15_bombSquaresExcludeGoalAndGhost);
   run("R2",R2_levelSeedsFollowBotBands);
   run("R3",R3_pocketSizeAndCount);
   run("R4",R4_pocketSpacing);
@@ -319,5 +367,5 @@ void levelGenerationChecks() {
   run("R12",R12_ghostLandingPreferenceOrder);
   run("R13",R13_ghostCavityCanWin);
   run("R14",R14_ghostFallbackPowersVanishWithoutFiring);
-  std::cout<<"Level recipe: ten shipped field hashes unchanged; rules cover 64 seeds per level\n";
+  std::cout<<"Level recipe: rules R1-R14 cover 64 seeds per level; R15 covers all Bomb sizes and 256 free-play seeds\n";
 }

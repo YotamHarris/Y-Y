@@ -527,7 +527,7 @@ void levelFlowChecks() {
   {
     Session fresh("");
     check(fresh.canvas.has("LEVEL 1") && fresh.canvas.has("NEW POWER-UP") && fresh.canvas.has("BOMB") && !fresh.canvas.has("GHOST"),"a new player opens level 1, whose card names the Bomb");
-    check(fresh.canvas.has("EXPECTED WINS 100%"),"level 1's card gives its expected win rate");
+    check(fresh.canvas.has("EXPECTED WINS "+std::to_string(levels[0].expectedWins)+"%"),"level 1's card gives its expected win rate");
     check(fresh.storage.writes==0,"opening the app saves nothing");
   }
   {
@@ -583,6 +583,7 @@ namespace {
 struct Round {
   int level{}; std::vector<levelbot::Shot> shots;
   std::vector<int> flights;      // updates each shot's flight takes, up to its end or the break
+  int pacedWinningFrames{};     // winning flight with Pace, without the celebration's slow-down
   int ballsLeft{}; bool chain{}, ghost{};
 };
 constexpr float step=1.0f/60;
@@ -598,6 +599,7 @@ Round replayRound(int level, const std::vector<levelbot::Shot>& shots) {
   for(const auto& shot: shots) {
     finger.down(1,shot.press); finger.move(1,shot.release);
     check(finger.up(1,shot.release),"a recorded shot launches again");
+    Model uncelebrated=m;
     std::vector<Anticipation> seen; int updates=0;
     while(!m.balls.empty() && !m.over() && updates<60*120) {
       seen.push_back(lookAhead(m,step,Celebration::window));
@@ -610,6 +612,18 @@ Round replayRound(int level, const std::vector<levelbot::Shot>& shots) {
       }
     }
     round.flights.push_back(updates);
+    if(m.won()) {
+      // Compare the game's slow-motion flight to its ordinary paced clock.
+      // A fixed 1x baseline can be longer even after the celebration slows
+      // the approach, when the new seed's flight has many earlier bounces.
+      Pace pace; float debt=0;
+      while(!uncelebrated.over() && round.pacedWinningFrames<60*120) {
+        ++round.pacedWinningFrames;
+        for(int n=takeSteps(debt,step,pace.step(uncelebrated,step),8); n>0 && !uncelebrated.over(); --n)
+          uncelebrated.update(step);
+      }
+      check(uncelebrated.won(),"the ordinary paced baseline has the same winning flight");
+    }
     const int count=static_cast<int>(seen.size());
     for(int i=0; i<count; ++i) {
       const float left=(count-i)*step; // game seconds from this look-ahead to the update that ended the flight
@@ -737,7 +751,7 @@ void celebrationChecks() {
       }
       check(frames<1200 && widest>play.fit*1.5f,"the camera pushes in on the way to the goal");
       check(goalShown && !cardWithGoal,"GOAL! shows before the win card, never with it");
-      check(breakFrames<6 || frames>breakFrames+Celebration::totalSeconds*60+5,"the slow motion makes the winning flight last longer than it does at full speed");
+      check(breakFrames<6 || frames>round->pacedWinningFrames+Celebration::totalSeconds*60+5,"the slow motion makes the winning flight last longer than the ordinary paced clock");
       check(firstZoom>=0 && (frames-firstZoom)*step>=1.0f && (frames-firstZoom)*step<=4.2f,"the celebration takes a few seconds from the push-in to the card");
       check(play.atFit(),"the camera is back on the field at the card");
       check(play.session.canvas.has("GOAL FOUND") && play.session.canvas.has("BALLS LEFT"),"the win card shows");

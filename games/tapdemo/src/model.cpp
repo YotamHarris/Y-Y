@@ -5,6 +5,15 @@
 #include <deque>
 
 namespace tapdemo {
+namespace {
+// A square is symmetric: Ghost excludes Bomb centres in the same square that
+// a Bomb excludes Ghost cells. Both placement orders use the generated size.
+void markSquare(std::vector<bool>& cells, int columns, int rows, int index, int size) {
+  const int c=index%columns, r=index/columns, half=size/2;
+  for(int y=std::max(0,r-half); y<=std::min(rows-1,r+half); ++y)
+    for(int x=std::max(0,c-half); x<=std::min(columns-1,c+half); ++x) cells[y*columns+x]=true;
+}
+}
 float Model::random() {
   randomState ^= randomState << 13; randomState ^= randomState >> 17; randomState ^= randomState << 5;
   return static_cast<float>(randomState & 0xffff) / 65536.0f;
@@ -33,26 +42,26 @@ Model::Model(std::uint32_t seed): randomState(seed ? seed : 42) { restart(); }
 // Every level gives levelBalls balls (Yotam); bounces and the seed carry the difficulty.
 // Weights run Bomb, Electricity, Ping, Ghost, Speed.
 const std::array<Level,levelCount> levels{{
-  {.seed=1659, .feel=Feel::Relief, .introduces=Power::Bomb, .grid={.gridScale=2,.glow=16,.weights={1,0,0,0,0}},
-   .balls=levelBalls, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=100},
-  {.seed=2920, .feel=Feel::BuildUp, .introduces=Power::None, .grid={.gridScale=2,.glow=24,.weights={1,0,0,0,0}},
-   .balls=levelBalls, .bounces=12, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=55},
+  {.seed=185, .feel=Feel::Relief, .introduces=Power::Bomb, .grid={.gridScale=2,.glow=16,.weights={1,0,0,0,0}},
+   .balls=levelBalls, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=99},
+  {.seed=1783, .feel=Feel::BuildUp, .introduces=Power::None, .grid={.gridScale=2,.glow=24,.weights={1,0,0,0,0}},
+   .balls=levelBalls, .bounces=12, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=56},
   {.seed=334, .feel=Feel::Relief, .introduces=Power::Electricity, .grid={.gridScale=2,.glow=16,.weights={0,1,0,0,0}},
    .balls=levelBalls, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=98},
   {.seed=893, .feel=Feel::Fu, .introduces=Power::None, .grid={.gridScale=3,.glow=8,.weights={0,1,0,0,0}},
    .balls=levelBalls, .bounces=10, .bombSize=5, .electricSeconds=5, .electricRadius=2, .pingRadius=6, .expectedWins=13},
   {.seed=522, .feel=Feel::BuildUp, .introduces=Power::Speed, .grid={.gridScale=3,.glow=16,.weights={0,0,0,0,1}},
    .balls=levelBalls, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=55},
-  {.seed=696, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=3,.glow=30,.weights={1,1,0,0,0}},
-   .balls=levelBalls, .bounces=18, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=6, .expectedWins=38},
+  {.seed=1563, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=3,.glow=30,.weights={1,1,0,0,0}},
+   .balls=levelBalls, .bounces=16, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=6, .expectedWins=39},
   {.seed=1751, .feel=Feel::Relief, .introduces=Power::Ping, .grid={.gridScale=3,.glow=16,.weights={0,0,1,0,0}},
    .balls=levelBalls, .bounces=20, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=7, .expectedWins=93},
-  {.seed=2669, .feel=Feel::BuildUp, .introduces=Power::None, .grid={.gridScale=4,.glow=16,.weights={1,0,1,0,0}},
-   .balls=levelBalls, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=56},
+  {.seed=2812, .feel=Feel::BuildUp, .introduces=Power::None, .grid={.gridScale=4,.glow=16,.weights={1,0,1,0,0}},
+   .balls=levelBalls, .bounces=15, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=55},
   {.seed=1009, .feel=Feel::Fu, .introduces=Power::Ghost, .grid={.gridScale=4,.glow=6,.weights={0,0,0,1,0}},
    .balls=levelBalls, .bounces=12, .bombSize=5, .electricSeconds=6, .electricRadius=2.5f, .pingRadius=6, .expectedWins=19},
-  {.seed=2104, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=5,.glow=30,.weights={1,1,1,1,1}},
-   .balls=levelBalls, .bounces=17, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=8, .expectedWins=46},
+  {.seed=2441, .feel=Feel::FuckYeah, .introduces=Power::None, .grid={.gridScale=5,.glow=30,.weights={1,1,1,1,1}},
+   .balls=levelBalls, .bounces=22, .bombSize=7, .electricSeconds=8, .electricRadius=3, .pingRadius=8, .expectedWins=45},
 }};
 DebugSettings DebugSettings::clamped() const {
   DebugSettings s=*this;
@@ -155,10 +164,11 @@ void Model::carvePockets() {
 }
 void Model::placeGlowingBricks() {
   // Glowing bricks, each power-up picked in proportion to its weight; all weights 0 means none glow.
-  // Where a bomb's blast would pass a wall, the pick is among the other kinds, so Bomb's weight
-  // leaves their proportions alone; with only Bomb weighted that brick stays plain.
+  // R7/R8/R15: exclude Bomb at walls or near Ghost, and Ghost inside a Bomb
+  // square. Pick among the remaining weights, or leave the brick plain.
   // A glowing brick breaks in one hit.
   powers.assign(columns*rows, Power::None);
+  std::vector<bool> bombSquares(powers.size()), ghostSquares(powers.size());
   int total=0;
   for(int w: settings.weights) total+=w;
   const float glowChance=settings.glow/200.0f;
@@ -168,21 +178,30 @@ void Model::placeGlowingBricks() {
     const int c=static_cast<int>(i)%columns, r=static_cast<int>(i)/columns;
     const bool bombFits=c>=half && r>=half && c<columns-half && r<rows-half;
     auto weights=settings.weights;
-    if(!bombFits) weights[0]=0;
-    const int sum=total-settings.weights[0]+weights[0];
+    if(!bombFits || ghostSquares[i]) weights[0]=0;
+    if(bombSquares[i]) weights[3]=0;
+    const int sum=total-settings.weights[0]-settings.weights[3]+weights[0]+weights[3];
     const float pick=random()*sum;
     if(sum<=0) continue;
     int kind=0;
     for(int s=weights[0]; kind<powerKinds-1 && !(pick<s); s+=weights[++kind]) {}
     powers[i]=static_cast<Power>(1+kind);
     bricks[i]=1;
+    if(powers[i]==Power::Bomb) markSquare(bombSquares,columns,rows,static_cast<int>(i),bombSize);
+    if(powers[i]==Power::Ghost) markSquare(ghostSquares,columns,rows,static_cast<int>(i),bombSize);
   }
 }
 void Model::placeGoal() {
   refreshFog();
-  // The goal: a plain brick under the fog (any plain brick if none is fogged).
+  // R15 applies to the fallback too: a visible safe plain brick, or no goal
+  // if no safe plain brick exists. Never put the goal in a Bomb square.
+  std::vector<bool> bombSquares(powers.size());
+  for(int i=0; i<columns*rows; ++i) if(powers[i]==Power::Bomb)
+    markSquare(bombSquares,columns,rows,i,bombSize);
   std::vector<int> hidden, plain;
-  for(int i=0; i<columns*rows; ++i) if(bricks[i]>0 && powers[i]==Power::None) { plain.push_back(i); if(fog_[i]>fogReach) hidden.push_back(i); }
+  for(int i=0; i<columns*rows; ++i) if(bricks[i]>0 && powers[i]==Power::None && !bombSquares[i]) {
+    plain.push_back(i); if(fog_[i]>fogReach) hidden.push_back(i);
+  }
   if(hidden.empty()) hidden=plain;
   goal=hidden.empty() ? -1 : hidden[std::min(hidden.size()-1,static_cast<std::size_t>(random()*hidden.size()))];
   if(goal>=0) bricks[goal]=1; // the goal breaks in one hit, like a glowing brick

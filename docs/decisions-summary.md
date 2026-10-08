@@ -9,11 +9,11 @@ python studio/fe_docs.py show D64
 python studio/fe_docs.py category design
 ```
 
-17 entries: 14 active, 3 amended.
+18 entries: 14 active, 4 amended.
 
 | category | file | entries | covers |
 |---|---|---|---|
-| Design | [design.md](decisions/design.md) | 14, 14 holding | game rules, touch interaction, look and feel |
+| Design | [design.md](decisions/design.md) | 15, 15 holding | game rules, touch interaction, look and feel |
 | Engine | [engine.md](decisions/engine.md) | 2, 2 holding | C++20, SDL3, iOS and deterministic simulation |
 | Process | [process.md](decisions/process.md) | 1, 1 holding | Agent Studio, Discord and TestFlight delivery |
 
@@ -21,11 +21,11 @@ python studio/fe_docs.py category design
 
 ## Design
 
-14 entries: 11 active, 3 amended. [decisions/design.md](decisions/design.md)
+15 entries: 11 active, 4 amended. [decisions/design.md](decisions/design.md)
 
 #### Active — the current rules
 
-- **D17** (2026-10-08) Level generation follows an ordered recipe with a test per rule
+- **D18** (2026-10-08) Generated Bomb squares exclude the goal and Ghost bricks
 - **D16** (2026-10-07) Aim zoom restores on cancel, and every shot regains camera follow
 - **D15** (2026-10-07) The board and its cull share the play area
 - **D14** (2026-10-07) The aim line shows the first bounce, and game speed follows the shot
@@ -39,6 +39,7 @@ python studio/fe_docs.py category design
 
 #### Amended — still apply, with a later entry changing part
 
+- **D17** (2026-10-08) Level generation follows an ordered recipe with a test per rule → D18 — R15 adds Bomb exclusions to the recipe
 - **D13** (2026-10-07) Levels open framed on the visible cavity and ease outward as it grows → D16 — aim zoom remembers its prior view; live shots follow after manual camera movement
 - **D8** (2026-10-06) Garden Pop draws damage as materials and keeps hit effects outside the model → D9 — Garden Pop is the only look, on every launch
 - **D2** (2026-10-05) Fog has brightness and texture contrast in every colour scheme → D9 — only Garden Pop remains; the four other schemes and COLORS are removed

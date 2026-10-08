@@ -24,6 +24,7 @@ struct Result {
   int goalDistance{}; // straight steps from the goal to the nearest open cell when the level ended
   int ghostLandings{}; // Ghost power-ups that moved the ball
   int ghostTakes{};    // power-ups that fired from inside a Ghost's landing cavity in the update it landed
+  int bombFirings{}, bombGoalBreaks{}, bombGhostFires{};
 };
 
 // A small generator of the bot's own, apart from the model's.
@@ -104,6 +105,17 @@ inline Result play(int level, const tapdemo::Level& table, std::uint32_t botSeed
       result.goalSeen|=goalShows(m);
       // A power-up fired after a Ghost in the same update, from a brick in its 3x3, was taken for free.
       const auto& fired=m.hits.fired;
+      for(std::size_t k=0; k<fired.size(); ++k) {
+        if(fired[k].power!=Power::Bomb) continue;
+        ++result.bombFirings;
+        const auto inside=[&](int cell) {
+          return cell>=0 && std::abs(cell%m.columns-fired[k].cell%m.columns)<=m.bombSize/2 &&
+                            std::abs(cell/m.columns-fired[k].cell/m.columns)<=m.bombSize/2;
+        };
+        result.bombGoalBreaks+=m.hits.goalBroken && inside(m.goal);
+        for(const auto& other: fired)
+          result.bombGhostFires+=other.power==Power::Ghost && inside(other.cell);
+      }
       for(std::size_t g=0; g<fired.size(); ++g) {
         if(fired[g].power!=Power::Ghost || fired[g].to<0) continue;
         ++result.ghostLandings;
@@ -125,9 +137,11 @@ struct Metrics {
   int runs{}, wins{}, lastBallWins{}, chainWins{}, lastChainWins{}, nearLosses{}, seenLosses{};
   long long lossDistance{};
   int ghostLandings{}, ghostTakes{};
+  int bombFirings{}, bombGoalBreaks{}, bombGhostFires{}, winsAfterBombs{};
   void add(const Result& r) {
     ++runs; ghostLandings+=r.ghostLandings; ghostTakes+=r.ghostTakes;
-    if(r.won) { ++wins; lastBallWins+=r.lastBall; chainWins+=r.chain; lastChainWins+=r.lastBall && r.chain; return; }
+    bombFirings+=r.bombFirings; bombGoalBreaks+=r.bombGoalBreaks; bombGhostFires+=r.bombGhostFires;
+    if(r.won) { ++wins; lastBallWins+=r.lastBall; chainWins+=r.chain; lastChainWins+=r.lastBall && r.chain; winsAfterBombs+=r.bombFirings>0; return; }
     nearLosses+=r.goalSeen || r.goalDistance<=2; seenLosses+=r.goalSeen; lossDistance+=r.goalDistance;
   }
   float winRate() const { return runs ? static_cast<float>(wins)/runs : 0; }

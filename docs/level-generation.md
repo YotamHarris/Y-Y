@@ -34,6 +34,12 @@ Each R rule has a named test in `tests/level_generation_tests.cpp`.
 - **R7:** A Bomb's cell is at least half its blast size from every wall.
 - **R8:** Where a Bomb cannot fit, pick with its weight removed, preserving
   the other weights' proportions, or leave the brick plain if only Bomb is enabled.
+- **R15:** No generated Bomb's `bombSize × bombSize` square contains the
+  goal or a Ghost brick, including its edges and corners. During the weighted
+  pick, remove Bomb near an earlier Ghost and Ghost inside an earlier Bomb's
+  square; keep the other kinds' relative weights. Bombs may still cover
+  Electricity, Ping, Speed and other Bombs. Every Bomb follows the rule, so
+  chained Bombs are safe too. Use the Bomb size the field is generated with.
 
 Keep the existing draw even when the eligible weight sum is zero.
 
@@ -43,9 +49,17 @@ Keep the existing draw even when the eligible weight sum is zero.
 Fog distance is the shortest number of horizontal or vertical steps to an
 empty cell; distances above `Model::fogReach` are hidden.
 
-- **R9:** Pick a plain occupied brick under fog, falling back to any plain
-  occupied brick if none is hidden, or no goal if none exists.
+- **R9:** Pick a plain occupied brick under fog, falling back to any eligible
+  plain occupied brick if none is hidden, or no goal if none exists.
 - **R10:** The goal has 1 hit point.
+
+R15 excludes cells inside every Bomb square from both goal lists. If no safe
+fogged plain brick exists, choose a safe visible plain brick; if no safe plain
+brick exists at all, leave the goal absent rather than violate R15. This last
+fallback is tested with a supplied field; shipped levels and the sampled
+free-play fields all have a goal. Changing Bomb size after generation in the
+debug panel does not regenerate the field; restart to apply the recipe at
+that size.
 
 ## 5. During play: Ghost landing
 

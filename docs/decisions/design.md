@@ -339,7 +339,7 @@ captures in `docs/figures/shot-camera/`.
 
 ### D17 — Level generation follows an ordered recipe with a test per rule (2026-10-08)
 
-**Status:** active
+**Status:** amended by D18 -- R15 adds Bomb exclusions to the recipe
 
 **What happened.** T34 implements Yotam's selected approach: "A recipe doc of ordered steps and rules, with the code reorganised to match and a test per rule".
 
@@ -348,5 +348,19 @@ captures in `docs/figures/shot-camera/`.
 **Why.** A single ordered recipe makes the current fairness rules easy to find and gives each future rule a clear place and a test.
 
 **Evidence.** V18, the recipe and `tests/level_generation_tests.cpp`. Against pre-change commit `ba8094952d0b503009031c059df6cf2d6ce05a03`, `tests/level_recipe_regression.ps1` compared 39,094,808 identical bytes of fields and subsequent Ghost landings. The original band test and every number in `docs/levels.md` remain unchanged. The manager runs `fe_land.py --refactor` before publication.
+
+---
+
+### D18 — Generated Bomb squares exclude the goal and Ghost bricks (2026-10-08)
+
+**Status:** active
+
+**What happened.** Yotam said: "When spawning a bomb we need to make sure that if it explodes it will not trigger a ghost or the flag. This causes confusion in what happened." He chose only the goal and Ghost bricks, allowed other powers to chain, and chose to re-search seeds and bounces within the existing bands. T35 implements that choice.
+
+**Decision.** Extend D17's recipe with R15 in the power-up and goal steps. Use the field's generated Bomb size: remove Bomb from the weighted pick where its square contains an earlier Ghost, and Ghost where it lies in an earlier Bomb's square. Keep other eligible weights in proportion. Choose the goal only outside every Bomb square, from fogged plain bricks first, then visible safe plain bricks; leave it absent if no safe plain brick exists. Bombs may still cover Electricity, Ping, Speed and other Bombs. Ghost landing, power effects, four balls per level and target bands remain unchanged.
+
+**Why.** A Bomb blast cannot directly cause an unexplained goal break or Ghost jump. Each Bomb follows the same rule, including Bombs fired by a chain.
+
+**Evidence.** V19 and [the current level measurements](../levels.md): R15 checked 279,252 Bomb squares across all ten levels, all supported sizes and many free-play seeds. The band test and touch replays pass. Levels 1, 2 and 10 fired 4,252 Bombs through touch with zero goal breaks or Ghost firings inside their blast squares. Levels 1 and 2 are won by ball contact after earlier Bomb activity. Five levels were re-searched and their cards and opening captures refreshed.
 
 ---

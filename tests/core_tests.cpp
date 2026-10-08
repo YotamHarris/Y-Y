@@ -482,7 +482,7 @@ static void settingsChecks() {
     // The defaults keep the seeded grids: the bricks, glowing bricks, goal and pockets of three
     // grids for each of 100 seeds hash to a pinned value. It last changed when glowing bricks
     // became one-hit and bombs moved off the walls (T8), and again when the goal became one-hit (T19);
-    // the random stream itself is unchanged.
+    // T35 intentionally changes the power picks and goal candidates again.
     std::uint64_t h=1469598103934665603ull;
     const auto mixIn=[&](std::uint64_t v) { h=(h^v)*1099511628211ull; };
     for(std::uint32_t seed=1; seed<=100; ++seed) {
@@ -491,7 +491,8 @@ static void settingsChecks() {
       mixIn(static_cast<std::uint64_t>(m.goal));
       for(const auto& p: m.pockets) { mixIn(p.column); mixIn(p.row); mixIn(p.columns); mixIn(p.rows); }
     }
-    check(h==3712109982144219255ull,"the default settings generate the same seeded grids as before");
+    std::cout<<"Default seeded fields hash: "<<h<<'\n';
+    check(h==4009849234954528931ull,"the default settings generate the pinned seeded grids");
   }
 }
 // Generation: every glowing brick breaks in one hit, and no bomb lies within half its blast of a wall.
@@ -941,11 +942,13 @@ static void framingChecks() {
     return a.x>=cam.view.x-.02f && a.y>=cam.view.y-.02f &&
            z.x<=cam.view.x+cam.view.w+.02f && z.y<=cam.view.y+cam.view.h+.02f;
   };
-  Model m; m.play(6); Touch t(m); t.instructions=false;
+  // Keep the known 3x3 pocket fixture independent of the shipped level's tuning.
+  auto fixture=tapdemo::levels[5]; fixture.seed=696;
+  Model m; m.play(6,fixture); Touch t(m); t.instructions=false;
   const auto b=Framing::visibleBounds(m);
   check(near(b.x,96) && near(b.y,192) && near(b.w,288) && near(b.h,288),"level 6 frames its 3x3 pocket, two cells of visible bricks and one margin cell");
   check(near(t.camera.zoom,390.0f/288) && contained(t.camera,b),"level 6 uses the largest zoom fitting its visible box under the header");
-  const float opening=t.camera.zoom;
+  float opening=t.camera.zoom;
   m.bricks[25*m.columns+15]=0; m.refreshFog();
   const auto expanded=Framing::visibleBounds(m);
   const float target=std::min(t.camera.view.w/expanded.w,t.camera.view.h/expanded.h);
@@ -965,7 +968,9 @@ static void framingChecks() {
   m.bricks[0]=0; m.refreshFog(); t.update(1);
   check(!t.framing.automatic && near(t.camera.zoom,manual.zoom) && near(t.camera.offset.x,manual.offset.x) && near(t.camera.offset.y,manual.offset.y),"wheel zoom stops all automatic framing");
   m.restart(); t.refit();
-  check(t.framing.automatic && near(t.camera.zoom,opening),"retry resets the opening frame and automatic ownership");
+  Model retry; retry.play(6); Touch expected(retry);
+  check(t.framing.automatic && near(t.camera.zoom,expected.camera.zoom),"retry resets the shipped opening frame and automatic ownership");
+  opening=t.camera.zoom;
   t.down(1,{150,462}); t.down(2,{240,462}); t.move(2,{285,462});
   check(!t.framing.automatic && t.camera.zoom>opening,"pinch takes over the opening frame");
   t.up(2,{285,462}); t.up(1,{150,462});

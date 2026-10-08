@@ -554,7 +554,7 @@ there is no iPhone performance claim.
 
 ### V18 Level generation has an ordered recipe and a test per rule (D17)
 
-**Status:** active
+**Status:** amended by V19 -- Bomb exclusions intentionally change fields and measurements
 
 [The level-generation recipe](level-generation.md) lists the existing rules
 as R1–R14, with their ordered steps and code functions. Field construction
@@ -576,3 +576,39 @@ Every number in `levels.md` is unchanged. The manager runs
 
 **Open:** none for this refactor; player path, visual and device evidence
 are not applicable because fields and gameplay are unchanged.
+
+### V19 Bomb blasts leave the goal and Ghost bricks alone (D18)
+
+**Status:** active
+
+T35 adds R15 to [the level-generation recipe](level-generation.md). Generated
+Bomb squares contain neither the goal nor Ghost bricks; both placement orders
+keep the remaining kinds' weight proportions. The goal fallback stays outside
+every Bomb square. Other powers and Bombs still chain normally.
+
+Levels 1, 2, 6, 8 and 10 have new seeds; levels 6 and 10 also change bounces
+to 16 and 22. All ten stay inside their existing bands with four balls.
+[The results table](levels.md) records 2,000 games per level and the updated
+EXPECTED WINS cards. Levels 1 and 2 now win by ball contact with the goal
+after Bombs have fired earlier in the round.
+
+**Validation.** `scripts/build.ps1 -ToolsRoot 'D:/Source/Y&Y/YYEngine'` builds
+and runs `yy_tests`, including the band gate and R15. R15 checked 279,252
+Bomb squares over all ten level configurations at sizes 3–11 and 256
+free-play seeds per size at three grid scales. Touch down/drag/up replays
+of bot seeds 1–200 on levels 1, 2 and 10 recorded 1,231, 2,527 and 494 Bomb
+firings respectively, with zero goal breaks and zero Ghost firings inside
+blasts. All 199 and 109 wins on levels 1 and 2 were ball hits after earlier
+Bomb activity. Existing Ghost, celebration, pace and rendering tests pass.
+
+The 120-frame SDL smoke passed through the manager GPU wrapper. Opening
+fields for all ten levels and cards for the five changed levels were captured
+with `python studio/fe_manager.py gpu -- python tests/capture_levels.py`.
+The five changed openings and cards were read at 390×844, with four balls,
+correct bounces and EXPECTED WINS 99/56/39/55/45%. These are staged scenes;
+gameplay evidence is the automated touch replay. Device performance is not
+applicable to this rule change.
+
+**Open:** owner acceptance of Bomb behavior on levels 1, 2 and 10. No known
+implementation or automated-validation gap; real iPhone performance was not
+requested or measured.

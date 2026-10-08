@@ -31,15 +31,23 @@ void levelBandChecks() {
     for(int k=1; k<n; ++k)
       check(levels[k-1].feel!=l.feel || m.winRate()<=measured[k-1].winRate()+0.10f,n,"a later level of the same feel is clearly easier");
   }
-  // The player's path: levels 1 to 3 with every shot pressed, dragged and released on the
+  // The player's path: levels 1 to 3 and 10 with every shot pressed, dragged and released on the
   // fitted screen meet the same band. The screen round trip moves a shot by a hair, and a long
   // flight can then end elsewhere, so the counts may differ a little.
-  for(int n=1; n<=3; ++n) {
+  for(int n: {1,2,3,10}) {
     const auto touched=levelbot::measure(n,levels[n-1],1,runs,{},true);
     const auto t=target(levels[n-1].feel);
     std::cout<<"Level "<<n<<" through touch: wins "<<100*touched.winRate()<<"%\n";
     check(touched.winRate()>=t.minWins && touched.winRate()<=t.maxWins,n,"through touch the win rate is outside its feel's band");
     check(std::abs(touched.winRate()-measured[n-1].winRate())<=0.05f,n,"through touch the win rate differs from the direct shots'");
+    if(n==1 || n==2 || n==10) {
+      std::cout<<"Level "<<n<<" Bombs through touch: "<<touched.bombFirings<<" firings, "
+        <<touched.bombGoalBreaks<<" goal breaks, "<<touched.bombGhostFires<<" Ghost firings\n";
+      check(touched.bombFirings>0,n,"touch path fires no Bombs");
+      check(touched.bombGoalBreaks==0,n,"a Bomb blast broke the goal through touch");
+      check(touched.bombGhostFires==0,n,"a Bomb blast fired Ghost through touch");
+      if(n<=2) std::cout<<"Level "<<n<<": all "<<touched.wins<<" wins are ball hits; "<<touched.winsAfterBombs<<" winning rounds fired Bombs earlier\n";
+    }
   }
   // Ghost on level 9 through the player's touch path: every landing takes no power-up from its cavity.
   {
@@ -51,5 +59,5 @@ void levelBandChecks() {
     check(touched.ghostLandings>0,ghostLevel,"no Ghost landed through touch");
     check(touched.ghostTakes==0,ghostLevel,"a Ghost landing fired another power-up");
   }
-  std::cout<<"Level bands: ten levels meet their feel over "<<runs<<" bot games each; levels 1-3 also through touch\n";
+  std::cout<<"Level bands: ten levels meet their feel over "<<runs<<" bot games each; levels 1-3, 9 and 10 also through touch\n";
 }
